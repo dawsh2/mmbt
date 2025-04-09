@@ -1,0 +1,176 @@
+Analyzing signal timing using params.json
+Loaded 102236 rows of data from data.csv
+Data before preprocessing: 102236 rows
+NaN values in Open: 0 (0.00%)
+NaN values in High: 0 (0.00%)
+NaN values in Low: 0 (0.00%)
+NaN values in Close: 0 (0.00%)
+NaN values in Volume: 0 (0.00%)
+NaN values in trade_count: 97957 (95.81%)
+NaN values in vwap: 97957 (95.81%)
+NaN values in LogReturn: 1 (0.00%)
+Rows removed due to NaNs in essential columns: 1 (0.00%)
+Data after preprocessing: 102235 rows
+Before split: data has 102235 rows
+Data split: 61341 rows for training, 40894 rows for testing
+Loaded rule parameters from params.json
+Top 3 rules: [np.int64(5), np.int64(2), np.int64(11)]
+DEBUG - Generating signals for 16 rules
+DEBUG - Rule1 signals: Buy=20059, Sell=20834, Neutral=0
+DEBUG - Rule2 signals: Buy=20687, Sell=20206, Neutral=0
+DEBUG - Rule3 signals: Buy=19798, Sell=21095, Neutral=0
+DEBUG - Rule4 signals: Buy=0, Sell=40893, Neutral=0
+DEBUG - Rule5 signals: Buy=20624, Sell=20269, Neutral=0
+DEBUG - Rule6 signals: Buy=19932, Sell=20961, Neutral=0
+DEBUG - Rule7 signals: Buy=20266, Sell=20627, Neutral=0
+DEBUG - Rule8 signals: Buy=19945, Sell=20948, Neutral=0
+DEBUG - Rule9 signals: Buy=16770, Sell=18773, Neutral=5350
+DEBUG - Rule10 signals: Buy=19699, Sell=21194, Neutral=0
+DEBUG - Rule11 signals: Buy=4510, Sell=36383, Neutral=0
+DEBUG - Rule12 signals: Buy=19699, Sell=20306, Neutral=888
+DEBUG - Rule13 signals: Buy=2889, Sell=35470, Neutral=2534
+DEBUG - Rule14 signals: Buy=6418, Sell=6893, Neutral=27582
+DEBUG - Rule15 signals: Buy=0, Sell=0, Neutral=40893
+DEBUG - Rule16 signals: Buy=2871, Sell=2447, Neutral=35575
+DEBUG - After dropping NaNs, signals_df has 40893 rows
+DEBUG - Using top 3 rules: [np.int64(5), np.int64(2), np.int64(11)]
+DEBUG - Combined signals: Buy=10914, Sell=29979, Neutral=0
+Generated combined signals for top 3 rules
+
+Testing different signal timing approaches:
+--------------------------------------------------
+DEBUG - Returns statistics: count=40892, mean=0.000001, sum=0.034186
+DEBUG - Calculated metrics: TR=0.034777, AR=0.000211, Sharpe=0.0288, MaxDD=-0.071801
+1. Standard approach (1-day delay):
+   Total Return: 3.48%
+   Sharpe Ratio: 0.0288
+DEBUG - Returns statistics: count=40893, mean=0.000002, sum=0.070972
+DEBUG - Calculated metrics: TR=0.073551, AR=0.000437, Sharpe=0.0598, MaxDD=-0.115109
+
+2. No delay (has lookahead bias, for debugging only):
+   Total Return: 7.36%
+   Sharpe Ratio: 0.0598
+
+3. Generate individual rule signals first, then combine with delay:
+DEBUG - Returns statistics: count=40892, mean=0.000001, sum=0.034186
+DEBUG - Calculated metrics: TR=0.034777, AR=0.000211, Sharpe=0.0288, MaxDD=-0.071801
+   Total Return: 3.48%
+   Sharpe Ratio: 0.0288
+
+Individual rule performance:
+--------------------------------------------------
+DEBUG - Returns statistics: count=40892, mean=-0.000003, sum=-0.137659
+DEBUG - Calculated metrics: TR=-0.128604, AR=-0.000848, Sharpe=-0.1159, MaxDD=-0.178754
+Rule5:
+   Total Return: -12.86%
+   Sharpe Ratio: -0.1159
+   UNDERPERFORMS combined strategy by 16.34%
+DEBUG - Returns statistics: count=40892, mean=0.000002, sum=0.067860
+DEBUG - Calculated metrics: TR=0.070216, AR=0.000418, Sharpe=0.0571, MaxDD=-0.092302
+Rule2:
+   Total Return: 7.02%
+   Sharpe Ratio: 0.0571
+   OUTPERFORMS combined strategy by 3.54%
+DEBUG - Returns statistics: count=40892, mean=0.000004, sum=0.160132
+DEBUG - Calculated metrics: TR=0.173666, AR=0.000987, Sharpe=0.1349, MaxDD=-0.050586
+Rule11:
+   Total Return: 17.37%
+   Sharpe Ratio: 0.1349
+   OUTPERFORMS combined strategy by 13.89%
+
+Performance of other rules:
+--------------------------------------------------
+DEBUG - Returns statistics: count=40892, mean=-0.000002, sum=-0.089415
+DEBUG - Calculated metrics: TR=-0.085534, AR=-0.000551, Sharpe=-0.0753, MaxDD=-0.098134
+Rule1:
+   Total Return: -8.55%
+   Sharpe Ratio: -0.0753
+   UNDERPERFORMS combined strategy by 12.03%
+DEBUG - Returns statistics: count=40892, mean=-0.000003, sum=-0.111918
+DEBUG - Calculated metrics: TR=-0.105883, AR=-0.000689, Sharpe=-0.0942, MaxDD=-0.179945
+Rule3:
+   Total Return: -10.59%
+   Sharpe Ratio: -0.0942
+   UNDERPERFORMS combined strategy by 14.07%
+DEBUG - Returns statistics: count=40892, mean=0.000001, sum=0.049084
+DEBUG - Calculated metrics: TR=0.050308, AR=0.000303, Sharpe=0.0413, MaxDD=-0.061408
+Rule4:
+   Total Return: 5.03%
+   Sharpe Ratio: 0.0413
+   OUTPERFORMS combined strategy by 1.55%
+DEBUG - Returns statistics: count=40892, mean=-0.000002, sum=-0.073907
+DEBUG - Calculated metrics: TR=-0.071242, AR=-0.000455, Sharpe=-0.0622, MaxDD=-0.116714
+Rule6:
+   Total Return: -7.12%
+   Sharpe Ratio: -0.0622
+   UNDERPERFORMS combined strategy by 10.60%
+DEBUG - Returns statistics: count=40892, mean=-0.000002, sum=-0.067442
+DEBUG - Calculated metrics: TR=-0.065218, AR=-0.000416, Sharpe=-0.0568, MaxDD=-0.114622
+Rule7:
+   Total Return: -6.52%
+   Sharpe Ratio: -0.0568
+   UNDERPERFORMS combined strategy by 10.00%
+DEBUG - Returns statistics: count=40892, mean=0.000000, sum=0.004548
+DEBUG - Calculated metrics: TR=0.004558, AR=0.000028, Sharpe=0.0038, MaxDD=-0.078406
+Rule8:
+   Total Return: 0.46%
+   Sharpe Ratio: 0.0038
+   UNDERPERFORMS combined strategy by 3.02%
+DEBUG - Returns statistics: count=40892, mean=-0.000001, sum=-0.054126
+DEBUG - Calculated metrics: TR=-0.052687, AR=-0.000333, Sharpe=-0.0491, MaxDD=-0.085614
+Rule9:
+   Total Return: -5.27%
+   Sharpe Ratio: -0.0491
+   UNDERPERFORMS combined strategy by 8.75%
+DEBUG - Returns statistics: count=40892, mean=-0.000004, sum=-0.180648
+DEBUG - Calculated metrics: TR=-0.165271, AR=-0.001113, Sharpe=-0.1520, MaxDD=-0.215806
+Rule10:
+   Total Return: -16.53%
+   Sharpe Ratio: -0.1520
+   UNDERPERFORMS combined strategy by 20.00%
+DEBUG - Returns statistics: count=40892, mean=-0.000005, sum=-0.189339
+DEBUG - Calculated metrics: TR=-0.172494, AR=-0.001166, Sharpe=-0.1600, MaxDD=-0.223553
+Rule12:
+   Total Return: -17.25%
+   Sharpe Ratio: -0.1600
+   UNDERPERFORMS combined strategy by 20.73%
+DEBUG - Returns statistics: count=40892, mean=0.000003, sum=0.103722
+DEBUG - Calculated metrics: TR=0.109292, AR=0.000639, Sharpe=0.0898, MaxDD=-0.061929
+Rule13:
+   Total Return: 10.93%
+   Sharpe Ratio: 0.0898
+   OUTPERFORMS combined strategy by 7.45%
+DEBUG - Returns statistics: count=40892, mean=-0.000000, sum=-0.014891
+DEBUG - Calculated metrics: TR=-0.014781, AR=-0.000092, Sharpe=-0.0217, MaxDD=-0.055268
+Rule14:
+   Total Return: -1.48%
+   Sharpe Ratio: -0.0217
+   UNDERPERFORMS combined strategy by 4.96%
+WARNING: Empty or all-zero returns array
+Rule15:
+   Total Return: 0.00%
+   Sharpe Ratio: 0.0000
+   UNDERPERFORMS combined strategy by 3.48%
+DEBUG - Returns statistics: count=40892, mean=-0.000000, sum=-0.017506
+DEBUG - Calculated metrics: TR=-0.017354, AR=-0.000108, Sharpe=-0.0314, MaxDD=-0.041674
+Rule16:
+   Total Return: -1.74%
+   Sharpe Ratio: -0.0314
+   UNDERPERFORMS combined strategy by 5.21%
+
+Comparing signal distributions:
+--------------------------------------------------
+Standard combined signals:
+Buy: 10914 (26.7%), Sell: 29979 (73.3%), Neutral: 0 (0.0%)
+
+Manually combined signals:
+Buy: 10914 (26.7%), Sell: 29979 (73.3%), Neutral: 0 (0.0%)
+
+Signal agreement between methods: 100.0%
+
+Potential issues to investigate:
+--------------------------------------------------
+1. Check if the correct rule indices are being used in top_n selection
+2. Review how signals are combined in the rules.generate_signals method
+3. Check if there are timing differences in when signals are generated vs applied
+4. Verify that the weights or voting mechanism is working correctly

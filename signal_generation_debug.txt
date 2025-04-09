@@ -1,0 +1,61 @@
+Debugging signal generation using params.json
+Loaded 102236 rows of data from data.csv
+Data before preprocessing: 102236 rows
+NaN values in Open: 0 (0.00%)
+NaN values in High: 0 (0.00%)
+NaN values in Low: 0 (0.00%)
+NaN values in Close: 0 (0.00%)
+NaN values in Volume: 0 (0.00%)
+NaN values in trade_count: 97957 (95.81%)
+NaN values in vwap: 97957 (95.81%)
+NaN values in LogReturn: 1 (0.00%)
+Rows removed due to NaNs in essential columns: 1 (0.00%)
+Data after preprocessing: 102235 rows
+Before split: data has 102235 rows
+Data split: 61341 rows for training, 40894 rows for testing
+Loaded rule parameters from params.json
+Top 3 rules: [np.int64(5), np.int64(2), np.int64(11)]
+Generated signals for Rule5
+Generated signals for Rule2
+Generated signals for Rule11
+DEBUG - Generating signals for 16 rules
+DEBUG - Rule1 signals: Buy=20059, Sell=20834, Neutral=0
+DEBUG - Rule2 signals: Buy=20687, Sell=20206, Neutral=0
+DEBUG - Rule3 signals: Buy=19798, Sell=21095, Neutral=0
+DEBUG - Rule4 signals: Buy=0, Sell=40893, Neutral=0
+DEBUG - Rule5 signals: Buy=20624, Sell=20269, Neutral=0
+DEBUG - Rule6 signals: Buy=19932, Sell=20961, Neutral=0
+DEBUG - Rule7 signals: Buy=20266, Sell=20627, Neutral=0
+DEBUG - Rule8 signals: Buy=19945, Sell=20948, Neutral=0
+DEBUG - Rule9 signals: Buy=16770, Sell=18773, Neutral=5350
+DEBUG - Rule10 signals: Buy=19699, Sell=21194, Neutral=0
+DEBUG - Rule11 signals: Buy=4510, Sell=36383, Neutral=0
+DEBUG - Rule12 signals: Buy=19699, Sell=20306, Neutral=888
+DEBUG - Rule13 signals: Buy=2889, Sell=35470, Neutral=2534
+DEBUG - Rule14 signals: Buy=6418, Sell=6893, Neutral=27582
+DEBUG - Rule15 signals: Buy=0, Sell=0, Neutral=40893
+DEBUG - Rule16 signals: Buy=2871, Sell=2447, Neutral=35575
+DEBUG - After dropping NaNs, signals_df has 40893 rows
+DEBUG - Using top 3 rules: [np.int64(5), np.int64(2), np.int64(11)]
+DEBUG - Combined signals: Buy=10914, Sell=29979, Neutral=0
+Generated combined signals for top 3 rules
+
+Signal discrepancies: 0 out of 40893 (0.00%)
+
+Sample of recent 100 data points:
+Signal comparison plot saved to signal_comparison.png
+
+Signal distribution in sample:
+Rule5: Buy=49 (49.0%), Sell=51 (51.0%), Neutral=0 (0.0%)
+Rule2: Buy=56 (56.0%), Sell=44 (44.0%), Neutral=0 (0.0%)
+Rule11: Buy=18 (18.0%), Sell=82 (82.0%), Neutral=0 (0.0%)
+Combined: Buy=31 (31.0%), Sell=69 (69.0%), Neutral=0 (0.0%)
+
+Signal correlation matrix:
+             Rule5     Rule2    Rule11  Combined
+Rule5     1.000000 -0.138629  0.373851  0.597317
+Rule2    -0.138629  1.000000  0.153116  0.376347
+Rule11    0.373851  0.153116  1.000000  0.698993
+Combined  0.597317  0.376347  0.698993  1.000000
+
+No highly correlated signals detected.

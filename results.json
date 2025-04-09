@@ -1,15 +1,15 @@
 {
-    "strategy": "Top-3 Rules Strategy",
+    "strategy": "Top-10 Rules Strategy",
     "performance": {
         "strategy": {
-            "total_return": 0.034777141957028856,
-            "annualized_return": 0.00021069647200633312,
-            "annualized_volatility": 0.007319324984477848,
-            "sharpe_ratio": 0.028786325576902087,
-            "max_drawdown": -0.07180094588019936,
-            "win_rate": 0.4873813948938668,
-            "profit_factor": 1.0063584906089842,
-            "number_of_trades": 5890.5
+            "total_return": -0.15033233834437165,
+            "annualized_return": -0.001003441193947574,
+            "annualized_volatility": 0.0068372700509826915,
+            "sharpe_ratio": -0.1467605033098486,
+            "max_drawdown": -0.20048528659866027,
+            "win_rate": 0.4386677100655385,
+            "profit_factor": 0.9671576749120119,
+            "number_of_trades": 9389.0
         },
         "buy_and_hold": {
             "total_return": -0.04789861938279949,
