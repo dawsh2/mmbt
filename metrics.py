@@ -19,23 +19,18 @@ def calculate_returns(signals: pd.Series, returns: pd.Series) -> pd.Series:
     return signals * returns
 
 
+# In metrics.py, update the calculate_metrics function
 def calculate_metrics(strategy_returns) -> Dict[str, float]:
     """Calculate performance metrics for a strategy."""
-    # Print type and value for debugging
-    print(f"DEBUG - Type of strategy_returns: {type(strategy_returns)}")
-    
     # Ensure we have numeric data
     if isinstance(strategy_returns, pd.Series):
-        # Convert to float values - this is critical!
         strategy_returns = strategy_returns.astype(float)
         returns_array = strategy_returns.values
     else:
-        # Try to convert to numpy array of floats
         try:
             returns_array = np.array(strategy_returns, dtype=float)
         except Exception as e:
             print(f"Error converting to numpy array: {e}")
-            # Return placeholder metrics
             return {
                 'total_return': 0.0,
                 'annualized_return': 0.0,
@@ -47,9 +42,9 @@ def calculate_metrics(strategy_returns) -> Dict[str, float]:
                 'number_of_trades': 0
             }
     
-    # Check if array is empty
-    if len(returns_array) == 0:
-        print("WARNING: Empty returns array")
+    # Check if array is empty or has only zeros
+    if len(returns_array) == 0 or np.all(returns_array == 0):
+        print("WARNING: Empty or all-zero returns array")
         return {
             'total_return': 0.0,
             'annualized_return': 0.0,
@@ -61,15 +56,19 @@ def calculate_metrics(strategy_returns) -> Dict[str, float]:
             'number_of_trades': 0
         }
     
-    # Calculate metrics with safe operations
+    # Calculate metrics
     try:
+        # Debug statistics about returns
+        print(f"DEBUG - Returns statistics: count={len(returns_array)}, " +
+              f"mean={np.mean(returns_array):.6f}, sum={np.sum(returns_array):.6f}")
+        
         # Convert log returns to simple returns
         simple_returns = np.exp(returns_array) - 1
         
         # Calculate total return
         total_return = np.exp(np.sum(returns_array)) - 1
         
-        # Calculate annualized metrics
+        # Calculate annualized metrics (assuming 252 trading days per year)
         annualized_return = np.exp(np.mean(returns_array) * 252) - 1
         annualized_volatility = np.std(returns_array) * np.sqrt(252)
         sharpe_ratio = annualized_return / annualized_volatility if annualized_volatility != 0 else 0
@@ -88,6 +87,10 @@ def calculate_metrics(strategy_returns) -> Dict[str, float]:
         losing_trades = abs(np.sum(returns_array[returns_array < 0]))
         profit_factor = winning_trades / losing_trades if losing_trades != 0 else float('inf')
         
+        # Debug the calculated metrics
+        print(f"DEBUG - Calculated metrics: TR={total_return:.6f}, AR={annualized_return:.6f}, " +
+              f"Sharpe={sharpe_ratio:.4f}, MaxDD={max_drawdown:.6f}")
+        
         return {
             'total_return': total_return,
             'annualized_return': annualized_return,
@@ -101,6 +104,8 @@ def calculate_metrics(strategy_returns) -> Dict[str, float]:
         
     except Exception as e:
         print(f"Error calculating metrics: {e}")
+        import traceback
+        traceback.print_exc()
         return {
             'total_return': 0.0,
             'annualized_return': 0.0,

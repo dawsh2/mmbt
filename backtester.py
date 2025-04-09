@@ -84,6 +84,7 @@ class Backtester:
         
         return True
 
+    # In backtester.py, update the _calculate_performance method
     def _calculate_performance(self, signals_df):
         """Calculate performance metrics based on signals."""
         # Make sure we have the LogReturn column
@@ -98,12 +99,22 @@ class Backtester:
         returns = pd.to_numeric(signals_df['LogReturn'], errors='coerce')
         signals = pd.to_numeric(signals_df['Signal'], errors='coerce')
 
+        # Debug information on signals and returns
+        print(f"DEBUG - Returns summary: min={returns.min():.6f}, max={returns.max():.6f}, mean={returns.mean():.6f}")
+        print(f"DEBUG - Signals value counts: {signals.value_counts().to_dict()}")
+
         # Calculate strategy returns
         strategy_returns = signals.shift(1) * returns  # Apply signals with 1-day delay
         strategy_returns = strategy_returns.dropna()
 
+        # Debug information on strategy returns
+        print(f"DEBUG - Strategy returns: min={strategy_returns.min() if not strategy_returns.empty else 0:.6f}, " +
+              f"max={strategy_returns.max() if not strategy_returns.empty else 0:.6f}, " +
+              f"sum={strategy_returns.sum() if not strategy_returns.empty else 0:.6f}")
+
         # Count trades
         trades = (signals.diff() != 0).sum() / 2  # Each trade consists of entry and exit
+        print(f"DEBUG - Number of trades: {trades}")
 
         # Calculate buy-and-hold returns for comparison
         bh_returns = returns.loc[strategy_returns.index]
@@ -122,7 +133,6 @@ class Backtester:
             }
         except Exception as e:
             print(f"Error in performance calculation: {e}")
-            # Return empty metrics as fallback
             empty_metrics = {
                 'total_return': 0.0,
                 'annualized_return': 0.0,
@@ -137,6 +147,7 @@ class Backtester:
                 'strategy': empty_metrics,
                 'buy_and_hold': empty_metrics
             }
+ 
     
     def _save_results(self):
         """Save backtest results to a file."""

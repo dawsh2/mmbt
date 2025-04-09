@@ -314,77 +314,88 @@ class TradingRules:
         self.rule_indices = rule_indices
         
         return all_params, all_scores, rule_indices
-    
+
+
+    # In rules.py, update the generate_signals method to include more debugging
     def generate_signals(self, OHLC, params=None, top_n=None, weights=None):
-        """Generate trading signals for all rules and combine them.
-        
-        Args:
-            OHLC: List of [Open, High, Low, Close] Series
-            params: Optional list of parameters for each rule
-            top_n: Optional number of top rules to use
-            weights: Optional weights for combining rule signals
-            
-        Returns:
-            DataFrame with signals for each rule and combined signal
-        """
+        """Generate trading signals for all rules and combine them."""
         if params is None:
             params = self.rule_params
-        
+
         if params is None:
             raise ValueError("Rule parameters not set. Train rules first.")
-        
+
         # Extract log returns for performance calculation
         _, _, _, close = OHLC
         logr = np.log(close/close.shift(1))
-        
+
         # Create DataFrame to store signals
         signals_df = pd.DataFrame(index=close.index)
         signals_df['LogReturn'] = logr
-        
+
+        # Debug info
+        print(f"DEBUG - Generating signals for {len(self.rule_functions)} rules")
+
         # Generate signals for each rule
         for i, rule in enumerate(self.rule_functions):
             try:
                 _, signal = rule(params[i], OHLC)
                 signals_df[f'Rule{i+1}'] = signal
+
+                # Debug info - count signal types
+                if isinstance(signal, pd.Series):
+                    buy_signals = (signal == 1).sum()
+                    sell_signals = (signal == -1).sum()
+                    neutral_signals = (signal == 0).sum()
+                    print(f"DEBUG - Rule{i+1} signals: Buy={buy_signals}, Sell={sell_signals}, Neutral={neutral_signals}")
             except Exception as e:
                 print(f"Error generating signals for Rule{i+1}: {str(e)}")
                 signals_df[f'Rule{i+1}'] = np.nan
-        
+
         # Remove NaN values
         signals_df.dropna(inplace=True)
-        
+        print(f"DEBUG - After dropping NaNs, signals_df has {len(signals_df)} rows")
+
         # Generate combined signal
         if weights is not None:
             # Weighted combination of signals
             weighted_signal = pd.Series(0, index=signals_df.index)
             rule_cols = [f'Rule{i+1}' for i in range(len(self.rule_functions))]
-            
+
             for i, col in enumerate(rule_cols):
                 weighted_signal += weights[i] * signals_df[col]
-            
+
             # Convert to -1, 0, 1 signals
             signals_df['Signal'] = np.sign(weighted_signal)
-        
+
         elif top_n is not None:
             # Use only top N rules
             if not hasattr(self, 'rule_indices'):
                 raise ValueError("Rule scores not calculated. Train rules first.")
-            
+
             top_indices = self.rule_indices[:top_n]
+            print(f"DEBUG - Using top {top_n} rules: {[i+1 for i in top_indices]}")
             top_rule_cols = [f'Rule{i+1}' for i in top_indices]
-            
+
             # Equal-weighted combination of top N rules
             signals_df['Signal'] = signals_df[top_rule_cols].sum(axis=1)
             signals_df['Signal'] = np.sign(signals_df['Signal'])
-        
+
         else:
             # Equal-weighted combination of all rules
             rule_cols = [f'Rule{i+1}' for i in range(len(self.rule_functions))]
             signals_df['Signal'] = signals_df[rule_cols].sum(axis=1)
             signals_df['Signal'] = np.sign(signals_df['Signal'])
-        
+
+        # Debug the final signal distribution
+        if 'Signal' in signals_df:
+            buy_signals = (signals_df['Signal'] == 1).sum()
+            sell_signals = (signals_df['Signal'] == -1).sum()
+            neutral_signals = (signals_df['Signal'] == 0).sum()
+            print(f"DEBUG - Combined signals: Buy={buy_signals}, Sell={sell_signals}, Neutral={neutral_signals}")
+
         return signals_df
-    
+
     def save_params(self, file_path):
         """Save trained rule parameters to a file."""
         if self.rule_params is None:

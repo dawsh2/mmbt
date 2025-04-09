@@ -69,6 +69,7 @@ class DataHandler:
             return False        
 
 
+        # In data.py, update the preprocess method
     def preprocess(self):
         """Preprocess the data for backtesting."""
         if self.data is None:
@@ -77,13 +78,26 @@ class DataHandler:
 
         # Print statistics before removing NaNs
         print(f"Data before preprocessing: {len(self.data)} rows")
-        print(f"NaN values in LogReturn: {self.data['LogReturn'].isna().sum()}")
+
+        # Check each column for NaN values
+        for col in self.data.columns:
+            nan_count = self.data[col].isna().sum()
+            print(f"NaN values in {col}: {nan_count} ({nan_count/len(self.data)*100:.2f}%)")
+
+        # Look for duplicate indices
+        duplicate_count = self.data.index.duplicated().sum()
+        print(f"Duplicate indices: {duplicate_count}")
 
         # Remove rows with NaN values
+        before_count = len(self.data)
         self.data.dropna(inplace=True)
+        after_count = len(self.data)
 
+        print(f"Rows removed due to NaNs: {before_count - after_count} ({(before_count - after_count)/before_count*100:.2f}%)")
         print(f"Data after preprocessing: {len(self.data)} rows")
+
         return True
+
 
 
     def split_data(self, train_size=None):
