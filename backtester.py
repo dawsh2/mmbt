@@ -77,7 +77,7 @@ class Backtester:
             }
             
             # Print performance metrics
-            print_metrics(performance, f"Test Performance - {self.strategy}")
+            print_metrics(performance['strategy'], f"Test Performance - {self.strategy}")
             
             # Save results
             self._save_results()
@@ -127,10 +127,14 @@ class Backtester:
             # Add number of trades
             strategy_metrics['number_of_trades'] = trades
 
+            # Print raw metrics for debugging
+            print("DEBUG - Strategy metrics dictionary:", strategy_metrics)
+
             return {
                 'strategy': strategy_metrics,
                 'buy_and_hold': bh_metrics
             }
+
         except Exception as e:
             print(f"Error in performance calculation: {e}")
             empty_metrics = {

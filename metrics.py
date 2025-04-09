@@ -117,6 +117,7 @@ def calculate_metrics(strategy_returns) -> Dict[str, float]:
             'number_of_trades': 0
         }
 
+
 def print_metrics(metrics: Dict[str, float], title: str = "Performance Metrics"):
     """Print performance metrics in a formatted way."""
     print(f"\n{title}")
@@ -126,31 +127,23 @@ def print_metrics(metrics: Dict[str, float], title: str = "Performance Metrics")
     if not metrics:
         print("No metrics available")
         return
-        
-    # Define metrics to display with default values
-    metrics_to_display = [
-        ('total_return', 'Total Return', 0.0),
-        ('annualized_return', 'Annualized Return', 0.0),
-        ('annualized_volatility', 'Annualized Volatility', 0.0),
-        ('sharpe_ratio', 'Sharpe Ratio', 0.0),
-        ('max_drawdown', 'Maximum Drawdown', 0.0),
-        ('win_rate', 'Win Rate', 0.0),
-        ('profit_factor', 'Profit Factor', 0.0),
-        ('number_of_trades', 'Number of Trades', 0)
-    ]
     
-    # Print each metric with a default value if not found
-    for key, label, default in metrics_to_display:
-        value = metrics.get(key, default)
-        
-        # Format based on type
-        if key in ['sharpe_ratio', 'profit_factor']:
-            print(f"{label}: {value:.2f}")
-        elif key == 'number_of_trades':
-            print(f"{label}: {int(value)}")
-        else:
-            # Percentage format
-            print(f"{label}: {value:.2%}")    
+    # Helper function to safely convert NumPy types to Python types
+    def safe_float(value):
+        try:
+            return float(value)
+        except:
+            return 0.0
+    
+    # Print each metric, safely handling NumPy types
+    print(f"Total Return: {safe_float(metrics.get('total_return', 0.0)):.2%}")
+    print(f"Annualized Return: {safe_float(metrics.get('annualized_return', 0.0)):.2%}")
+    print(f"Annualized Volatility: {safe_float(metrics.get('annualized_volatility', 0.0)):.2%}")
+    print(f"Sharpe Ratio: {safe_float(metrics.get('sharpe_ratio', 0.0)):.2f}")
+    print(f"Maximum Drawdown: {safe_float(metrics.get('max_drawdown', 0.0)):.2%}")
+    print(f"Win Rate: {safe_float(metrics.get('win_rate', 0.0)):.2%}")
+    print(f"Profit Factor: {safe_float(metrics.get('profit_factor', 0.0)):.2f}")
+    print(f"Number of Trades: {int(safe_float(metrics.get('number_of_trades', 0)))}")
 
 def compare_strategies(metrics_list: List[Dict[str, float]], names: List[str]):
     """Compare performance metrics for multiple strategies.

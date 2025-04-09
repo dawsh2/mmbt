@@ -17,7 +17,6 @@ class DataHandler:
         self.train_data = None
         self.test_data = None
 
-
     def load_data(self, file_path=None):
         """Load data from CSV file."""
         if file_path is None:
@@ -27,14 +26,14 @@ class DataHandler:
             # Load data from CSV
             self.data = pd.read_csv(file_path)
 
-            # Ensure required OHLC columns exist
+            # Ensure required columns exist
             required_columns = ['Open', 'High', 'Low', 'Close']
             for col in required_columns:
                 if col not in self.data.columns:
                     raise ValueError(f"Required column '{col}' not found in data file")
 
-            # Handle date column - try to find it with common names
-            date_column_candidates = ['Date', 'date', 'datetime', 'time', 'timestamp']
+            # Handle timestamp column - try to find it with common names
+            date_column_candidates = ['timestamp', 'Timestamp', 'Date', 'date', 'datetime', 'time']
             date_column = None
 
             for candidate in date_column_candidates:
@@ -44,15 +43,15 @@ class DataHandler:
 
             # If no date column found, create one from the index
             if date_column is None:
-                print("No date column found. Using row index as date.")
-                self.data['Date'] = pd.date_range(start='2000-01-01', periods=len(self.data))
-                date_column = 'Date'
+                print("No date/timestamp column found. Using row index as date.")
+                self.data['timestamp'] = pd.date_range(start='2000-01-01', periods=len(self.data))
+                date_column = 'timestamp'
 
-            # Convert Date to datetime if it's not already
+            # Convert timestamp to datetime if it's not already
             if pd.api.types.is_string_dtype(self.data[date_column]):
                 self.data[date_column] = pd.to_datetime(self.data[date_column])
 
-            # Set Date as index
+            # Set timestamp as index
             self.data.set_index(date_column, inplace=True)
 
             # Sort by date
@@ -66,10 +65,8 @@ class DataHandler:
 
         except Exception as e:
             print(f"Error loading data: {str(e)}")
-            return False        
+            return False
 
-
-        # In data.py, update the preprocess method
     def preprocess(self):
         """Preprocess the data for backtesting."""
         if self.data is None:
@@ -84,20 +81,18 @@ class DataHandler:
             nan_count = self.data[col].isna().sum()
             print(f"NaN values in {col}: {nan_count} ({nan_count/len(self.data)*100:.2f}%)")
 
-        # Look for duplicate indices
-        duplicate_count = self.data.index.duplicated().sum()
-        print(f"Duplicate indices: {duplicate_count}")
+        # Only essential columns need to be free of NaNs
+        essential_cols = ['Open', 'High', 'Low', 'Close', 'LogReturn']
 
-        # Remove rows with NaN values
+        # Remove rows with NaN values in essential columns only
         before_count = len(self.data)
-        self.data.dropna(inplace=True)
+        self.data.dropna(subset=essential_cols, inplace=True)
         after_count = len(self.data)
 
-        print(f"Rows removed due to NaNs: {before_count - after_count} ({(before_count - after_count)/before_count*100:.2f}%)")
+        print(f"Rows removed due to NaNs in essential columns: {before_count - after_count} ({(before_count - after_count)/before_count*100:.2f}%)")
         print(f"Data after preprocessing: {len(self.data)} rows")
 
         return True
-
 
 
     def split_data(self, train_size=None):
@@ -106,22 +101,25 @@ class DataHandler:
             print("No data loaded. Call load_data() first.")
             return False
 
+        print(f"Before split: data has {len(self.data)} rows")
+
         if train_size is None:
             train_size = self.config.train_size
 
-        # Make sure we're using clean data
-        clean_data = self.data.dropna()
-        print(f"Clean data after removing NaNs: {len(clean_data)} rows")
+        # Check if any additional filtering is happening here
+        if 'clean_data' in locals() or 'clean_data' in globals():
+            print(f"Using clean_data with {len(clean_data)} rows instead of self.data with {len(self.data)} rows")
 
         # Calculate split point
-        split_idx = int(len(clean_data) * train_size)
+        split_idx = int(len(self.data) * train_size)
 
         # Split data
-        self.train_data = clean_data.iloc[:split_idx].copy()
-        self.test_data = clean_data.iloc[split_idx:].copy()
+        self.train_data = self.data.iloc[:split_idx].copy()
+        self.test_data = self.data.iloc[split_idx:].copy()
 
         print(f"Data split: {len(self.train_data)} rows for training, {len(self.test_data)} rows for testing")
         return True
+
 
     
     def get_ohlc(self, train=True):
