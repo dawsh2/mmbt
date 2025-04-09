@@ -1,24 +1,24 @@
 {
-    "strategy": "Top-10 Rules Strategy",
+    "strategy": "Top-5 Rules Strategy",
     "performance": {
         "strategy": {
-            "total_return": -0.15033233834437165,
-            "annualized_return": -0.001003441193947574,
-            "annualized_volatility": 0.0068372700509826915,
-            "sharpe_ratio": -0.1467605033098486,
-            "max_drawdown": -0.20048528659866027,
-            "win_rate": 0.4386677100655385,
-            "profit_factor": 0.9671576749120119,
-            "number_of_trades": 9389.0
+            "total_return": 0.009888135489059868,
+            "annualized_return": 6.063742588247045e-05,
+            "annualized_volatility": 0.00724030741033948,
+            "sharpe_ratio": 0.008374979465081485,
+            "max_drawdown": -0.15947138209868572,
+            "win_rate": 0.49336072188394103,
+            "profit_factor": 1.001834685382927,
+            "number_of_trades": 9508.5
         },
         "buy_and_hold": {
-            "total_return": -0.04789861938279949,
-            "annualized_return": -0.0003024365741393087,
-            "annualized_volatility": 0.007319312213344578,
-            "sharpe_ratio": -0.041320354334373935,
-            "max_drawdown": -0.10786261963376198,
-            "win_rate": 0.49657634745182433,
-            "profit_factor": 0.9909407486076056,
+            "total_return": -0.04745541797501518,
+            "annualized_return": -0.0002995621133783377,
+            "annualized_volatility": 0.007319314365520465,
+            "sharpe_ratio": -0.04092761950347467,
+            "max_drawdown": -0.10786261963376886,
+            "win_rate": 0.49658865820556086,
+            "profit_factor": 0.9910266442996095,
             "number_of_trades": 0
         }
     }

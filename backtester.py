@@ -104,7 +104,7 @@ class Backtester:
         print(f"DEBUG - Signals value counts: {signals.value_counts().to_dict()}")
 
         # Calculate strategy returns
-        strategy_returns = signals.shift(1) * returns  # Apply signals with 1-day delay
+        strategy_returns = signals * returns 
         strategy_returns = strategy_returns.dropna()
 
         # Debug information on strategy returns
