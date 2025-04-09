@@ -1,0 +1,429 @@
+"""
+Trading rules implementation for the backtesting engine.
+Based on the rules provided in the paste-3.txt file.
+"""
+
+import numpy as np
+import pandas as pd
+from typing import List, Tuple, Dict, Any
+
+# Import TA functions from provided code
+from ta_functions import (
+    ema, ma, DEMA, TEMA, rsi, stoch, stoch_signal, average_true_range,
+    vortex_indicator_pos, vortex_indicator_neg, cci, bollinger_mavg,
+    bollinger_hband, bollinger_lband, keltner_channel_hband, keltner_channel_lband,
+    donchian_channel_hband, donchian_channel_lband, ichimoku_a, ichimoku_b
+)
+
+def count_trade_no(signal):
+    """Count the number of trades from signal changes."""
+    no_trades = 0
+    prev = 10
+    for i in signal:
+        if i != prev and prev != 0:
+            prev = i
+            no_trades += 1
+    return no_trades
+
+class TradingRules:
+    """Implementation of trading rules from the original code."""
+    
+    def __init__(self):
+        """Initialize TradingRules class."""
+        self.rule_functions = [
+            self.Rule1, self.Rule2, self.Rule3, self.Rule4, self.Rule5,
+            self.Rule6, self.Rule7, self.Rule8, self.Rule9, self.Rule10,
+            self.Rule11, self.Rule12, self.Rule13, self.Rule14, self.Rule15,
+            self.Rule16
+        ]
+        self.rule_params = None
+        self.periods = [1, 3, 5, 7, 11, 15, 19, 23, 27, 35, 41, 50, 61]
+    
+    def Rule1(self, param, OHLC):
+        """Rule 1: Simple Moving Average Crossover"""
+        ma1, ma2 = param
+        open_prices, high, low, close = OHLC
+        logr = np.log(close/close.shift(1))
+        s1 = close.rolling(ma1).mean()
+        s2 = close.rolling(ma2).mean()
+        signal = 2*(s1<s2).shift(1)-1
+        port_logr = signal*logr
+        return (abs(port_logr.sum()), signal)
+
+    def Rule2(self, param, OHLC):
+        """Rule 2: EMA and close"""
+        ema1, ma2 = param
+        open_prices, high, low, close = OHLC
+        logr = np.log(close/close.shift(1))
+        s1 = ema(close, ema1)
+        s2 = close.rolling(ma2).mean()
+        signal = 2*(s1<s2).shift(1)-1
+        port_logr = signal*logr
+        return (abs(port_logr.sum()), signal)
+
+    def Rule3(self, param, OHLC):
+        """Rule 3: EMA and EMA"""
+        ema1, ema2 = param
+        open_prices, high, low, close = OHLC
+        logr = np.log(close/close.shift(1))
+        s1 = ema(close, ema1)
+        s2 = ema(close, ema2)
+        signal = 2*(s1<s2).shift(1)-1
+        port_logr = signal*logr
+        return (abs(port_logr.sum()), signal)
+
+    def Rule4(self, param, OHLC):
+        """Rule 4: DEMA and MA"""
+        dema1, ma2 = param
+        open_prices, high, low, close = OHLC
+        logr = np.log(close/close.shift(1))
+        s1 = DEMA(close, dema1)
+        s2 = close.rolling(ma2).mean()
+        signal = 2*(s1<s2).shift(1)-1
+        port_logr = signal*logr
+        return (abs(port_logr.sum()), signal)
+
+    def Rule5(self, param, OHLC):
+        """Rule 5: DEMA and DEMA"""
+        dema1, dema2 = param
+        open_prices, high, low, close = OHLC
+        logr = np.log(close/close.shift(1))
+        s1 = DEMA(close, dema1)
+        s2 = DEMA(close, dema2)
+        signal = 2*(s1<s2).shift(1)-1
+        port_logr = signal*logr
+        return (abs(port_logr.sum()), signal)
+
+    def Rule6(self, param, OHLC):
+        """Rule 6: TEMA and ma crossovers"""
+        tema1, ma2 = param
+        open_prices, high, low, close = OHLC
+        logr = np.log(close/close.shift(1))
+        s1 = TEMA(close, tema1)
+        s2 = close.rolling(ma2).mean()
+        signal = 2*(s1<s2).shift(1)-1
+        port_logr = signal*logr
+        return (abs(port_logr.sum()), signal)
+
+    def Rule7(self, param, OHLC):
+        """Rule 7: Stochastic crossover"""
+        stoch1, stochma2 = param
+        open_prices, high, low, close = OHLC
+        logr = np.log(close/close.shift(1))
+        s1 = stoch(high, low, close, stoch1)
+        s2 = s1.rolling(stochma2, min_periods=0).mean()
+        signal = 2*(s1<s2).shift(1)-1
+        port_logr = signal*logr
+        return (abs(port_logr.sum()), signal)
+
+    def Rule8(self, param, OHLC):
+        """Rule 8: Vortex indicator crossover"""
+        vortex1, vortex2 = param
+        open_prices, high, low, close = OHLC
+        logr = np.log(close/close.shift(1))
+        s1 = vortex_indicator_pos(high, low, close, vortex1)
+        s2 = vortex_indicator_neg(high, low, close, vortex2)
+        signal = 2*(s1<s2).shift(1)-1
+        port_logr = signal*logr
+        return (abs(port_logr.sum()), signal)
+
+    def Rule9(self, param, OHLC):
+        """Rule 9: Ichimoku cloud"""
+        p1, p2 = param
+        open_prices, high, low, close = OHLC
+        logr = np.log(close/close.shift(1))
+        s1 = ichimoku_a(high, low, n1=p1, n2=round((p1+p2)/2))
+        s2 = ichimoku_b(high, low, n2=round((p1+p2)/2), n3=p2)
+        s3 = close
+        signal = (-1*((s3>s1) & (s3>s2))+1*((s3<s2) & (s3<s1))).shift(1)
+        port_logr = signal*logr
+        return (abs(port_logr.sum()), signal)
+
+    def Rule10(self, param, OHLC):
+        """Rule 10: RSI threshold"""
+        rsi1, c2 = param
+        open_prices, high, low, close = OHLC
+        logr = np.log(close/close.shift(1))
+        s1 = rsi(close, rsi1)
+        s2 = c2
+        signal = 2*(s1<s2).shift(1)-1
+        port_logr = signal*logr
+        return (abs(port_logr.sum()), signal)
+
+    def Rule11(self, param, OHLC):
+        """Rule 11: CCI threshold"""
+        cci1, c2 = param
+        open_prices, high, low, close = OHLC
+        logr = np.log(close/close.shift(1))
+        s1 = cci(high, low, close, cci1)
+        s2 = c2
+        signal = 2*(s1<s2).shift(1)-1
+        port_logr = signal*logr
+        return (abs(port_logr.sum()), signal)
+
+    def Rule12(self, param, OHLC):
+        """Rule 12: RSI range"""
+        rsi1, hl, ll = param
+        open_prices, high, low, close = OHLC
+        logr = np.log(close/close.shift(1))
+        s1 = rsi(close, rsi1)
+        signal = (-1*(s1>hl)+1*(s1<ll)).shift(1)
+        port_logr = signal*logr
+        return (abs(port_logr.sum()), signal)
+
+    def Rule13(self, param, OHLC):
+        """Rule 13: CCI range"""
+        cci1, hl, ll = param
+        open_prices, high, low, close = OHLC
+        logr = np.log(close/close.shift(1))
+        s1 = cci(high, low, close, cci1)
+        signal = (-1*(s1>hl)+1*(s1<ll)).shift(1)
+        port_logr = signal*logr
+        return (abs(port_logr.sum()), signal)
+
+    def Rule14(self, period, OHLC):
+        """Rule 14: Keltner channel"""
+        open_prices, high, low, close = OHLC
+        logr = np.log(close/close.shift(1))
+        s1 = keltner_channel_hband(high, low, close, n=period)
+        s2 = keltner_channel_lband(high, low, close, n=period)
+        s3 = close
+        signal = (-1*(s3>s1)+1*(s3<s2)).shift(1)
+        port_logr = signal*logr
+        return (abs(port_logr.sum()), signal)
+
+    def Rule15(self, period, OHLC):
+        """Rule 15: Donchian channel"""
+        open_prices, high, low, close = OHLC
+        logr = np.log(close/close.shift(1))
+        s1 = donchian_channel_hband(close, n=period)
+        s2 = donchian_channel_lband(close, n=period)
+        s3 = close
+        signal = (-1*(s3>s1)+1*(s3<s2)).shift(1)
+        port_logr = signal*logr
+        return (abs(port_logr.sum()), signal)
+
+    def Rule16(self, period, OHLC):
+        """Rule 16: Bollinger bands"""
+        open_prices, high, low, close = OHLC
+        logr = np.log(close/close.shift(1))
+        s1 = bollinger_hband(close, n=period)
+        s2 = bollinger_lband(close, n=period)
+        s3 = close
+        signal = (-1*(s3>s1)+1*(s3<s2)).shift(1)
+        port_logr = signal*logr
+        return (abs(port_logr.sum()), signal)
+
+    def train_rules(self, OHLC):
+        """Train trading rule parameters using the provided OHLC data."""
+        periods = self.periods
+        
+        # Train Type 1 rules (rules 1-9)
+        type1 = self.rule_functions[:9]
+        type1_param = []
+        type1_score = []
+        
+        for rule in type1:
+            best = -1
+            best_param = None
+            for i in range(len(periods)):
+                for j in range(i, len(periods)):
+                    param = (periods[i], periods[j])
+                    score = rule(param, OHLC)[0]
+                    if score > best:
+                        best = score
+                        best_param = param
+            type1_param.append(best_param)
+            type1_score.append(best)
+        
+        # Train Type 2 rules (rules 10-11)
+        rsi_limits = list(range(0, 101, 5))
+        cci_limits = list(range(-120, 121, 20))
+        limits = [rsi_limits, cci_limits]
+        
+        type2 = self.rule_functions[9:11]
+        type2_param = []
+        type2_score = []
+        
+        for i in range(len(type2)):
+            rule = type2[i]
+            params = limits[i]
+            best = -1
+            best_param = None
+            for period in periods:
+                for p in params:
+                    param = (period, p)
+                    score = rule(param, OHLC)[0]
+                    if score > best:
+                        best = score
+                        best_param = param
+            type2_param.append(best_param)
+            type2_score.append(best)
+        
+        # Train Type 3 rules (rules 12-13)
+        type3 = self.rule_functions[11:13]
+        type3_param = []
+        type3_score = []
+        
+        for i in range(len(type3)):
+            rule = type3[i]
+            params = limits[i]
+            n = len(params)
+            best = -1
+            best_param = None
+            for period in periods:
+                for lb in range(n-1):
+                    for ub in range(lb+1, n):
+                        param = (period, params[ub], params[lb])
+                        score = rule(param, OHLC)[0]
+                        if score > best:
+                            best = score
+                            best_param = param
+            type3_param.append(best_param)
+            type3_score.append(best)
+        
+        # Train Type 4 rules (rules 14-16)
+        type4 = self.rule_functions[13:16]
+        type4_param = []
+        type4_score = []
+        
+        for rule in type4:
+            best = -1
+            best_param = None
+            for period in periods:
+                score = rule(period, OHLC)[0]
+                if score > best:
+                    best = score
+                    best_param = period
+            type4_param.append(best_param)
+            type4_score.append(best)
+        
+        # Combine all parameters and scores
+        all_params = type1_param + type2_param + type3_param + type4_param
+        all_scores = type1_score + type2_score + type3_score + type4_score
+        
+        # Print training results
+        for i in range(len(all_params)):
+            print(f'Training Rule{i+1} score is: {all_scores[i]:.3f}')
+        
+        # Sort rules by score
+        rule_indices = np.argsort(all_scores)[::-1]
+        
+        self.rule_params = all_params
+        self.rule_scores = all_scores
+        self.rule_indices = rule_indices
+        
+        return all_params, all_scores, rule_indices
+    
+    def generate_signals(self, OHLC, params=None, top_n=None, weights=None):
+        """Generate trading signals for all rules and combine them.
+        
+        Args:
+            OHLC: List of [Open, High, Low, Close] Series
+            params: Optional list of parameters for each rule
+            top_n: Optional number of top rules to use
+            weights: Optional weights for combining rule signals
+            
+        Returns:
+            DataFrame with signals for each rule and combined signal
+        """
+        if params is None:
+            params = self.rule_params
+        
+        if params is None:
+            raise ValueError("Rule parameters not set. Train rules first.")
+        
+        # Extract log returns for performance calculation
+        _, _, _, close = OHLC
+        logr = np.log(close/close.shift(1))
+        
+        # Create DataFrame to store signals
+        signals_df = pd.DataFrame(index=close.index)
+        signals_df['LogReturn'] = logr
+        
+        # Generate signals for each rule
+        for i, rule in enumerate(self.rule_functions):
+            try:
+                _, signal = rule(params[i], OHLC)
+                signals_df[f'Rule{i+1}'] = signal
+            except Exception as e:
+                print(f"Error generating signals for Rule{i+1}: {str(e)}")
+                signals_df[f'Rule{i+1}'] = np.nan
+        
+        # Remove NaN values
+        signals_df.dropna(inplace=True)
+        
+        # Generate combined signal
+        if weights is not None:
+            # Weighted combination of signals
+            weighted_signal = pd.Series(0, index=signals_df.index)
+            rule_cols = [f'Rule{i+1}' for i in range(len(self.rule_functions))]
+            
+            for i, col in enumerate(rule_cols):
+                weighted_signal += weights[i] * signals_df[col]
+            
+            # Convert to -1, 0, 1 signals
+            signals_df['Signal'] = np.sign(weighted_signal)
+        
+        elif top_n is not None:
+            # Use only top N rules
+            if not hasattr(self, 'rule_indices'):
+                raise ValueError("Rule scores not calculated. Train rules first.")
+            
+            top_indices = self.rule_indices[:top_n]
+            top_rule_cols = [f'Rule{i+1}' for i in top_indices]
+            
+            # Equal-weighted combination of top N rules
+            signals_df['Signal'] = signals_df[top_rule_cols].sum(axis=1)
+            signals_df['Signal'] = np.sign(signals_df['Signal'])
+        
+        else:
+            # Equal-weighted combination of all rules
+            rule_cols = [f'Rule{i+1}' for i in range(len(self.rule_functions))]
+            signals_df['Signal'] = signals_df[rule_cols].sum(axis=1)
+            signals_df['Signal'] = np.sign(signals_df['Signal'])
+        
+        return signals_df
+    
+    def save_params(self, file_path):
+        """Save trained rule parameters to a file."""
+        if self.rule_params is None:
+            print("No parameters to save. Train rules first.")
+            return False
+        
+        params_dict = {
+            'rule_params': self.rule_params,
+            'rule_scores': self.rule_scores.tolist() if hasattr(self, 'rule_scores') else None,
+            'rule_indices': self.rule_indices.tolist() if hasattr(self, 'rule_indices') else None
+        }
+        
+        try:
+            import json
+            with open(file_path, 'w') as f:
+                json.dump(params_dict, f)
+            print(f"Saved rule parameters to {file_path}")
+            return True
+        except Exception as e:
+            print(f"Error saving parameters: {str(e)}")
+            return False
+    
+    def load_params(self, file_path):
+        """Load trained rule parameters from a file."""
+        try:
+            import json
+            with open(file_path, 'r') as f:
+                params_dict = json.load(f)
+            
+            self.rule_params = params_dict['rule_params']
+            
+            if 'rule_scores' in params_dict and params_dict['rule_scores'] is not None:
+                self.rule_scores = np.array(params_dict['rule_scores'])
+            
+            if 'rule_indices' in params_dict and params_dict['rule_indices'] is not None:
+                self.rule_indices = np.array(params_dict['rule_indices'])
+            
+            print(f"Loaded rule parameters from {file_path}")
+            return True
+        except Exception as e:
+            print(f"Error loading parameters: {str(e)}")
+            return False
