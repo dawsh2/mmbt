@@ -17,8 +17,8 @@ def parse_args():
     # Data options
     parser.add_argument('--data', type=str, default='data.csv', 
                         help='Path to the data file (CSV format)')
-    parser.add_argument('--train-size', type=float, default=0.7,
-                        help='Proportion of data to use for training (default: 0.7)')
+    parser.add_argument('--train-size', type=float, default=0.6,
+                        help='Proportion of data to use for training (default: 0.6)')
     
     # Strategy options
     parser.add_argument('--top-n', type=int, default=5,
@@ -66,7 +66,7 @@ class Config:
         if args is None:
             # Use default configuration
             self.data_file = 'data.csv'
-            self.train_size = 0.7
+            self.train_size = 0.6
             self.top_n = 5
             self.use_weights = True
             self.ga_pop_size = 8

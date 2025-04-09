@@ -239,4 +239,3 @@ def compare_train_test_performance(data_file='data.csv', params_file='params.jso
     
 if __name__ == "__main__":
     compare_train_test_performance()
-

@@ -73,7 +73,7 @@ def debug_signal_generation(data_file='data.csv', params_file='params.json', sam
             signal_df['LogReturn'] = test_logr
             
             for rule_name, signal in rule_signals.items():
-                signal_df[rule_name] = signal.shift(1)
+                signal_df[rule_name] = signal
             
             signal_df['Combined'] = combined_signals_df['Signal']
             
@@ -181,4 +181,3 @@ def debug_signal_generation(data_file='data.csv', params_file='params.json', sam
 
 if __name__ == "__main__":
     debug_signal_generation()
-

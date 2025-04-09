@@ -254,3 +254,4 @@ def analyze_signal_timing(data_file='data.csv', params_file='params.json'):
 
 if __name__ == "__main__":
     analyze_signal_timing()
+
