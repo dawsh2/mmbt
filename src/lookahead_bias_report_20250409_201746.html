@@ -1,0 +1,58 @@
+
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Lookahead Bias Test Report</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            .test { margin-bottom: 30px; border: 1px solid #ddd; padding: 15px; border-radius: 5px; }
+            .pass { color: green; }
+            .fail { color: red; }
+            table { border-collapse: collapse; width: 100%; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f2f2f2; }
+        </style>
+    </head>
+    <body>
+        <h1>Lookahead Bias Test Report</h1>
+        <p>Generated on: 2025-04-09 20:17:46</p>
+    
+        <div class="test">
+            <h2>Zero Returns Test</h2>
+            <p class="fail">
+                Bias Detected: Error
+            </p>
+            <h3>Test Details:</h3>
+            <pre>'NoneType' object has no attribute 'copy'</pre>
+        </div>
+        
+        <div class="test">
+            <h2>Signal Delay Test</h2>
+            <p class="fail">
+                Bias Detected: Error
+            </p>
+            <h3>Test Details:</h3>
+            <pre>'NoneType' object is not subscriptable</pre>
+        </div>
+        
+        <div class="test">
+            <h2>Data Subset Test</h2>
+            <p class="fail">
+                Bias Detected: Error
+            </p>
+            <h3>Test Details:</h3>
+            <pre>'NoneType' object has no attribute 'copy'</pre>
+        </div>
+        
+        <div class="test">
+            <h2>Randomized Returns Test</h2>
+            <p class="fail">
+                Bias Detected: Error
+            </p>
+            <h3>Test Details:</h3>
+            <pre>'NoneType' object has no attribute 'copy'</pre>
+        </div>
+        
+    </body>
+    </html>
+    
