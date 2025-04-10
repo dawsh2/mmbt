@@ -19,10 +19,8 @@ def calculate_returns(signals: pd.Series, returns: pd.Series) -> pd.Series:
     return signals * returns
 
 
-# In metrics.py, update the calculate_metrics function
-def calculate_metrics(strategy_returns) -> Dict[str, float]:
+def calculate_metrics(strategy_returns, signals=None) -> Dict[str, float]:
     """Calculate performance metrics for a strategy."""
-    # Ensure we have numeric data
     if isinstance(strategy_returns, pd.Series):
         strategy_returns = strategy_returns.astype(float)
         returns_array = strategy_returns.values
@@ -31,91 +29,151 @@ def calculate_metrics(strategy_returns) -> Dict[str, float]:
             returns_array = np.array(strategy_returns, dtype=float)
         except Exception as e:
             print(f"Error converting to numpy array: {e}")
-            return {
-                'total_return': 0.0,
-                'annualized_return': 0.0,
-                'annualized_volatility': 0.0,
-                'sharpe_ratio': 0.0,
-                'max_drawdown': 0.0,
-                'win_rate': 0.0,
-                'profit_factor': 0.0,
-                'number_of_trades': 0
-            }
+            return {}
+
+    if len(returns_array) == 0 or np.all(np.isnan(returns_array)):
+        print("No usable returns — skipping metrics.")
+        return {}
+
+    # Basic metrics
+    total_return = np.nansum(returns_array)
+    annualized_return = np.nanmean(returns_array) * 252
+    annualized_volatility = np.nanstd(returns_array) * np.sqrt(252)
+    sharpe_ratio = (
+        annualized_return / annualized_volatility
+        if annualized_volatility != 0 else np.nan
+    )
+
+    max_drawdown = 0
+    cumulative = np.cumsum(returns_array)
+    peak = np.maximum.accumulate(cumulative)
+    drawdown = peak - cumulative
+    max_drawdown = np.max(drawdown)
+
+    # Win/loss stats
+    wins = returns_array[returns_array > 0]
+    losses = returns_array[returns_array < 0]
+    win_rate = len(wins) / (len(wins) + len(losses)) if (len(wins) + len(losses)) > 0 else np.nan
+    profit_factor = wins.sum() / abs(losses.sum()) if losses.sum() != 0 else np.nan
+
+    # ✅ Count trades from signals
+    number_of_trades = (signals.fillna(0) != signals.fillna(0).shift(1)).sum() if signals is not None else 0
+
+    return {
+        'total_return': total_return,
+        'annualized_return': annualized_return,
+        'annualized_volatility': annualized_volatility,
+        'sharpe_ratio': sharpe_ratio,
+        'max_drawdown': max_drawdown,
+        'win_rate': win_rate,
+        'profit_factor': profit_factor,
+        'number_of_trades': number_of_trades,
+    }
+
+
+# # In metrics.py, update the calculate_metrics function
+# def calculate_metrics(strategy_returns, signals=None) -> Dict[str, float]:
+
+#     """Calculate performance metrics for a strategy."""
+#     # Ensure we have numeric data
+#     if isinstance(strategy_returns, pd.Series):
+#         strategy_returns = strategy_returns.astype(float)
+#         returns_array = strategy_returns.values
+#     else:
+#         try:
+#             returns_array = np.array(strategy_returns, dtype=float)
+#         except Exception as e:
+#             print(f"Error converting to numpy array: {e}")
+#             return {
+#                 'total_return': 0.0,
+#                 'annualized_return': 0.0,
+#                 'annualized_volatility': 0.0,
+#                 'sharpe_ratio': 0.0,
+#                 'max_drawdown': 0.0,
+#                 'win_rate': 0.0,
+#                 'profit_factor': 0.0,
+#                 'number_of_trades': 0
+#             }
     
-    # Check if array is empty or has only zeros
-    if len(returns_array) == 0 or np.all(returns_array == 0):
-        print("WARNING: Empty or all-zero returns array")
-        return {
-            'total_return': 0.0,
-            'annualized_return': 0.0,
-            'annualized_volatility': 0.0,
-            'sharpe_ratio': 0.0,
-            'max_drawdown': 0.0,
-            'win_rate': 0.0,
-            'profit_factor': 0.0,
-            'number_of_trades': 0
-        }
+#     # Check if array is empty or has only zeros
+#     if len(returns_array) == 0 or np.all(returns_array == 0):
+#         print("WARNING: Empty or all-zero returns array")
+#         return {
+#             'total_return': 0.0,
+#             'annualized_return': 0.0,
+#             'annualized_volatility': 0.0,
+#             'sharpe_ratio': 0.0,
+#             'max_drawdown': 0.0,
+#             'win_rate': 0.0,
+#             'profit_factor': 0.0,
+#             'number_of_trades': 0
+#         }
     
-    # Calculate metrics
-    try:
-        # Debug statistics about returns
-        print(f"DEBUG - Returns statistics: count={len(returns_array)}, " +
-              f"mean={np.mean(returns_array):.6f}, sum={np.sum(returns_array):.6f}")
+#     # Calculate metrics
+#     try:
+#         # Debug statistics about returns
+#         print(f"DEBUG - Returns statistics: count={len(returns_array)}, " +
+#               f"mean={np.mean(returns_array):.6f}, sum={np.sum(returns_array):.6f}")
         
-        # Convert log returns to simple returns
-        simple_returns = np.exp(returns_array) - 1
+#         # Convert log returns to simple returns
+#         simple_returns = np.exp(returns_array) - 1
         
-        # Calculate total return
-        total_return = np.exp(np.sum(returns_array)) - 1
+#         # Calculate total return
+#         total_return = np.exp(np.sum(returns_array)) - 1
         
-        # Calculate annualized metrics (assuming 252 trading days per year)
-        annualized_return = np.exp(np.mean(returns_array) * 252) - 1
-        annualized_volatility = np.std(returns_array) * np.sqrt(252)
-        sharpe_ratio = annualized_return / annualized_volatility if annualized_volatility != 0 else 0
+#         # Calculate annualized metrics (assuming 252 trading days per year)
+#         annualized_return = np.exp(np.mean(returns_array) * 252) - 1
+#         annualized_volatility = np.std(returns_array) * np.sqrt(252)
+#         sharpe_ratio = annualized_return / annualized_volatility if annualized_volatility != 0 else 0
         
-        # Calculate drawdowns
-        cum_returns = np.cumprod(1 + simple_returns)
-        peak = np.maximum.accumulate(cum_returns)
-        drawdowns = (cum_returns / peak) - 1
-        max_drawdown = np.min(drawdowns)
+#         # Calculate drawdowns
+#         cum_returns = np.cumprod(1 + simple_returns)
+#         peak = np.maximum.accumulate(cum_returns)
+#         drawdowns = (cum_returns / peak) - 1
+#         max_drawdown = np.min(drawdowns)
         
-        # Calculate win rate
-        win_rate = np.sum(returns_array > 0) / len(returns_array)
+#         # Calculate win rate
+#         win_rate = np.sum(returns_array > 0) / len(returns_array)
         
-        # Calculate profit factor
-        winning_trades = np.sum(returns_array[returns_array > 0])
-        losing_trades = abs(np.sum(returns_array[returns_array < 0]))
-        profit_factor = winning_trades / losing_trades if losing_trades != 0 else float('inf')
+#         # Calculate profit factor
+#         winning_trades = np.sum(returns_array[returns_array > 0])
+#         losing_trades = abs(np.sum(returns_array[returns_array < 0]))
+#         profit_factor = winning_trades / losing_trades if losing_trades != 0 else float('inf')
+
+#         if signals is not None:
+#             number_of_trades = int((signals != signals.shift(1)).sum())
+#         else:
+#             number_of_trades = 0
         
-        # Debug the calculated metrics
-        print(f"DEBUG - Calculated metrics: TR={total_return:.6f}, AR={annualized_return:.6f}, " +
-              f"Sharpe={sharpe_ratio:.4f}, MaxDD={max_drawdown:.6f}")
+#         # Debug the calculated metrics
+#         print(f"DEBUG - Calculated metrics: TR={total_return:.6f}, AR={annualized_return:.6f}, " +
+#               f"Sharpe={sharpe_ratio:.4f}, MaxDD={max_drawdown:.6f}")
         
-        return {
-            'total_return': total_return,
-            'annualized_return': annualized_return,
-            'annualized_volatility': annualized_volatility,
-            'sharpe_ratio': sharpe_ratio,
-            'max_drawdown': max_drawdown,
-            'win_rate': win_rate,
-            'profit_factor': profit_factor,
-            'number_of_trades': 0  # Placeholder, updated later
-        }
+#         return {
+#             'total_return': total_return,
+#             'annualized_return': annualized_return,
+#             'annualized_volatility': annualized_volatility,
+#             'sharpe_ratio': sharpe_ratio,
+#             'max_drawdown': max_drawdown,
+#             'win_rate': win_rate,
+#             'profit_factor': profit_factor,
+#             'number_of_trades': 0  # Placeholder, updated later
+#         }
         
-    except Exception as e:
-        print(f"Error calculating metrics: {e}")
-        import traceback
-        traceback.print_exc()
-        return {
-            'total_return': 0.0,
-            'annualized_return': 0.0,
-            'annualized_volatility': 0.0,
-            'sharpe_ratio': 0.0,
-            'max_drawdown': 0.0,
-            'win_rate': 0.0,
-            'profit_factor': 0.0,
-            'number_of_trades': 0
-        }
+#     except Exception as e:
+#         print(f"Error calculating metrics: {e}")
+#         import traceback
+#         traceback.print_exc()
+#         return {
+#             'total_return': 0.0,
+#             'annualized_return': 0.0,
+#             'annualized_volatility': 0.0,
+#             'sharpe_ratio': 0.0,
+#             'max_drawdown': 0.0,
+#             'win_rate': 0.0,
+#             'profit_factor': 0.0,
+#             'number_of_trades': 0
+#         }
 
 
 def print_metrics(metrics: Dict[str, float], title: str = "Performance Metrics"):

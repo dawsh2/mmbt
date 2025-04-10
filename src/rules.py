@@ -15,6 +15,10 @@ from ta_functions import (
     donchian_channel_hband, donchian_channel_lband, ichimoku_a, ichimoku_b
 )
 
+
+def extract_ohlc(df):
+    return df["Open"], df["High"], df["Low"], df["Close"]
+
 def count_trade_no(signal):
     """Count the number of trades from signal changes."""
     no_trades = 0
@@ -24,6 +28,8 @@ def count_trade_no(signal):
             prev = i
             no_trades += 1
     return no_trades
+
+
 
 class TradingRules:
     """Implementation of trading rules from the original code."""
@@ -42,7 +48,10 @@ class TradingRules:
     def Rule0(self, param, OHLC):
         """Rule 0: Simple Moving Average Crossover (formerly Rule1)"""
         ma1, ma2 = param
-        open_prices, high, low, close = OHLC
+        open_prices = OHLC['Open']
+        high = OHLC['High']
+        low = OHLC['Low']
+        close = OHLC['Close']
         logr = np.log(close/close.shift(1))
         s1 = close.rolling(ma1).mean()
         s2 = close.rolling(ma2).mean()
@@ -54,7 +63,10 @@ class TradingRules:
     def Rule1(self, param, OHLC):
         """Rule 1: EMA and close (formerly Rule2)"""
         ema1, ma2 = param
-        open_prices, high, low, close = OHLC
+        open_prices = OHLC['Open']
+        high = OHLC['High']
+        low = OHLC['Low']
+        close = OHLC['Close']
         logr = np.log(close/close.shift(1))
         s1 = ema(close, ema1)
         s2 = close.rolling(ma2).mean()
@@ -66,7 +78,10 @@ class TradingRules:
     def Rule2(self, param, OHLC):
         """Rule 2: EMA and EMA (formerly Rule3)"""
         ema1, ema2 = param
-        open_prices, high, low, close = OHLC
+        open_prices = OHLC['Open']
+        high = OHLC['High']
+        low = OHLC['Low']
+        close = OHLC['Close']
         logr = np.log(close/close.shift(1))
         s1 = ema(close, ema1)
         s2 = ema(close, ema2)
@@ -78,7 +93,10 @@ class TradingRules:
     def Rule3(self, param, OHLC):
         """Rule 3: DEMA and MA (formerly Rule4)"""
         dema1, ma2 = param
-        open_prices, high, low, close = OHLC
+        open_prices = OHLC['Open']
+        high = OHLC['High']
+        low = OHLC['Low']
+        close = OHLC['Close']
         logr = np.log(close/close.shift(1))
         s1 = DEMA(close, dema1)
         s2 = close.rolling(ma2).mean()
@@ -90,7 +108,10 @@ class TradingRules:
     def Rule4(self, param, OHLC):
         """Rule 4: DEMA and DEMA (formerly Rule5)"""
         dema1, dema2 = param
-        open_prices, high, low, close = OHLC
+        open_prices = OHLC['Open']
+        high = OHLC['High']
+        low = OHLC['Low']
+        close = OHLC['Close']
         logr = np.log(close/close.shift(1))
         s1 = DEMA(close, dema1)
         s2 = DEMA(close, dema2)
@@ -102,7 +123,10 @@ class TradingRules:
     def Rule5(self, param, OHLC):
         """Rule 5: TEMA and ma crossovers (formerly Rule6)"""
         tema1, ma2 = param
-        open_prices, high, low, close = OHLC
+        open_prices = OHLC['Open']
+        high = OHLC['High']
+        low = OHLC['Low']
+        close = OHLC['Close']
         logr = np.log(close/close.shift(1))
         s1 = TEMA(close, tema1)
         s2 = close.rolling(ma2).mean()
@@ -114,7 +138,10 @@ class TradingRules:
     def Rule6(self, param, OHLC):
         """Rule 6: Stochastic crossover (formerly Rule7)"""
         stoch1, stochma2 = param
-        open_prices, high, low, close = OHLC
+        open_prices = OHLC['Open']
+        high = OHLC['High']
+        low = OHLC['Low']
+        close = OHLC['Close']
         logr = np.log(close/close.shift(1))
         s1 = stoch(high, low, close, stoch1)
         s2 = s1.rolling(stochma2, min_periods=0).mean()
@@ -126,7 +153,10 @@ class TradingRules:
     def Rule7(self, param, OHLC):
         """Rule 7: Vortex indicator crossover (formerly Rule8)"""
         vortex1, vortex2 = param
-        open_prices, high, low, close = OHLC
+        open_prices = OHLC['Open']
+        high = OHLC['High']
+        low = OHLC['Low']
+        close = OHLC['Close']
         logr = np.log(close/close.shift(1))
         s1 = vortex_indicator_pos(high, low, close, vortex1)
         s2 = vortex_indicator_neg(high, low, close, vortex2)
@@ -138,7 +168,10 @@ class TradingRules:
     def Rule8(self, param, OHLC):
         """Rule 8: Ichimoku cloud (formerly Rule9)"""
         p1, p2 = param
-        open_prices, high, low, close = OHLC
+        open_prices = OHLC['Open']
+        high = OHLC['High']
+        low = OHLC['Low']
+        close = OHLC['Close']
         logr = np.log(close/close.shift(1))
         s1 = ichimoku_a(high, low, n1=p1, n2=round((p1+p2)/2))
         s2 = ichimoku_b(high, low, n2=round((p1+p2)/2), n3=p2)
@@ -151,7 +184,10 @@ class TradingRules:
     def Rule9(self, param, OHLC):
         """Rule 9: RSI threshold (formerly Rule10)"""
         rsi1, c2 = param
-        open_prices, high, low, close = OHLC
+        open_prices = OHLC['Open']
+        high = OHLC['High']
+        low = OHLC['Low']
+        close = OHLC['Close']
         logr = np.log(close/close.shift(1))
         s1 = rsi(close, rsi1)
         s2 = c2
@@ -163,7 +199,10 @@ class TradingRules:
     def Rule10(self, param, OHLC):
         """Rule 10: CCI threshold (formerly Rule11)"""
         cci1, c2 = param
-        open_prices, high, low, close = OHLC
+        open_prices = OHLC['Open']
+        high = OHLC['High']
+        low = OHLC['Low']
+        close = OHLC['Close']
         logr = np.log(close/close.shift(1))
         s1 = cci(high, low, close, cci1)
         s2 = c2
@@ -175,7 +214,10 @@ class TradingRules:
     def Rule11(self, param, OHLC):
         """Rule 11: RSI range (formerly Rule12)"""
         rsi1, hl, ll = param
-        open_prices, high, low, close = OHLC
+        open_prices = OHLC['Open']
+        high = OHLC['High']
+        low = OHLC['Low']
+        close = OHLC['Close']
         logr = np.log(close/close.shift(1))
         s1 = rsi(close, rsi1)
         # Remove shift here - will be applied centrally
@@ -186,7 +228,10 @@ class TradingRules:
     def Rule12(self, param, OHLC):
         """Rule 12: CCI range (formerly Rule13)"""
         cci1, hl, ll = param
-        open_prices, high, low, close = OHLC
+        open_prices = OHLC['Open']
+        high = OHLC['High']
+        low = OHLC['Low']
+        close = OHLC['Close']
         logr = np.log(close/close.shift(1))
         s1 = cci(high, low, close, cci1)
         # Remove shift here - will be applied centrally
@@ -196,7 +241,10 @@ class TradingRules:
 
     def Rule13(self, period, OHLC):
         """Rule 13: Keltner channel (formerly Rule14)"""
-        open_prices, high, low, close = OHLC
+        open_prices = OHLC['Open']
+        high = OHLC['High']
+        low = OHLC['Low']
+        close = OHLC['Close']
         logr = np.log(close/close.shift(1))
         s1 = keltner_channel_hband(high, low, close, n=period)
         s2 = keltner_channel_lband(high, low, close, n=period)
@@ -208,7 +256,10 @@ class TradingRules:
 
     def Rule14(self, period, OHLC):
         """Rule 14: Donchian channel (formerly Rule15)"""
-        open_prices, high, low, close = OHLC
+        open_prices = OHLC['Open']
+        high = OHLC['High']
+        low = OHLC['Low']
+        close = OHLC['Close']
         logr = np.log(close/close.shift(1))
         s1 = donchian_channel_hband(close, n=period)
         s2 = donchian_channel_lband(close, n=period)
@@ -220,7 +271,10 @@ class TradingRules:
 
     def Rule15(self, period, OHLC):
         """Rule 15: Bollinger bands (formerly Rule16)"""
-        open_prices, high, low, close = OHLC
+        open_prices = OHLC['Open']
+        high = OHLC['High']
+        low = OHLC['Low']
+        close = OHLC['Close']
         logr = np.log(close/close.shift(1))
         s1 = bollinger_hband(close, n=period)
         s2 = bollinger_lband(close, n=period)
@@ -341,7 +395,11 @@ class TradingRules:
             raise ValueError("Rule parameters not set. Train rules first.")
 
         # Extract log returns for performance calculation
-        _, _, _, close = OHLC
+        open_prices = OHLC["Open"]
+        high = OHLC["High"]
+        low = OHLC["Low"]
+        close = OHLC["Close"]
+
         logr = np.log(close/close.shift(1))
 
         # Create DataFrame to store signals
@@ -467,3 +525,4 @@ class TradingRules:
         except Exception as e:
             print(f"Error loading parameters: {str(e)}")
             return False
+

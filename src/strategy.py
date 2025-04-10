@@ -1,3 +1,7 @@
+
+
+
+
 """
 Strategy module for the backtesting engine.
 """
@@ -36,27 +40,30 @@ class TopNStrategy(Strategy):
         params, scores, indices = self.rules.train_rules(OHLC)
         self.top_indices = indices[:self.top_n]
         return params, scores, indices
-    
+
     def generate_signals(self, OHLC, params=None, filter_regime=False):
         """Generate trading signals using the top N rules."""
         signals_df = self.rules.generate_signals(OHLC, params, top_n=self.top_n)
-        
+
+        # 👇 Combine all top-N rule signals into one signal
+        final_signal = signals_df.sum(axis=1).clip(-1, 1)
+
         if filter_regime:
-            signals_df = self._apply_regime_filter(signals_df)
-        
-        self.signals = signals_df
-        return signals_df
-    
-    def _apply_regime_filter(self, signals_df):
-        """Apply regime filtering to signals."""
-        # Simple example: filter out signals during low volatility
-        volatility = signals_df['LogReturn'].rolling(20).std() * np.sqrt(252)
+            final_signal = self._apply_regime_filter(final_signal, OHLC)
+
+        signals_df["Signal"] = final_signal
+        self.signals = final_signal
+        return final_signal
+
+
+
+    def _apply_regime_filter(self, signal_series, OHLC):
+        volatility = OHLC["Close"].pct_change().rolling(20).std() * np.sqrt(252)
         avg_vol = volatility.mean()
-        
-        # Only take signals during higher volatility
-        signals_df.loc[volatility < avg_vol * 0.5, 'Signal'] = 0
-        
-        return signals_df
+        signal_series[volatility < avg_vol * 0.5] = 0
+        return signal_series
+
+
     
     def __str__(self):
         """Return a string representation of the strategy."""
@@ -110,16 +117,22 @@ class WeightedStrategy(Strategy):
         
         print(f"Optimized weights: {normalized_weights}")
         return normalized_weights
-    
+
     def generate_signals(self, OHLC, params=None, filter_regime=False):
         """Generate trading signals using weighted rules."""
         signals_df = self.rules.generate_signals(OHLC, params, weights=self.weights)
-        
+
+        # ✅ Collapse rule outputs into a final signal
+        final_signal = signals_df.sum(axis=1).clip(-1, 1)
+
         if filter_regime:
-            signals_df = self._apply_regime_filter(signals_df)
-        
-        self.signals = signals_df
-        return signals_df
+            final_signal = self._apply_regime_filter(final_signal, OHLC)
+
+        self.signals = final_signal
+        return final_signal
+
+    
+
     
     def _apply_regime_filter(self, signals_df):
         """Apply regime filtering to signals."""
