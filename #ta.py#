@@ -6,6 +6,7 @@ Based on the functions provided in the paste-2.txt file.
 import pandas as pd
 import numpy as np
 
+
 def ema(series, n):
     """Exponential Moving Average"""
     return series.ewm(span=n, min_periods=n).mean()

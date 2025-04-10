@@ -1,3 +1,5 @@
+from collections import deque
+import pandas as pd
 import numpy as np
 from ta import ema
 from ta import DEMA
@@ -15,6 +17,7 @@ from ta import donchian_channel_hband
 from ta import donchian_channel_lband
 from ta import bollinger_hband
 from ta import bollinger_lband
+
 
 
 class Strategy:
@@ -78,17 +81,15 @@ class Strategy:
         self.prev_short_sma = short_sma
         self.prev_long_sma = long_sma
 
-
-
 class Rule0:
     """
-    Event-driven version of Rule0:
+    Event-driven version of Rule0: Simple Moving Average Crossover.
     Buy signal when fast SMA crosses above slow SMA.
     Sell signal when fast SMA crosses below slow SMA.
     """
     def __init__(self, params):
-        self.fast_window = int(params[0])
-        self.slow_window = int(params[1])
+        self.fast_window = int(params['fast_window'])
+        self.slow_window = int(params['slow_window'])
         self.prices = []
         self.fast_sma_history = []
         self.slow_sma_history = []
@@ -132,35 +133,48 @@ class Rule0:
 
 class Rule1:
     """
-    Event-driven version of Rule1: Simple Moving Average Crossover (formerly Rule1).
+    Event-driven version of Rule1: Simple Moving Average Crossover (formerly Rule1) - Optimized SMA.
     """
     def __init__(self, param):
-        self.ma1, self.ma2 = param
+        self.ma1_period = param['ma1']
+        self.ma2_period = param['ma2']
         self.history = []
+        self.sum1 = 0
+        self.sum2 = 0
         self.s1_history = []
         self.s2_history = []
         self.current_signal = 0
 
     def on_bar(self, bar):
-        self.history.append(bar['close'])
-        closes = np.array(self.history)
+        close = bar['Close']
+        self.history.append(close)
 
-        if len(closes) >= max(self.ma1, self.ma2):
-            s1 = np.mean(closes[-self.ma1:])
-            s2 = np.mean(closes[-self.ma2:])
-            self.s1_history.append(s1)
-            self.s2_history.append(s2)
+        # Efficient SMA 1 calculation
+        if len(self.history) > self.ma1_period:
+            self.sum1 -= self.history[-(self.ma1_period + 1)]
+        self.sum1 += close
+        if len(self.history) >= self.ma1_period:
+            sma1 = self.sum1 / self.ma1_period
+            self.s1_history.append(sma1)
 
-            if len(self.s1_history) >= 2 and len(self.s2_history) >= 2:
-                prev_s1 = self.s1_history[-2]
-                prev_s2 = self.s2_history[-2]
+        # Efficient SMA 2 calculation
+        if len(self.history) > self.ma2_period:
+            self.sum2 -= self.history[-(self.ma2_period + 1)]
+        self.sum2 += close
+        if len(self.history) >= self.ma2_period:
+            sma2 = self.sum2 / self.ma2_period
+            self.s2_history.append(sma2)
 
-                if prev_s1 >= prev_s2 and s1 < s2:
-                    self.current_signal = -1
-                elif prev_s1 <= prev_s2 and s1 > s2:
-                    self.current_signal = 1
-                else:
-                    self.current_signal = 0
+        if len(self.s1_history) >= 2 and len(self.s2_history) >= 2:
+            prev_s1 = self.s1_history[-2]
+            prev_s2 = self.s2_history[-2]
+            curr_s1 = self.s1_history[-1]
+            curr_s2 = self.s2_history[-1]
+
+            if prev_s1 >= prev_s2 and curr_s1 < curr_s2:
+                self.current_signal = -1
+            elif prev_s1 <= prev_s2 and curr_s1 > curr_s2:
+                self.current_signal = 1
             else:
                 self.current_signal = 0
         else:
@@ -169,50 +183,65 @@ class Rule1:
 
     def reset(self):
         self.history = []
+        self.sum1 = 0
+        self.sum2 = 0
         self.s1_history = []
         self.s2_history = []
         self.current_signal = 0
-
+        
 
 
 class Rule2:
     """
-    Event-driven version of Rule2: EMA and close (formerly Rule2).
+    Event-driven version of Rule2: EMA Crossover with MA Confirmation (formerly Rule2) - Fully Optimized.
     """
     def __init__(self, param):
-        self.ema1_period, self.ma2_period = param
-        self.history = {'close': []}
+        self.ema1_period = param['ema1_period']
+        self.ma2_period = param['ma2_period']
+        self.history = []
+        self.ema1_value = np.nan
         self.ema1_history = []
-        self.s2_history = []
+        self.ma2_sum = 0
+        self.ma2_history = []
         self.current_signal = 0
+        self.alpha_ema1 = 2 / (self.ema1_period + 1) if self.ema1_period > 0 else 0
 
     def on_bar(self, bar):
-        self.history['close'].append(bar['close'])
-        closes = np.array(self.history['close'])
+        close = bar['Close']
+        self.history.append(close)
 
-        if len(closes) >= self.ema1_period:
-            ema1_val = ema(closes, window=self.ema1_period)[-1]
-            self.ema1_history.append(ema1_val)
+        # Incremental EMA calculation
+        if self.alpha_ema1 > 0:
+            if np.isnan(self.ema1_value):
+                self.ema1_value = close  # Initialize with the first data point
+            else:
+                self.ema1_value = (close * self.alpha_ema1) + (self.ema1_value * (1 - self.alpha_ema1))
+            self.ema1_history.append(self.ema1_value)
         else:
             self.ema1_history.append(np.nan)
 
-        if len(closes) >= self.ma2_period:
-            s2 = np.mean(closes[-self.ma2_period:])
-            self.s2_history.append(s2)
+        # Efficient SMA calculation
+        if len(self.history) > self.ma2_period:
+            self.ma2_sum -= self.history[-(self.ma2_period + 1)]
+        self.ma2_sum += close
+        if len(self.history) >= self.ma2_period:
+            ma2_val = self.ma2_sum / self.ma2_period
+            self.ma2_history.append(ma2_val)
         else:
-            self.s2_history.append(np.nan)
+            self.ma2_history.append(np.nan)
 
-        if len(self.ema1_history) >= 2 and len(self.s2_history) >= 2:
+        if len(self.ema1_history) >= 2 and len(self.ma2_history) >= 1:
             prev_ema1 = self.ema1_history[-2]
             curr_ema1 = self.ema1_history[-1]
-            prev_s2 = self.s2_history[-2]
-            curr_s2 = self.s2_history[-1]
+            prev_ma2 = self.ma2_history[-2] if len(self.ma2_history) >= 2 else None
+            curr_ma2 = self.ma2_history[-1]
+            current_price = close
 
-            if not np.isnan(prev_ema1) and not np.isnan(curr_ema1) and not np.isnan(prev_s2) and not np.isnan(curr_s2):
-                if prev_ema1 >= prev_s2 and curr_ema1 < curr_s2:
-                    self.current_signal = -1
-                elif prev_ema1 <= prev_s2 and curr_ema1 > curr_s2:
+            if not np.isnan(curr_ma2) and not np.isnan(curr_ema1) and not np.isnan(prev_ema1):
+                if prev_ema1 <= prev_ma2 and curr_ema1 > curr_ma2 and current_price > curr_ma2:
                     self.current_signal = 1
+                elif prev_ema1 >= prev_ma2 and curr_ema1 < curr_ma2 and current_price < curr_ma2:
+                    self.current_signal = -1
                 else:
                     self.current_signal = 0
             else:
@@ -222,37 +251,51 @@ class Rule2:
         return self.current_signal
 
     def reset(self):
-        self.history = {'close': []}
+        self.history = []
+        self.ema1_value = np.nan
         self.ema1_history = []
-        self.s2_history = []
+        self.ma2_sum = 0
+        self.ma2_history = []
         self.current_signal = 0
-
-
+        self.alpha_ema1 = 2 / (self.ema1_period + 1) if self.ema1_period > 0 else 0
 
 class Rule3:
     """
-    Event-driven version of Rule3: EMA and EMA (formerly Rule3).
+    Event-driven version of Rule3: EMA and EMA (formerly Rule3) - Optimized.
     """
     def __init__(self, param):
-        self.ema1_period, self.ema2_period = param
+        self.ema1_period = param['ema1_period']
+        self.ema2_period = param['ema2_period']
         self.history = {'close': []}
+        self.ema1_value = np.nan
         self.ema1_history = []
+        self.ema2_value = np.nan
         self.ema2_history = []
         self.current_signal = 0
+        self.alpha_ema1 = 2 / (self.ema1_period + 1) if self.ema1_period > 0 else 0
+        self.alpha_ema2 = 2 / (self.ema2_period + 1) if self.ema2_period > 0 else 0
 
     def on_bar(self, bar):
-        self.history['close'].append(bar['close'])
-        closes = np.array(self.history['close'])
+        close = bar['Close']
+        self.history['close'].append(close)
 
-        if len(closes) >= self.ema1_period:
-            ema1_val = ema(closes, window=self.ema1_period)[-1]
-            self.ema1_history.append(ema1_val)
+        # Incremental EMA 1 calculation
+        if self.alpha_ema1 > 0:
+            if np.isnan(self.ema1_value):
+                self.ema1_value = close  # Initialize with the first data point
+            else:
+                self.ema1_value = (close * self.alpha_ema1) + (self.ema1_value * (1 - self.alpha_ema1))
+            self.ema1_history.append(self.ema1_value)
         else:
             self.ema1_history.append(np.nan)
 
-        if len(closes) >= self.ema2_period:
-            ema2_val = ema(closes, window=self.ema2_period)[-1]
-            self.ema2_history.append(ema2_val)
+        # Incremental EMA 2 calculation
+        if self.alpha_ema2 > 0:
+            if np.isnan(self.ema2_value):
+                self.ema2_value = close  # Initialize with the first data point
+            else:
+                self.ema2_value = (close * self.alpha_ema2) + (self.ema2_value * (1 - self.alpha_ema2))
+            self.ema2_history.append(self.ema2_value)
         else:
             self.ema2_history.append(np.nan)
 
@@ -277,50 +320,70 @@ class Rule3:
 
     def reset(self):
         self.history = {'close': []}
+        self.ema1_value = np.nan
         self.ema1_history = []
+        self.ema2_value = np.nan
         self.ema2_history = []
         self.current_signal = 0
-
+        self.alpha_ema1 = 2 / (self.ema1_period + 1) if self.ema1_period > 0 else 0
+        self.alpha_ema2 = 2 / (self.ema2_period + 1) if self.ema2_period > 0 else 0
 
 
 class Rule4:
     """
-    Event-driven version of Rule4: DEMA and MA (formerly Rule4).
+    Event-driven version of Rule4: DEMA and MA (formerly Rule4) - Further Optimized.
     """
     def __init__(self, param):
-        self.dema1_period, self.ma2_period = param
-        self.history = {'close': []}
-        self.dema1_history = []
-        self.s2_history = []
+        self.dema1_period = param['dema1_period']
+        self.ma2_period = param['ma2_period']
+        self.history = []  # Store only close prices
+        self.ema1_value = np.nan
+        self.ema2_value = np.nan
+        self.dema1_value = np.nan
+        self.ma2_sum = 0
+        self.ma2_count = 0
         self.current_signal = 0
+        self.alpha1 = 2 / (self.dema1_period + 1) if self.dema1_period > 0 else 0
 
     def on_bar(self, bar):
-        self.history['close'].append(bar['close'])
-        closes = np.array(self.history['close'])
+        close = bar['Close']
+        self.history.append(close)
 
-        if len(closes) >= self.dema1_period * 2 - 1: # DEMA needs 2*n - 1 initial values
-            dema1_indicator = DEMA(closes, window=self.dema1_period)
-            dema1_val = dema1_indicator.dema()[-1]
-            self.dema1_history.append(dema1_val)
+        # Incremental EMA 1
+        if self.alpha1 > 0:
+            if np.isnan(self.ema1_value):
+                self.ema1_value = close
+            else:
+                self.ema1_value = (close * self.alpha1) + (self.ema1_value * (1 - self.alpha1))
+
+            # Incremental EMA 2 (of EMA 1)
+            if np.isnan(self.ema2_value):
+                self.ema2_value = self.ema1_value
+            else:
+                self.ema2_value = (self.ema1_value * self.alpha1) + (self.ema2_value * (1 - self.alpha1))
+
+            # Calculate DEMA 1
+            self.dema1_value = (2 * self.ema1_value) - self.ema2_value
         else:
-            self.dema1_history.append(np.nan)
+            self.dema1_value = np.nan
 
-        if len(closes) >= self.ma2_period:
-            s2 = np.mean(closes[-self.ma2_period:])
-            self.s2_history.append(s2)
-        else:
-            self.s2_history.append(np.nan)
+        # Optimized SMA calculation
+        self.ma2_sum += close
+        self.ma2_count += 1
+        if self.ma2_count > self.ma2_period:
+            self.ma2_sum -= self.history[-(self.ma2_period + 1)]
+        ma2_val = self.ma2_sum / self.ma2_period if self.ma2_count >= self.ma2_period else np.nan
 
-        if len(self.dema1_history) >= 2 and len(self.s2_history) >= 2:
-            prev_dema1 = self.dema1_history[-2]
-            curr_dema1 = self.dema1_history[-1]
-            prev_s2 = self.s2_history[-2]
-            curr_s2 = self.s2_history[-1]
+        if len(self.history) >= max(self.dema1_period * 2 - 1 if self.dema1_period > 0 else 0, self.ma2_period):
+            prev_dema1 = self.dema1_value if len(self.history) >= self.dema1_period * 2 else np.nan
+            curr_dema1 = self.dema1_value
+            prev_ma2 = ma2_val if len(self.history) >= self.ma2_period + 1 else np.nan
+            curr_ma2 = ma2_val
 
-            if not np.isnan(prev_dema1) and not np.isnan(curr_dema1) and not np.isnan(prev_s2) and not np.isnan(curr_s2):
-                if prev_dema1 >= prev_s2 and curr_dema1 < curr_s2:
+            if not np.isnan(prev_dema1) and not np.isnan(curr_dema1) and not np.isnan(prev_ma2) and not np.isnan(curr_ma2):
+                if prev_dema1 >= prev_ma2 and curr_dema1 < curr_ma2:
                     self.current_signal = -1
-                elif prev_dema1 <= prev_s2 and curr_dema1 > curr_s2:
+                elif prev_dema1 <= prev_ma2 and curr_dema1 > curr_ma2:
                     self.current_signal = 1
                 else:
                     self.current_signal = 0
@@ -328,42 +391,86 @@ class Rule4:
                 self.current_signal = 0
         else:
             self.current_signal = 0
+
         return self.current_signal
 
     def reset(self):
-        self.history = {'close': []}
-        self.dema1_history = []
-        self.s2_history = []
+        self.history = []
+        self.ema1_value = np.nan
+        self.ema2_value = np.nan
+        self.dema1_value = np.nan
+        self.ma2_sum = 0
+        self.ma2_count = 0
         self.current_signal = 0
-
-
+        self.alpha1 = 2 / (self.dema1_period + 1) if self.dema1_period > 0 else 0
 
 class Rule5:
     """
-    Event-driven version of Rule5: DEMA and DEMA (formerly Rule5).
+    Event-driven version of Rule5: DEMA and DEMA (formerly Rule5) - Optimized.
     """
     def __init__(self, param):
-        self.dema1_period, self.dema2_period = param
+        self.dema1_period = param['dema1_period']
+        self.dema2_period = param['dema2_period']
         self.history = {'close': []}
+        self.ema1_value = np.nan
+        self.ema1_history = []
+        self.ema2_value = np.nan
+        self.dema1_value = np.nan
         self.dema1_history = []
+        self.ema3_value = np.nan
+        self.ema3_history = []
+        self.ema4_value = np.nan
+        self.dema2_value = np.nan
         self.dema2_history = []
         self.current_signal = 0
+        self.alpha1 = 2 / (self.dema1_period + 1) if self.dema1_period > 0 else 0
+        self.alpha2 = 2 / (self.dema2_period + 1) if self.dema2_period > 0 else 0
 
     def on_bar(self, bar):
-        self.history['close'].append(bar['close'])
-        closes = np.array(self.history['close'])
+        close = bar['Close']
+        self.history['close'].append(close)
 
-        if len(closes) >= self.dema1_period * 2 - 1:
-            dema1_indicator = DEMA(closes, window=self.dema1_period)
-            dema1_val = dema1_indicator.dema()[-1]
-            self.dema1_history.append(dema1_val)
+        # Incremental DEMA 1 calculation
+        if self.alpha1 > 0:
+            if np.isnan(self.ema1_value):
+                self.ema1_value = close
+            else:
+                self.ema1_value = (close * self.alpha1) + (self.ema1_value * (1 - self.alpha1))
+            self.ema1_history.append(self.ema1_value)
+
+            if len(self.ema1_history) >= 1:
+                prev_ema2 = self.ema2_value
+                if np.isnan(self.ema2_value):
+                    self.ema2_value = self.ema1_history[-1]
+                else:
+                    self.ema2_value = (self.ema1_history[-1] * self.alpha1) + (self.ema2_value * (1 - self.alpha1))
+
+                self.dema1_value = (2 * self.ema1_value) - self.ema2_value
+                self.dema1_history.append(self.dema1_value)
+            else:
+                self.dema1_history.append(np.nan)
         else:
             self.dema1_history.append(np.nan)
 
-        if len(closes) >= self.dema2_period * 2 - 1:
-            dema2_indicator = DEMA(closes, window=self.dema2_period)
-            dema2_val = dema2_indicator.dema()[-1]
-            self.dema2_history.append(dema2_val)
+        # Incremental DEMA 2 calculation
+        if self.alpha2 > 0:
+            if np.isnan(self.ema3_value):
+                self.ema3_value = close
+            else:
+                self.ema3_value = (close * self.alpha2) + (self.ema3_value * (1 - self.alpha2))
+            self.ema3_history.append(self.ema3_value)
+
+            if len(self.ema3_history) >= 1:
+                prev_ema4 = self.ema4_value
+                if np.isnan(self.ema4_value):
+                    self.ema4_value = self.ema3_history[-1]
+                else:
+                    self.ema4_value = (self.ema3_history[-1] * self.alpha2) + (self.ema4_value * (1 - self.alpha2))
+
+                self.dema2_value = (2 * self.ema3_value) - self.ema4_value
+                self.dema2_history.append(self.dema2_value)
+            else:
+                self.dema2_history.append(np.nan)
         else:
             self.dema2_history.append(np.nan)
 
@@ -388,50 +495,83 @@ class Rule5:
 
     def reset(self):
         self.history = {'close': []}
+        self.ema1_value = np.nan
+        self.ema1_history = []
+        self.ema2_value = np.nan
+        self.dema1_value = np.nan
         self.dema1_history = []
+        self.ema3_value = np.nan
+        self.ema3_history = []
+        self.ema4_value = np.nan
+        self.dema2_value = np.nan
         self.dema2_history = []
         self.current_signal = 0
-
+        self.alpha1 = 2 / (self.dema1_period + 1) if self.dema1_period > 0 else 0
+        self.alpha2 = 2 / (self.dema2_period + 1) if self.dema2_period > 0 else 0
 
 
 class Rule6:
     """
-    Event-driven version of Rule6: TEMA and ma crossovers (formerly Rule6).
+    Event-driven version of Rule6: TEMA and ma crossovers (formerly Rule6) - Optimized TEMA and MA.
     """
     def __init__(self, param):
-        self.tema1_period, self.ma2_period = param
-        self.history = {'close': []}
-        self.tema1_history = []
-        self.s2_history = []
+        self.tema1_period = param['tema1_period']
+        self.ma2_period = param['ma2_period']
+        self.history = []  # Store only close prices
+        self.ema1_value = np.nan
+        self.ema2_value = np.nan
+        self.ema3_value = np.nan
+        self.tema1_value = np.nan
+        self.ma2_sum = 0
+        self.ma2_count = 0
         self.current_signal = 0
+        self.alpha1 = 2 / (self.tema1_period + 1) if self.tema1_period > 0 else 0
 
     def on_bar(self, bar):
-        self.history['close'].append(bar['close'])
-        closes = np.array(self.history['close'])
+        close = bar['Close']
+        self.history.append(close)
 
-        if len(closes) >= self.tema1_period * 3 - 2: # TEMA needs 3*n - 2 initial values
-            tema1_indicator = TEMA(closes, window=self.tema1_period)
-            tema1_val = tema1_indicator.tema()[-1]
-            self.tema1_history.append(tema1_val)
+        # Incremental EMA 1
+        if self.alpha1 > 0:
+            if np.isnan(self.ema1_value):
+                self.ema1_value = close
+            else:
+                self.ema1_value = (close * self.alpha1) + (self.ema1_value * (1 - self.alpha1))
+
+            # Incremental EMA 2 (of EMA 1)
+            if np.isnan(self.ema2_value):
+                self.ema2_value = self.ema1_value
+            else:
+                self.ema2_value = (self.ema1_value * self.alpha1) + (self.ema2_value * (1 - self.alpha1))
+
+            # Incremental EMA 3 (of EMA 2)
+            if np.isnan(self.ema3_value):
+                self.ema3_value = self.ema2_value
+            else:
+                self.ema3_value = (self.ema2_value * self.alpha1) + (self.ema3_value * (1 - self.alpha1))
+
+            # Calculate TEMA 1
+            self.tema1_value = (3 * self.ema1_value) - (3 * self.ema2_value) + self.ema3_value
         else:
-            self.tema1_history.append(np.nan)
+            self.tema1_value = np.nan
 
-        if len(closes) >= self.ma2_period:
-            s2 = np.mean(closes[-self.ma2_period:])
-            self.s2_history.append(s2)
-        else:
-            self.s2_history.append(np.nan)
+        # Optimized SMA calculation
+        self.ma2_sum += close
+        self.ma2_count += 1
+        if self.ma2_count > self.ma2_period:
+            self.ma2_sum -= self.history[-(self.ma2_period + 1)]
+        ma2_val = self.ma2_sum / self.ma2_period if self.ma2_count >= self.ma2_period else np.nan
 
-        if len(self.tema1_history) >= 2 and len(self.s2_history) >= 2:
-            prev_tema1 = self.tema1_history[-2]
-            curr_tema1 = self.tema1_history[-1]
-            prev_s2 = self.s2_history[-2]
-            curr_s2 = self.s2_history[-1]
+        if len(self.history) >= max(self.tema1_period * 3 - 2 if self.tema1_period > 0 else 0, self.ma2_period):
+            prev_tema1 = self.tema1_value if len(self.history) >= self.tema1_period * 3 - 1 else np.nan
+            curr_tema1 = self.tema1_value
+            prev_ma2 = ma2_val if len(self.history) >= self.ma2_period + 1 else np.nan
+            curr_ma2 = ma2_val
 
-            if not np.isnan(prev_tema1) and not np.isnan(curr_tema1) and not np.isnan(prev_s2) and not np.isnan(curr_s2):
-                if prev_tema1 >= prev_s2 and curr_tema1 < curr_s2:
+            if not np.isnan(prev_tema1) and not np.isnan(curr_tema1) and not np.isnan(prev_ma2) and not np.isnan(curr_ma2):
+                if prev_tema1 >= prev_ma2 and curr_tema1 < curr_ma2:
                     self.current_signal = -1
-                elif prev_tema1 <= prev_s2 and curr_tema1 > curr_s2:
+                elif prev_tema1 <= prev_ma2 and curr_tema1 > curr_ma2:
                     self.current_signal = 1
                 else:
                     self.current_signal = 0
@@ -439,53 +579,83 @@ class Rule6:
                 self.current_signal = 0
         else:
             self.current_signal = 0
+
         return self.current_signal
 
     def reset(self):
-        self.history = {'close': []}
-        self.tema1_history = []
-        self.s2_history = []
+        self.history = []
+        self.ema1_value = np.nan
+        self.ema2_value = np.nan
+        self.ema3_value = np.nan
+        self.tema1_value = np.nan
+        self.ma2_sum = 0
+        self.ma2_count = 0
         self.current_signal = 0
-
+        self.alpha1 = 2 / (self.tema1_period + 1) if self.tema1_period > 0 else 0
 
 
 class Rule7:
     """
-    Event-driven version of Rule7: Stochastic crossover (formerly Rule7).
+    Event-driven version of Rule7: Stochastic crossover (formerly Rule7) - Further Optimized with deque.
     """
     def __init__(self, param):
-        self.stoch1_period, self.stochma2_period = param
-        self.history = {'high': [], 'low': [], 'close': []}
-        self.s1_history = []
-        self.s2_history = []
+        self.stoch1_period = param['stoch1_period']
+        self.stochma2_period = param['stochma2_period']
+        self.high_history = deque(maxlen=self.stoch1_period)
+        self.low_history = deque(maxlen=self.stoch1_period)
+        self.close_history = deque(maxlen=self.stoch1_period)
+        self.s1_history = []  # Stochastic %K values
+        self.s2_sum = 0
+        self.s2_count = 0
+        self.s2_value = np.nan  # SMA of %K
         self.current_signal = 0
 
     def on_bar(self, bar):
-        self.history['high'].append(bar['high'])
-        self.history['low'].append(bar['low'])
-        self.history['close'].append(bar['close'])
-        highs = np.array(self.history['high'])
-        lows = np.array(self.history['low'])
-        closes = np.array(self.history['close'])
+        high = bar['High']
+        low = bar['Low']
+        close = bar['Close']
 
-        if len(closes) >= self.stoch1_period:
-            stoch_indicator = stoch(highs, lows, closes, window=self.stoch1_period)
-            s1 = stoch_indicator.stoch()[-1]
+        self.high_history.append(high)
+        self.low_history.append(low)
+        self.close_history.append(close)
+
+        if len(self.close_history) == self.stoch1_period:
+            highest_high = max(self.high_history)
+            lowest_low = min(self.low_history)
+            if highest_high != lowest_low:
+                s1 = ((close - lowest_low) / (highest_high - lowest_low)) * 100
+            else:
+                s1 = 50
+            self.s1_history.append(s1)
+        elif len(self.close_history) > self.stoch1_period:
+            highest_high = max(self.high_history)
+            lowest_low = min(self.low_history)
+            if highest_high != lowest_low:
+                s1 = ((close - lowest_low) / (highest_high - lowest_low)) * 100
+            else:
+                s1 = 50
             self.s1_history.append(s1)
         else:
             self.s1_history.append(np.nan)
 
-        if len(self.s1_history) >= self.stochma2_period:
-            s2 = np.nanmean(self.s1_history[-self.stochma2_period:])
-            self.s2_history.append(s2)
+        # Optimized SMA of Stochastic %K
+        if len(self.s1_history) >= 1 and not np.isnan(self.s1_history[-1]):
+            self.s2_sum += self.s1_history[-1]
+            self.s2_count += 1
+            if self.s2_count > self.stochma2_period:
+                self.s2_sum -= self.s1_history[-(self.stochma2_period + 1)]
+            if self.s2_count >= self.stochma2_period:
+                self.s2_value = self.s2_sum / self.stochma2_period
+            else:
+                self.s2_value = np.nan
         else:
-            self.s2_history.append(np.nan)
+            self.s2_value = np.nan
 
-        if len(self.s1_history) >= 2 and len(self.s2_history) >= 2:
+        if len(self.s1_history) >= 2 and self.s2_value is not np.nan and len(self.s1_history) >= self.stochma2_period + 1:
             prev_s1 = self.s1_history[-2]
             curr_s1 = self.s1_history[-1]
-            prev_s2 = self.s2_history[-2]
-            curr_s2 = self.s2_history[-1]
+            prev_s2 = self.s2_value
+            curr_s2 = self.s2_value
 
             if not np.isnan(prev_s1) and not np.isnan(curr_s1) and not np.isnan(prev_s2) and not np.isnan(curr_s2):
                 if prev_s1 >= prev_s2 and curr_s1 < curr_s2:
@@ -501,43 +671,117 @@ class Rule7:
         return self.current_signal
 
     def reset(self):
-        self.history = {'high': [], 'low': [], 'close': []}
+        self.high_history = deque(maxlen=self.stoch1_period)
+        self.low_history = deque(maxlen=self.stoch1_period)
+        self.close_history = deque(maxlen=self.stoch1_period)
         self.s1_history = []
-        self.s2_history = []
+        self.s2_sum = 0
+        self.s2_count = 0
+        self.s2_value = np.nan
         self.current_signal = 0
+
 
 
 class Rule8:
     """
-    Event-driven version of Rule8: Vortex indicator crossover (formerly Rule8).
+    Event-driven version of Rule8: Vortex indicator crossover (formerly Rule8) - Optimized.
     """
     def __init__(self, param):
-        self.vortex1_period, self.vortex2_period = param
+        self.vortex1_period = param['vortex1_period']
+        self.vortex2_period = param['vortex2_period']
         self.history = {'high': [], 'low': [], 'close': []}
-        self.s1_history = []
-        self.s2_history = []
+        self.tr_sum = 0
+        self.pm_sum = 0
+        self.nm_sum = 0
+        self.current_tr = 0
+        self.current_pm = 0
+        self.current_nm = 0
+        self.s1_history = []  # +VI
+        self.s2_history = []  # -VI
         self.current_signal = 0
 
     def on_bar(self, bar):
-        self.history['high'].append(bar['high'])
-        self.history['low'].append(bar['low'])
-        self.history['close'].append(bar['close'])
-        highs = np.array(self.history['high'])
-        lows = np.array(self.history['low'])
-        closes = np.array(self.history['close'])
+        high = bar['High']
+        low = bar['Low']
+        close = bar['Close']
+        self.history['high'].append(high)
+        self.history['low'].append(low)
+        self.history['close'].append(close)
 
-        if len(closes) >= max(self.vortex1_period, self.vortex2_period):
-            s1 = vortex_indicator_pos(highs, lows, closes, window=self.vortex1_period)[-1]
-            s2 = vortex_indicator_neg(highs, lows, closes, window=self.vortex2_period)[-1]
-            self.s1_history.append(s1)
-            self.s2_history.append(s2)
+        if len(self.history['close']) >= 2:
+            prev_close = self.history['close'][-2]
+            self.current_tr = np.max([high - low, np.abs(high - prev_close), np.abs(low - prev_close)])
+            self.current_pm = np.abs(high - prev_close) if (high - prev_close) > (prev_close - low) else 0
+            self.current_nm = np.abs(low - prev_close) if (prev_close - low) > (high - prev_close) else 0
+        else:
+            self.current_tr = 0
+            self.current_pm = 0
+            self.current_nm = 0
 
-            if len(self.s1_history) >= 2 and len(self.s2_history) >= 2:
-                prev_s1 = self.s1_history[-2]
-                curr_s1 = self.s1_history[-1]
-                prev_s2 = self.s2_history[-2]
-                curr_s2 = self.s2_history[-1]
+        self.tr_sum += self.current_tr
+        self.pm_sum += self.current_pm
+        self.nm_sum += self.current_nm
 
+        if len(self.history['close']) > self.vortex1_period:
+            # Check if enough history exists before subtracting
+            if len(self.history['close']) >= self.vortex1_period + 1:
+                prev_high_v1 = self.history['high'][-(self.vortex1_period + 1)]
+                prev_low_v1 = self.history['low'][-(self.vortex1_period + 1)]
+                prev_close_v1_minus_1 = self.history['close'][-(self.vortex1_period + 2)] if len(self.history['close']) >= self.vortex1_period + 2 else self.history['close'][-(self.vortex1_period + 1)] # Handle edge case
+
+                self.tr_sum -= np.max([prev_high_v1 - prev_low_v1,
+                                       np.abs(prev_high_v1 - prev_close_v1_minus_1),
+                                       np.abs(prev_low_v1 - prev_close_v1_minus_1)])
+                self.pm_sum -= np.abs(prev_high_v1 - prev_close_v1_minus_1) if (prev_high_v1 - prev_close_v1_minus_1) > (prev_close_v1_minus_1 - prev_low_v1) else 0
+                self.nm_sum -= np.abs(prev_low_v1 - prev_close_v1_minus_1) if (prev_close_v1_minus_1 - prev_low_v1) > (prev_high_v1 - prev_close_v1_minus_1) else 0
+
+        if len(self.history['close']) >= self.vortex1_period:
+            vi_pos = self.pm_sum / self.tr_sum if self.tr_sum != 0 else 0
+            self.s1_history.append(vi_pos)
+        else:
+            self.s1_history.append(np.nan)
+
+        # Recalculate current TR, PM, NM for the second period
+        if len(self.history['close']) >= 2:
+            prev_close = self.history['close'][-2]
+            self.current_tr = np.max([high - low, np.abs(high - prev_close), np.abs(low - prev_close)])
+            self.current_pm = np.abs(high - prev_close) if (high - prev_close) > (prev_close - low) else 0
+            self.current_nm = np.abs(low - prev_close) if (prev_close - low) > (high - prev_close) else 0
+        else:
+            self.current_tr = 0
+            self.current_pm = 0
+            self.current_nm = 0
+
+        self.tr_sum += self.current_tr
+        self.pm_sum += self.current_pm
+        self.nm_sum += self.current_nm
+
+        if len(self.history['close']) > self.vortex2_period:
+            # Check if enough history exists before subtracting
+            if len(self.history['close']) >= self.vortex2_period + 1:
+                prev_high_v2 = self.history['high'][-(self.vortex2_period + 1)]
+                prev_low_v2 = self.history['low'][-(self.vortex2_period + 1)]
+                prev_close_v2_minus_1 = self.history['close'][-(self.vortex2_period + 2)] if len(self.history['close']) >= self.vortex2_period + 2 else self.history['close'][-(self.vortex2_period + 1)] # Handle edge case
+
+                self.tr_sum -= np.max([prev_high_v2 - prev_low_v2,
+                                       np.abs(prev_high_v2 - prev_close_v2_minus_1),
+                                       np.abs(prev_low_v2 - prev_close_v2_minus_1)])
+                self.pm_sum -= np.abs(prev_high_v2 - prev_close_v2_minus_1) if (prev_high_v2 - prev_close_v2_minus_1) > (prev_close_v2_minus_1 - prev_low_v2) else 0
+                self.nm_sum -= np.abs(prev_low_v2 - prev_close_v2_minus_1) if (prev_close_v2_minus_1 - prev_low_v2) > (prev_high_v2 - prev_close_v2_minus_1) else 0
+
+        if len(self.history['close']) >= self.vortex2_period:
+            vi_neg = self.nm_sum / self.tr_sum if self.tr_sum != 0 else 0
+            self.s2_history.append(vi_neg)
+        else:
+            self.s2_history.append(np.nan)
+
+        if len(self.s1_history) >= 2 and len(self.s2_history) >= 2:
+            prev_s1 = self.s1_history[-2]
+            curr_s1 = self.s1_history[-1]
+            prev_s2 = self.s2_history[-2]
+            curr_s2 = self.s2_history[-1]
+
+            if not np.isnan(prev_s1) and not np.isnan(curr_s1) and not np.isnan(prev_s2) and not np.isnan(curr_s2):
                 if prev_s1 <= prev_s2 and curr_s1 > curr_s2:
                     self.current_signal = 1
                 elif prev_s1 >= prev_s2 and curr_s1 < curr_s2:
@@ -552,332 +796,521 @@ class Rule8:
 
     def reset(self):
         self.history = {'high': [], 'low': [], 'close': []}
+        self.tr_sum = 0
+        self.pm_sum = 0
+        self.nm_sum = 0
+        self.current_tr = 0
+        self.current_pm = 0
+        self.current_nm = 0
         self.s1_history = []
         self.s2_history = []
         self.current_signal = 0
-
-
 
 class Rule9:
     """
-    Event-driven version of Rule9: Ichimoku cloud (formerly Rule9).
+    Event-driven version of Rule9: Ichimoku cloud - Incremental Calculation.
     """
     def __init__(self, param):
-        self.p1, self.p2 = param
+        self.p1 = param['p1']
+        self.p2 = param['p2']
         self.n2 = round((self.p1 + self.p2) / 2)
-        self.history = {'high': [], 'low': [], 'close': []}
-        self.s1_history = []
-        self.s2_history = []
-        self.s3_history = []
+        self.n3 = 52  # For Senkou Span B
+        self.high_history = deque(maxlen=max(self.p1, self.n2, self.n3))
+        self.low_history = deque(maxlen=max(self.p1, self.n2, self.n3))
+        self.close_history = deque(maxlen=self.n2)  # Store enough for shifting
+        self.conversion_line_history = deque(maxlen=self.n2)
+        self.base_line_history = deque(maxlen=self.n2)
+        self.senkou_span_a_history = deque(maxlen=self.n2)
+        self.senkou_span_b_history = deque(maxlen=self.n2)
         self.current_signal = 0
 
+    def _calculate_conversion_line(self):
+        if len(self.high_history) >= self.p1 and len(self.low_history) >= self.p1:
+            highest_high = max(list(self.high_history)[-self.p1:])
+            lowest_low = min(list(self.low_history)[-self.p1:])
+            return 0.5 * (highest_high + lowest_low)
+        return np.nan
+
+    def _calculate_base_line(self):
+        if len(self.high_history) >= self.n2 and len(self.low_history) >= self.n2:
+            highest_high = max(list(self.high_history)[-self.n2:])
+            lowest_low = min(list(self.low_history)[-self.n2:])
+            return 0.5 * (highest_high + lowest_low)
+        return np.nan
+
+    def _calculate_senkou_span_a(self):
+        conversion_line = self._calculate_conversion_line()
+        base_line = self._calculate_base_line()
+        if not np.isnan(conversion_line) and not np.isnan(base_line):
+            return 0.5 * (conversion_line + base_line)
+        return np.nan
+
+    def _calculate_senkou_span_b(self):
+        if len(self.high_history) >= self.n3 and len(self.low_history) >= self.n3:
+            highest_high = max(list(self.high_history)[-self.n3:])
+            lowest_low = min(list(self.low_history)[-self.n3:])
+            return 0.5 * (highest_high + lowest_low)
+        return np.nan
+
     def on_bar(self, bar):
-        self.history['high'].append(bar['high'])
-        self.history['low'].append(bar['low'])
-        self.history['close'].append(bar['close'])
-        highs = np.array(self.history['high'])
-        lows = np.array(self.history['low'])
-        closes = np.array(self.history['close'])
+        high = bar['High']
+        low = bar['Low']
+        close = bar['Close']
 
-        if len(closes) >= max(self.p1, self.n2, self.p2):
-            ichi = IchimokuIndicator(highs, lows, window1=self.p1, window2=self.n2, window3=self.p2)
-            s1 = ichi.ichimoku_a()[-1]
-            s2 = ichi.ichimoku_b()[-1]
-            s3 = closes[-1]
-            self.s1_history.append(s1)
-            self.s2_history.append(s2)
-            self.s3_history.append(s3)
+        self.high_history.append(high)
+        self.low_history.append(low)
+        self.close_history.append(close)
 
-            if len(self.s1_history) >= 1:
-                current_s1 = self.s1_history[-1]
-                current_s2 = self.s2_history[-1]
-                current_s3 = self.s3_history[-1]
+        conversion_line = self._calculate_conversion_line()
+        base_line = self._calculate_base_line()
+        senkou_span_a = self._calculate_senkou_span_a()
+        senkou_span_b = self._calculate_senkou_span_b()
 
-                if current_s3 > current_s1 and current_s3 > current_s2:
-                    self.current_signal = -1
-                elif current_s3 < current_s1 and current_s3 < current_s2:
+        if len(self.close_history) >= self.n2:
+            shifted_close = list(self.close_history)[-self.n2]
+            shifted_span_a = np.nan
+            if len(self.senkou_span_a_history) >= self.n2:
+                shifted_span_a = list(self.senkou_span_a_history)[-self.n2]
+
+            shifted_span_b = np.nan
+            if len(self.senkou_span_b_history) >= self.n2:
+                shifted_span_b = list(self.senkou_span_b_history)[-self.n2]
+
+            if not np.isnan(shifted_span_a) and not np.isnan(shifted_span_b):
+                if shifted_close > shifted_span_a and shifted_close > shifted_span_b:
                     self.current_signal = 1
+                elif shifted_close < shifted_span_a and shifted_close < shifted_span_b:
+                    self.current_signal = -1
                 else:
                     self.current_signal = 0
             else:
                 self.current_signal = 0
         else:
             self.current_signal = 0
+
+        if not np.isnan(senkou_span_a):
+            self.senkou_span_a_history.append(senkou_span_a)
+        if not np.isnan(senkou_span_b):
+            self.senkou_span_b_history.append(senkou_span_b)
+        if not np.isnan(conversion_line):
+            self.conversion_line_history.append(conversion_line)
+        if not np.isnan(base_line):
+            self.base_line_history.append(base_line)
+
         return self.current_signal
 
     def reset(self):
-        self.history = {'high': [], 'low': [], 'close': []}
-        self.s1_history = []
-        self.s2_history = []
-        self.s3_history = []
+        self.high_history = deque(maxlen=max(self.p1, self.n2, self.n3))
+        self.low_history = deque(maxlen=max(self.p1, self.n2, self.n3))
+        self.close_history = deque(maxlen=self.n2)
+        self.conversion_line_history = deque(maxlen=self.n2)
+        self.base_line_history = deque(maxlen=self.n2)
+        self.senkou_span_a_history = deque(maxlen=self.n2)
+        self.senkou_span_b_history = deque(maxlen=self.n2)
         self.current_signal = 0
-
-
 
 class Rule10:
     """
-    Event-driven version of Rule10: RSI threshold (formerly Rule10).
+    Event-driven version of Rule10: RSI Overbought/Oversold (formerly Rule10) - Optimized.
     """
     def __init__(self, param):
-        self.rsi1_period, self.c2_threshold = param
-        self.history = {'close': []}
-        self.s1_history = []
+        self.rsi1_period = param['rsi1_period']
+        self.rsi_value = np.nan
+        self.avg_gain = 0
+        self.avg_loss = 0
+        self.history = []  # Store close prices
+        self.gain_history = []
+        self.loss_history = []
+        self.alpha = 1 / self.rsi1_period if self.rsi1_period > 0 else 0
         self.current_signal = 0
 
     def on_bar(self, bar):
-        self.history['close'].append(bar['close'])
-        closes = np.array(self.history['close'])
+        close = bar['Close']
+        self.history.append(close)
 
-        if len(closes) >= self.rsi1_period:
-            rsi_indicator = rsi(closes, window=self.rsi1_period)
-            s1 = rsi_indicator.rsi()[-1]
-            self.s1_history.append(s1)
-        else:
-            self.s1_history.append(np.nan)
+        if len(self.history) >= 2:
+            change = close - self.history[-2]
+            gain = max(change, 0)
+            loss = abs(min(change, 0))
+            self.gain_history.append(gain)
+            self.loss_history.append(loss)
 
-        if len(self.s1_history) >= 1 and not np.isnan(self.s1_history[-1]):
-            s1 = self.s1_history[-1]
-            if s1 < self.c2_threshold:
-                self.current_signal = 1
-            elif s1 > (100 - self.c2_threshold):
-                self.current_signal = -1
+            if len(self.gain_history) <= self.rsi1_period:
+                self.avg_gain = np.mean(self.gain_history) if self.gain_history else 0
+                self.avg_loss = np.mean(self.loss_history) if self.loss_history else 0
+            else:
+                self.avg_gain = (self.avg_gain * (self.rsi1_period - 1) + gain) / self.rsi1_period
+                self.avg_loss = (self.avg_loss * (self.rsi1_period - 1) + loss) / self.rsi1_period
+
+            if self.avg_loss != 0:
+                rs = self.avg_gain / self.avg_loss
+                self.rsi_value = 100 - (100 / (1 + rs))
+            else:
+                self.rsi_value = 100 if self.avg_gain > 0 else 50 # Handle cases with no loss
+
+            # Example RSI-based signal logic (adjust as per your original Rule10)
+            if self.rsi_value > 70:
+                self.current_signal = -1  # Oversold
+            elif self.rsi_value < 30:
+                self.current_signal = 1   # Overbought
             else:
                 self.current_signal = 0
         else:
+            self.rsi_value = np.nan
             self.current_signal = 0
+
         return self.current_signal
 
     def reset(self):
-        self.history = {'close': []}
-        self.s1_history = []
+        self.rsi_value = np.nan
+        self.avg_gain = 0
+        self.avg_loss = 0
+        self.history = []
+        self.gain_history = []
+        self.loss_history = []
+        self.alpha = 1 / self.rsi1_period if self.rsi1_period > 0 else 0
         self.current_signal = 0
-
 
 
 class Rule11:
     """
-    Event-driven version of Rule11: CCI threshold (formerly Rule11).
+    Event-driven version of Rule11: CCI Overbought/Oversold (formerly Rule11) - Optimized.
     """
     def __init__(self, param):
-        self.cci1_period, self.c2_threshold = param
+        self.cci1_period = param['cci1_period']
+        self.cci_value = np.nan
         self.history = {'high': [], 'low': [], 'close': []}
-        self.s1_history = []
+        self.sma_pp = np.nan
+        self.mean_deviation = np.nan
         self.current_signal = 0
+        self.constant = 0.015
+
+    def _calculate_pivot_price(self, high, low, close):
+        return (high + low + close) / 3.0
 
     def on_bar(self, bar):
-        self.history['high'].append(bar['high'])
-        self.history['low'].append(bar['low'])
-        self.history['close'].append(bar['close'])
-        highs = np.array(self.history['high'])
-        lows = np.array(self.history['low'])
-        closes = np.array(self.history['close'])
+        high = bar['High']
+        low = bar['Low']
+        close = bar['Close']
 
-        if len(closes) >= self.cci1_period:
-            cci_indicator = cci(highs, lows, closes, window=self.cci1_period)
-            s1 = cci_indicator.cci()[-1]
-            self.s1_history.append(s1)
-        else:
-            self.s1_history.append(np.nan)
+        self.history['high'].append(high)
+        self.history['low'].append(low)
+        self.history['close'].append(close)
 
-        if len(self.s1_history) >= 1 and not np.isnan(self.s1_history[-1]):
-            s1 = self.s1_history[-1]
-            if s1 < -self.c2_threshold:
-                self.current_signal = 1
-            elif s1 > self.c2_threshold:
-                self.current_signal = -1
+        if len(self.history['close']) >= self.cci1_period:
+            highs = np.array(self.history['high'][-self.cci1_period:])
+            lows = np.array(self.history['low'][-self.cci1_period:])
+            closes = np.array(self.history['close'][-self.cci1_period:])
+            pivot_prices = self._calculate_pivot_price(highs, lows, closes)
+            current_pp = pivot_prices[-1]
+
+            self.sma_pp = np.mean(pivot_prices)
+            mean_dev_sum = np.sum(np.abs(pivot_prices - self.sma_pp))
+            self.mean_deviation = mean_dev_sum / self.cci1_period if self.cci1_period > 0 else 0
+
+            if self.mean_deviation != 0:
+                self.cci_value = (current_pp - self.sma_pp) / (self.constant * self.mean_deviation)
+            else:
+                self.cci_value = 0
+
+            # Example CCI-based signal logic (adjust as per your original Rule11)
+            if self.cci_value > 100:
+                self.current_signal = -1  # Overbought
+            elif self.cci_value < -100:
+                self.current_signal = 1   # Oversold
             else:
                 self.current_signal = 0
         else:
+            self.cci_value = np.nan
             self.current_signal = 0
+
         return self.current_signal
 
     def reset(self):
+        self.cci_value = np.nan
         self.history = {'high': [], 'low': [], 'close': []}
-        self.s1_history = []
+        self.sma_pp = np.nan
+        self.mean_deviation = np.nan
         self.current_signal = 0
-
+        self.constant = 0.015
 
 
 class Rule12:
     """
-    Event-driven version of Rule12: RSI range (formerly Rule12).
+    Event-driven version of Rule12: RSI-based strategy - Optimized.
     """
     def __init__(self, param):
-        self.rsi1_period, self.hl_threshold, self.ll_threshold = param
-        self.history = {'close': []}
-        self.s1_history = []
+        self.rsi_period = param['rsi_period']
+        self.overbought_level = param.get('overbought', 70)
+        self.oversold_level = param.get('oversold', 30)
+        self.rsi_value = np.nan
+        self.avg_gain = 0
+        self.avg_loss = 0
+        self.history = []
+        self.gain_history = []
+        self.loss_history = []
         self.current_signal = 0
 
     def on_bar(self, bar):
-        self.history['close'].append(bar['close'])
-        closes = np.array(self.history['close'])
+        close = bar['Close']
+        self.history.append(close)
 
-        if len(closes) >= self.rsi1_period:
-            rsi_indicator = rsi(closes, window=self.rsi1_period)
-            s1 = rsi_indicator.rsi()[-1]
-            self.s1_history.append(s1)
-        else:
-            self.s1_history.append(np.nan)
+        if len(self.history) >= 2:
+            change = close - self.history[-2]
+            gain = max(change, 0)
+            loss = abs(min(change, 0))
+            self.gain_history.append(gain)
+            self.loss_history.append(loss)
 
-        if len(self.s1_history) >= 1 and not np.isnan(self.s1_history[-1]):
-            s1 = self.s1_history[-1]
-            if s1 > self.hl_threshold:
-                self.current_signal = -1
-            elif s1 < self.ll_threshold:
-                self.current_signal = 1
+            if len(self.gain_history) <= self.rsi_period:
+                self.avg_gain = np.mean(self.gain_history) if self.gain_history else 0
+                self.avg_loss = np.mean(self.loss_history) if self.loss_history else 0
+            else:
+                self.avg_gain = (self.avg_gain * (self.rsi_period - 1) + gain) / self.rsi_period
+                self.avg_loss = (self.avg_loss * (self.rsi_period - 1) + loss) / self.rsi_period
+
+            if self.avg_loss != 0:
+                rs = self.avg_gain / self.avg_loss
+                self.rsi_value = 100 - (100 / (1 + rs))
+            else:
+                self.rsi_value = 100 if self.avg_gain > 0 else 50
+
+            if self.rsi_value > self.overbought_level:
+                self.current_signal = -1  # Sell signal
+            elif self.rsi_value < self.oversold_level:
+                self.current_signal = 1   # Buy signal
             else:
                 self.current_signal = 0
         else:
+            self.rsi_value = np.nan
             self.current_signal = 0
+
         return self.current_signal
 
     def reset(self):
-        self.history = {'close': []}
-        self.s1_history = []
+        self.rsi_value = np.nan
+        self.avg_gain = 0
+        self.avg_loss = 0
+        self.history = []
+        self.gain_history = []
+        self.loss_history = []
         self.current_signal = 0
-
-
-
+        
 class Rule13:
     """
-    Event-driven version of Rule13: CCI range (formerly Rule13).
+    Event-driven version of Rule13: Stochastic Oscillator strategy - Optimized.
     """
     def __init__(self, param):
-        self.cci1_period, self.hl_threshold, self.ll_threshold = param
-        self.history = {'high': [], 'low': [], 'close': []}
-        self.s1_history = []
+        self.stoch_period = param['stoch_period']
+        self.stoch_d_period = param.get('stoch_d_period', 3)
+        self.overbought_level = param.get('overbought', 80)
+        self.oversold_level = param.get('oversold', 20)
+        self.high_history = deque(maxlen=self.stoch_period)
+        self.low_history = deque(maxlen=self.stoch_period)
+        self.close_history = deque(maxlen=self.stoch_period)
+        self.stoch_k = np.nan
+        self.stoch_d = np.nan
+        self.stoch_k_history = deque(maxlen=self.stoch_d_period)
         self.current_signal = 0
 
     def on_bar(self, bar):
-        self.history['high'].append(bar['high'])
-        self.history['low'].append(bar['low'])
-        self.history['close'].append(bar['close'])
-        highs = np.array(self.history['high'])
-        lows = np.array(self.history['low'])
-        closes = np.array(self.history['close'])
+        high = bar['High']
+        low = bar['Low']
+        close = bar['Close']
 
-        if len(closes) >= self.cci1_period:
-            cci_indicator = cci(highs, lows, closes, window=self.cci1_period)
-            s1 = cci_indicator.cci()[-1]
-            self.s1_history.append(s1)
+        self.high_history.append(high)
+        self.low_history.append(low)
+        self.close_history.append(close)
+
+        if len(self.close_history) == self.stoch_period:
+            highest_high = max(self.high_history)
+            lowest_low = min(self.low_history)
+            if highest_high != lowest_low:
+                self.stoch_k = ((close - lowest_low) / (highest_high - lowest_low)) * 100
+            else:
+                self.stoch_k = 50
+            self.stoch_k_history.append(self.stoch_k)
+        elif len(self.close_history) > self.stoch_period:
+            highest_high = max(self.high_history)
+            lowest_low = min(self.low_history)
+            if highest_high != lowest_low:
+                self.stoch_k = ((close - lowest_low) / (highest_high - lowest_low)) * 100
+            else:
+                self.stoch_k = 50
+            self.stoch_k_history.append(self.stoch_k)
         else:
-            self.s1_history.append(np.nan)
+            self.stoch_k = np.nan
 
-        if len(self.s1_history) >= 1 and not np.isnan(self.s1_history[-1]):
-            s1 = self.s1_history[-1]
-            if s1 > self.hl_threshold:
-                self.current_signal = -1
-            elif s1 < self.ll_threshold:
-                self.current_signal = 1
+        if self.stoch_k_history:
+            self.stoch_d = np.mean(self.stoch_k_history)
+        else:
+            self.stoch_d = np.nan
+
+        if not np.isnan(self.stoch_k) and not np.isnan(self.stoch_d):
+            if self.stoch_k > self.oversold_level and self.stoch_d < self.oversold_level and self.stoch_k > self.stoch_d:
+                self.current_signal = 1  # Buy signal (K crosses above D from oversold)
+            elif self.stoch_k < self.overbought_level and self.stoch_d > self.overbought_level and self.stoch_k < self.stoch_d:
+                self.current_signal = -1 # Sell signal (K crosses below D from overbought)
             else:
                 self.current_signal = 0
         else:
             self.current_signal = 0
+
         return self.current_signal
 
     def reset(self):
-        self.history = {'high': [], 'low': [], 'close': []}
-        self.s1_history = []
+        self.high_history = deque(maxlen=self.stoch_period)
+        self.low_history = deque(maxlen=self.stoch_period)
+        self.close_history = deque(maxlen=self.stoch_period)
+        self.stoch_k = np.nan
+        self.stoch_d = np.nan
+        self.stoch_k_history = deque(maxlen=self.stoch_d_period)
         self.current_signal = 0
-
-
-
 class Rule14:
     """
-    Event-driven version of Rule14: Keltner channel (formerly Rule14).
+    Event-driven version of Rule14: ATR Trailing Stop - Optimized.
     """
     def __init__(self, param):
-        self.period = param
-        self.history = {'high': [], 'low': [], 'close': []}
-        self.s1_history = []
-        self.s2_history = []
-        self.s3_history = []
+        self.atr_period = param['atr_period']
+        self.atr_multiplier = param.get('atr_multiplier', 3)
+        self.high_history = deque(maxlen=self.atr_period + 1)
+        self.low_history = deque(maxlen=self.atr_period + 1)
+        self.close_history = deque(maxlen=self.atr_period + 1)
+        self.atr_value = np.nan
+        self.trailing_stop = np.nan
+        self.position = 0  # 1 for long, -1 for short
         self.current_signal = 0
 
+    def _calculate_tr(self, high, low, prev_close):
+        return max(high - low, abs(high - prev_close), abs(low - prev_close))
+
     def on_bar(self, bar):
-        self.history['high'].append(bar['high'])
-        self.history['low'].append(bar['low'])
-        self.history['close'].append(bar['close'])
-        highs = np.array(self.history['high'])
-        lows = np.array(self.history['low'])
-        closes = np.array(self.history['close'])
+        high = bar['High']
+        low = bar['Low']
+        close = bar['Close']
 
-        if len(closes) >= self.period:
-            kc = keltner(highs, lows, closes, window=self.period)
-            s1 = kc.keltner_channel_hband()[-1]
-            s2 = kc.keltner_channel_lband()[-1]
-            s3 = closes[-1]
-            self.s1_history.append(s1)
-            self.s2_history.append(s2)
-            self.s3_history.append(s3)
+        self.high_history.append(high)
+        self.low_history.append(low)
+        self.close_history.append(close)
 
-            if len(self.s1_history) >= 1:
-                current_s1 = self.s1_history[-1]
-                current_s2 = self.s2_history[-1]
-                current_s3 = self.s3_history[-1]
+        if len(self.close_history) > 1:
+            prev_close = list(self.close_history)[-2]
+            current_tr = self._calculate_tr(high, low, prev_close)
 
-                if current_s3 > current_s1:
-                    self.current_signal = -1
-                elif current_s3 < current_s2:
-                    self.current_signal = 1
-                else:
-                    self.current_signal = 0
+            if len(self.close_history) <= self.atr_period:
+                tr_values = [self._calculate_tr(self.high_history[i], self.low_history[i], self.close_history[i-1])
+                             for i in range(1, len(self.close_history))]
+                self.atr_value = np.mean(tr_values) if tr_values else np.nan
             else:
-                self.current_signal = 0
+                prev_atr = self.atr_value if not np.isnan(self.atr_value) else current_tr
+                self.atr_value = (prev_atr * (self.atr_period - 1) + current_tr) / self.atr_period
+
+            if self.atr_value is not np.nan:
+                atr_band = self.atr_value * self.atr_multiplier
+                if self.position == 1:  # Long position
+                    new_stop = close - atr_band
+                    if np.isnan(self.trailing_stop) or new_stop > self.trailing_stop:
+                        self.trailing_stop = new_stop
+                    if low < self.trailing_stop:
+                        self.current_signal = -1  # Exit long
+                        self.position = 0
+                    else:
+                        self.current_signal = 0
+                elif self.position == -1: # Short position
+                    new_stop = close + atr_band
+                    if np.isnan(self.trailing_stop) or new_stop < self.trailing_stop:
+                        self.trailing_stop = new_stop
+                    if high > self.trailing_stop:
+                        self.current_signal = 1   # Exit short
+                        self.position = 0
+                    else:
+                        self.current_signal = 0
+                else:  # No position
+                    # Example entry logic (adjust as needed)
+                    # This is a simplified entry based on price action
+                    if close > high - atr_band:
+                        self.current_signal = 1
+                        self.position = 1
+                        self.trailing_stop = close - atr_band
+                    elif close < low + atr_band:
+                        self.current_signal = -1
+                        self.position = -1
+                        self.trailing_stop = close + atr_band
+                    else:
+                        self.current_signal = 0
         else:
+            self.atr_value = np.nan
             self.current_signal = 0
+
         return self.current_signal
 
     def reset(self):
-        self.history = {'high': [], 'low': [], 'close': []}
-        self.s1_history = []
-        self.s2_history = []
-        self.s3_history = []
+        self.high_history = deque(maxlen=self.atr_period + 1)
+        self.low_history = deque(maxlen=self.atr_period + 1)
+        self.close_history = deque(maxlen=self.atr_period + 1)
+        self.atr_value = np.nan
+        self.trailing_stop = np.nan
+        self.position = 0
         self.current_signal = 0
-
-
-
 class Rule15:
     """
-    Event-driven version of Rule15: Donchian channel (formerly Rule15).
+    Event-driven version of Rule15: Bollinger Bands strategy - Optimized.
     """
     def __init__(self, param):
-        self.period = param
-        self.history = {'close': []}
-        self.s1_history = []
-        self.s2_history = []
-        self.s3_history = []
+        self.bb_period = param['bb_period']
+        self.bb_std_dev = param.get('bb_std_dev', 2)
+        self.close_history = deque(maxlen=self.bb_period)
+        self.sma = np.nan
+        self.std_dev = np.nan
+        self.upper_band = np.nan
+        self.lower_band = np.nan
         self.current_signal = 0
 
     def on_bar(self, bar):
-        self.history['close'].append(bar['close'])
-        closes = np.array(self.history['close'])
+        close = bar['Close']
+        self.close_history.append(close)
 
-        if len(closes) >= self.period:
-            dc = donchian(closes, window=self.period)
-            s1 = dc.donchian_channel_hband()[-1]
-            s2 = dc.donchian_channel_lband()[-1]
-            s3 = closes[-1]
-            self.s1_history.append(s1)
-            self.s2_history.append(s2)
-            self.s3_history.append(s3)
+        if len(self.close_history) == self.bb_period:
+            closes_array = np.array(self.close_history)
+            self.sma = np.mean(closes_array)
+            self.std_dev = np.std(closes_array)
+            self.upper_band = self.sma + (self.std_dev * self.bb_std_dev)
+            self.lower_band = self.sma - (self.std_dev * self.bb_std_dev)
+        elif len(self.close_history) > self.bb_period:
+            closes_array = np.array(self.close_history)
+            self.sma = np.mean(closes_array)
+            self.std_dev = np.std(closes_array)
+            self.upper_band = self.sma + (self.std_dev * self.bb_std_dev)
+            self.lower_band = self.sma - (self.std_dev * self.bb_std_dev)
+        else:
+            self.sma = np.nan
+            self.std_dev = np.nan
+            self.upper_band = np.nan
+            self.lower_band = np.nan
 
-            if len(self.s1_history) >= 1:
-                current_s1 = self.s1_history[-1]
-                current_s2 = self.s2_history[-1]
-                current_s3 = self.s3_history[-1]
-
-                if current_s3 > current_s1:
-                    self.current_signal = -1
-                elif current_s3 < current_s2:
-                    self.current_signal = 1
-                else:
-                    self.current_signal = 0
+        if not np.isnan(self.lower_band) and not np.isnan(self.upper_band) and len(self.close_history) >= 2:
+            prev_close = list(self.close_history)[-2]
+            current_close = list(self.close_history)[-1]
+            if prev_close <= self.lower_band and current_close > self.lower_band:
+                self.current_signal = 1  # Buy signal (price crosses above lower band)
+            elif prev_close >= self.upper_band and current_close < self.upper_band:
+                self.current_signal = -1 # Sell signal (price crosses below upper band)
             else:
                 self.current_signal = 0
         else:
             self.current_signal = 0
-            
+
+        return self.current_signal
+
+    def reset(self):
+        self.close_history = deque(maxlen=self.bb_period)
+        self.sma = np.nan
+        self.std_dev = np.nan
+        self.upper_band = np.nan
+        self.lower_band = np.nan
+        self.current_signal = 0
+
+
 
 class TopNStrategy:
     """
@@ -886,32 +1319,30 @@ class TopNStrategy:
     """
     def __init__(self, rule_objects):
         self.rules = rule_objects
-        self.signals = []
+        self.last_signal = None # Store the last emitted signal
 
-
-    
     def on_bar(self, event):
         bar = event.bar
         rule_signals = [rule.on_bar(bar) for rule in self.rules]
         combined = self.combine_signals(rule_signals)
 
-        self.signals.append({
+        self.last_signal = {
             "timestamp": bar["timestamp"],
             "signal": combined,
             "price": bar["Close"]
-        })
-
+        }
+        return self.last_signal # Return the signal dictionary
 
     def combine_signals(self, signals):
         # Basic average-vote logic
         avg = sum(signals) / len(signals)
-        if avg > 0.5:
+        if avg > 0:
             return 1
-        elif avg < -0.5:
+        elif avg < 0:
             return -1
         return 0
 
     def reset(self):
         for rule in self.rules:
             rule.reset()
-        self.signals = []
+        self.last_signal = None

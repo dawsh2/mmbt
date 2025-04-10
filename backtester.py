@@ -1,63 +1,169 @@
+import numpy as np
+import pandas as pd
 import math
-from event import MarketEvent
+
+class BarEvent:
+    def __init__(self, data):
+        self.bar = data
 
 class Backtester:
     def __init__(self, data_handler, strategy):
         self.data_handler = data_handler
         self.strategy = strategy
-        self.events = []
+        self.signals = []
+        self.trades = []
+        self.current_position = 0
+        self.entry_price = None
+        self.entry_time = None
+
 
     def run(self):
-        bars = self.data_handler.load_data()
-        for bar in bars:
-            event = MarketEvent(bar)
-            self.events.append(event)
-            self.strategy.on_bar(event)
-        return self.strategy.signals
+        self.strategy.reset()
+        all_signals = [] # Temporary list to store signals
+        self.data_handler.reset()
+        while True:
+            event_data = self.data_handler.get_next_bar()
+            if event_data is None:
+                break
+            event = BarEvent(event_data)  # Wrap the dictionary in a BarEvent object
+            signal = self.strategy.on_bar(event) # Get the signal directly from the strategy
 
-    def calculate_returns(self):
-        signals = self.strategy.signals
-        position = None  # "long", "short", or None
-        entry_price = None
-        trades = []
-        log_returns = []
+            if signal is not None: # Ensure the strategy returns something
+                all_signals.append(signal.copy()) # Append the signal dictionary
 
-        for signal in signals:
-            signal_type = signal["signal"]
-            timestamp = signal["timestamp"]
-            price = signal["price"]
+        results = self.calculate_returns(all_signals)  # Pass the signals to calculate_returns
+        results['signals'] = all_signals # Add the list of signals to the results dictionary
+        return results
 
-            if signal_type == 1 and position is None:
-                position = "long"
-                entry_price = price
 
-            elif signal_type == -1 and position is None:
-                position = "short"
-                entry_price = price
+        def calculate_returns(self, signals):
+        self.trades = []
+        self.current_position = 0
+        self.entry_price = None
+        self.entry_time = None
 
-            elif signal_type == 0 and position == "long":
-                log_ret = math.log(price / entry_price)
-                trades.append((timestamp, "long", entry_price, price, log_ret))
-                log_returns.append(log_ret)
-                position = None
-                entry_price = None
+        for i in range(len(signals)):
+            current_signal = signals[i]['signal']
+            timestamp = signals[i]['timestamp']
+            price = signals[i]['price']
 
-            elif signal_type == 0 and position == "short":
-                log_ret = math.log(entry_price / price)
-                trades.append((timestamp, "short", entry_price, price, log_ret))
-                log_returns.append(log_ret)
-                position = None
-                entry_price = None
+            # Execute entry on the bar *after* the signal
+            if i > 0:
+                previous_signal = signals[i-1]['signal']
+                entry_price_on_execute = signals[i]['price'] # Price at the time of potential entry
 
-        total_log_return = sum(log_returns)
-        total_percent_return = (math.exp(total_log_return) - 1) * 100
-        avg_log_return = total_log_return / len(log_returns) if log_returns else 0
+                if previous_signal == 1 and self.current_position == 0:
+                    print(f"{timestamp} - Execute BUY at {entry_price_on_execute:.2f}")
+                    self.current_position = 1
+                    self.entry_price = entry_price_on_execute
+                    self.entry_time = timestamp
+                elif previous_signal == -1 and self.current_position == 0:
+                    print(f"{timestamp} - Execute SELL at {entry_price_on_execute:.2f}")
+                    self.current_position = -1
+                    self.entry_price = entry_price_on_execute
+                    self.entry_time = timestamp
+
+            # Check for exit conditions on the current bar, *after* potential entry
+            if self.current_position == 1 and \
+               (current_signal == 0 or current_signal == -1):
+                if self.entry_price is not None:
+                    log_return = math.log(price / self.entry_price)
+                    self.trades.append((self.entry_time, "BUY", self.entry_price, timestamp, price, log_return))
+                    print(f"{timestamp} - Exit BUY at {price:.2f}, Log Return: {log_return:.4f}")
+                    self.current_position = 0
+                    self.entry_price = None
+                    self.entry_time = None
+            elif self.current_position == -1 and \
+                 (current_signal == 0 or current_signal == 1):
+                if self.entry_price is not None:
+                    log_return = math.log(self.entry_price / price)
+                    self.trades.append((self.entry_time, "SELL", self.entry_price, timestamp, price, log_return))
+                    print(f"{timestamp} - Exit SELL at {price:.2f}, Log Return: {log_return:.4f}")
+                    self.current_position = 0
+                    self.entry_price = None
+                    self.entry_time = None
 
         return {
-            "trades": trades,
-            "total_log_return": total_log_return,
-            "total_percent_return": total_percent_return,
-            "average_log_return": avg_log_return,
-            "num_trades": len(trades)
+            "trades": self.trades,
+            "total_log_return": sum([t[5] for t in self.trades]),
+            "average_log_return": np.mean([t[5] for t in self.trades]) if self.trades else 0,
+            "num_trades": len(self.trades),
+            "total_percent_return": (math.exp(sum([t[5] for t in self.trades])) - 1) * 100 if self.trades else 0
         }
 
+    # def calculate_returns(self, signals):
+    #     self.trades = []
+    #     self.current_position = 0
+    #     self.entry_price = None
+    #     self.entry_time = None
+    #     total_log_return = 0
+    #     trade_returns = []
+
+    #     for i in range(1, len(signals)):
+    #         prev_signal = signals[i-1]['signal']
+    #         current_signal = signals[i]['signal']
+    #         price = signals[i]['price']
+    #         timestamp = signals[i]['timestamp']
+
+    #         if current_signal == 1 and self.current_position == 0:
+    #             self.current_position = 1
+    #             self.entry_price = price
+    #             self.entry_time = timestamp
+    #         elif current_signal == -1 and self.current_position == 0:
+    #             self.current_position = -1
+    #             self.entry_price = price
+    #             self.entry_time = timestamp
+    #         elif (current_signal == 0 and self.current_position == 1) or \
+    #              (current_signal == -1 and self.current_position == 1):
+    #             if self.entry_price is not None:
+    #                 log_return = math.log(price / self.entry_price)
+    #                 self.trades.append((self.entry_time, "BUY", self.entry_price, timestamp, price, log_return))
+    #                 total_log_return += log_return
+    #                 trade_returns.append(log_return)
+    #                 self.current_position = 0
+    #                 self.entry_price = None
+    #                 self.entry_time = None
+    #         elif (current_signal == 0 and self.current_position == -1) or \
+    #              (current_signal == 1 and self.current_position == -1):
+    #             if self.entry_price is not None:
+    #                 log_return = math.log(self.entry_price / price)
+    #                 self.trades.append((self.entry_time, "SELL", self.entry_price, timestamp, price, log_return))
+    #                 total_log_return += log_return
+    #                 trade_returns.append(log_return)
+    #                 self.current_position = 0
+    #                 self.entry_price = None
+    #                 self.entry_time = None
+
+    #     num_trades = len(self.trades)
+    #     average_log_return = np.mean(trade_returns) if trade_returns else 0
+    #     total_percent_return = (math.exp(total_log_return) - 1) * 100 if total_log_return else 0
+
+    #     return {
+    #         "trades": self.trades,
+    #         "total_log_return": total_log_return,
+    #         "average_log_return": average_log_return,
+    #         "num_trades": num_trades,
+    #         "total_percent_return": total_percent_return
+    #     }
+    
+ 
+    def calculate_sharpe(self, risk_free_rate=0):
+        returns = []
+        for trade in self.trades:
+            returns.append(trade[5]) # Log returns
+
+        if len(returns) < 2:
+            return 0.0
+
+        returns_series = pd.Series(returns)
+        excess_returns = returns_series - risk_free_rate
+        sharpe_ratio = excess_returns.mean() / excess_returns.std() * np.sqrt(252) # Assuming daily data, annualized
+        return sharpe_ratio
+
+    def reset(self):
+        self.signals = []
+        self.trades = []
+        self.current_position = 0
+        self.entry_price = None
+        self.entry_time = None
+        self.strategy.reset()
