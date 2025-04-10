@@ -680,32 +680,27 @@ class RuleSystem:
             print(f"Error loading parameters: {e}")
             return False
 
-    # Overload generate_signals to handle legacy parameter format
+
+    # In rules.py in the RuleSystem class, update the generate_signals method:
+
     def generate_signals(self, OHLC, rule_params=None, filter_regime=False, weights=None):
         """
         Generate trading signals using the best rules and parameters.
 
-        This method is overloaded to handle both the new API (just OHLC) and 
-        the legacy API (OHLC, rule_params, filter_regime, weights).
-
         Args:
             OHLC: DataFrame or list/tuple of OHLC data
-            rule_params: Legacy parameter dict (ignored, uses self.best_params)
-            filter_regime: Legacy parameter (ignored, handled by strategy class)
-            weights: Legacy weights parameter (used if provided)
+            rule_params: Optional parameters to override best_params (ignored if None)
+            filter_regime: Whether to apply regime filtering (passed to strategy)
+            weights: Optional weights to use for rule combination
 
         Returns:
-            Series of trading signals
+            DataFrame containing signals and log returns
         """
-        # If weights are provided, store them
+        # If weights are provided, use them
         if weights is not None:
             self.weights = weights
 
-        # Call the original implementation
-        if not self.best_params:
-            raise ValueError("Rules have not been trained yet. Call train_rules first.")
-
-        # Ensure OHLC is in the right format
+        # Ensure OHLC is a DataFrame
         if not isinstance(OHLC, pd.DataFrame):
             if isinstance(OHLC, tuple) or isinstance(OHLC, list):
                 if isinstance(OHLC[0], pd.Series):
@@ -713,17 +708,16 @@ class RuleSystem:
                         'Open': OHLC[0],
                         'High': OHLC[1] if len(OHLC) > 1 else None,
                         'Low': OHLC[2] if len(OHLC) > 2 else None,
-                        'Close': OHLC[3] if len(OHLC) > 3 else None,
-                        'Volume': OHLC[4] if len(OHLC) > 4 else None
+                        'Close': OHLC[3] if len(OHLC) > 3 else None
                     })
                 else:
                     OHLC = pd.DataFrame({
                         'Open': OHLC[0] if len(OHLC) > 0 else [],
                         'High': OHLC[1] if len(OHLC) > 1 else [],
                         'Low': OHLC[2] if len(OHLC) > 2 else [],
-                        'Close': OHLC[3] if len(OHLC) > 3 else [],
-                        'Volume': OHLC[4] if len(OHLC) > 4 else []
+                        'Close': OHLC[3] if len(OHLC) > 3 else []
                     })
+
 
         print(f"DEBUG - Generating signals for {len(self.best_indices)} rules")
 
@@ -796,19 +790,20 @@ class RuleSystem:
         print(f"DEBUG - Combined signals: Buy={buy_count}, Sell={sell_count}, Neutral={neutral_count}")
 
         # If we need to mimic the old DataFrame return format (for compatibility)
+            # Return signals in DataFrame format for the backtester
         if 'LogReturn' in OHLC.columns:
             log_returns = OHLC['LogReturn']
         else:
             log_returns = np.log(OHLC['Close'] / OHLC['Close'].shift(1)).fillna(0)
 
-        # Create a DataFrame to match the expected format in backtester
         result_df = pd.DataFrame({
             'Signal': final_signals,
             'LogReturn': log_returns
         })
 
-        return result_df  # Return DataFrame to maintain compatibility
+        return result_df
 
+    
     # Rename the original implementation to _generate_signals_impl
     def _generate_signals_impl(self, OHLC):
         """
