@@ -36,7 +36,7 @@ class Backtester:
         return results
 
 
-        def calculate_returns(self, signals):
+    def calculate_returns(self, signals):
         self.trades = []
         self.current_position = 0
         self.entry_price = None
