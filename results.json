@@ -1,0 +1,17 @@
+{
+    "strategy": "Top-5 Rules Strategy",
+    "performance": {
+        "strategy": {
+            "number_of_trades": 5036.5,
+            "total_return": NaN,
+            "sharpe_ratio": NaN,
+            "max_drawdown": NaN
+        },
+        "buy_and_hold": {
+            "number_of_trades": 0,
+            "total_return": NaN,
+            "sharpe_ratio": NaN,
+            "max_drawdown": NaN
+        }
+    }
+}

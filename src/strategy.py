@@ -39,33 +39,60 @@ class TopNStrategy(Strategy):
         self.top_indices = indices[:self.top_n]
         return params, scores, indices
 
-    # For TopNStrategy
     def generate_signals(self, OHLC, rule_params=None, filter_regime=False):
-        """Generate trading signals using the top N rules."""
-        # Call to rules.generate_signals updated to handle legacy API
-        final_signal = self.rules.generate_signals(OHLC, rule_params, filter_regime)
+        """Generate trading signals using weighted rules."""
+        # Convert OHLC to DataFrame if it's not already
+        if not isinstance(OHLC, pd.DataFrame):
+            if isinstance(OHLC, tuple) or isinstance(OHLC, list):
+                # Convert to DataFrame if needed
+                if isinstance(OHLC[0], pd.Series):
+                    OHLC = pd.DataFrame({
+                        'Open': OHLC[0],
+                        'High': OHLC[1] if len(OHLC) > 1 else None,
+                        'Low': OHLC[2] if len(OHLC) > 2 else None,
+                        'Close': OHLC[3] if len(OHLC) > 3 else None
+                    })
+                else:
+                    OHLC = pd.DataFrame({
+                        'Open': OHLC[0] if len(OHLC) > 0 else [],
+                        'High': OHLC[1] if len(OHLC) > 1 else [],
+                        'Low': OHLC[2] if len(OHLC) > 2 else [],
+                        'Close': OHLC[3] if len(OHLC) > 3 else []
+                    })
 
-        if isinstance(final_signal, pd.Series):
-            # Apply regime filter if needed
-            if filter_regime:
-                final_signal = self._apply_regime_filter(final_signal, OHLC)
+        # Work around the signature mismatch by directly applying our logic here
+        # instead of passing all arguments to rules.generate_signals
+        signals_df = self.rules.generate_signals(OHLC)
 
-            # Create a proper DataFrame for backtester compatibility
-            if 'LogReturn' in OHLC.columns:
-                log_returns = OHLC['LogReturn']
-            else:
-                log_returns = np.log(OHLC['Close'] / OHLC['Close'].shift(1)).fillna(0)
-
-            result_df = pd.DataFrame({
-                'Signal': final_signal,
-                'LogReturn': log_returns
-            })
-            self.signals = final_signal
-            return result_df
+        # Extract signal column
+        if isinstance(signals_df, pd.DataFrame) and 'Signal' in signals_df.columns:
+            final_signal = signals_df['Signal']
         else:
-            # It's already a DataFrame with the right format
-            self.signals = final_signal['Signal']
-            return final_signal
+            final_signal = signals_df
+
+        # Apply regime filter if needed
+        if filter_regime:
+            final_signal = self._apply_regime_filter(final_signal, OHLC)
+
+        # If it's already a DataFrame with LogReturn, return it
+        if isinstance(signals_df, pd.DataFrame) and 'LogReturn' in signals_df.columns:
+            # Update the Signal column if we modified it
+            signals_df['Signal'] = final_signal
+            return signals_df
+
+        # Otherwise, create a proper DataFrame for backtester compatibility
+        if 'LogReturn' in OHLC.columns:
+            log_returns = OHLC['LogReturn']
+        else:
+            log_returns = np.log(OHLC['Close'] / OHLC['Close'].shift(1)).fillna(0)
+
+        result_df = pd.DataFrame({
+            'Signal': final_signal,
+            'LogReturn': log_returns
+        })
+
+        self.signals = final_signal
+        return result_df
 
 
     def _apply_regime_filter(self, signal_series, OHLC):
@@ -167,10 +194,27 @@ class WeightedStrategy(Strategy):
 
     def generate_signals(self, OHLC, rule_params=None, filter_regime=False):
         """Generate trading signals using weighted rules."""
+        # Convert OHLC to DataFrame if it's not already
+        if not isinstance(OHLC, pd.DataFrame):
+            if isinstance(OHLC, tuple) or isinstance(OHLC, list):
+                # Convert to DataFrame if needed
+                if isinstance(OHLC[0], pd.Series):
+                    OHLC = pd.DataFrame({
+                        'Open': OHLC[0],
+                        'High': OHLC[1] if len(OHLC) > 1 else None,
+                        'Low': OHLC[2] if len(OHLC) > 2 else None,
+                        'Close': OHLC[3] if len(OHLC) > 3 else None
+                    })
+                else:
+                    OHLC = pd.DataFrame({
+                        'Open': OHLC[0] if len(OHLC) > 0 else [],
+                        'High': OHLC[1] if len(OHLC) > 1 else [],
+                        'Low': OHLC[2] if len(OHLC) > 2 else [],
+                        'Close': OHLC[3] if len(OHLC) > 3 else []
+                    })
+
         # Work around the signature mismatch by directly applying our logic here
         # instead of passing all arguments to rules.generate_signals
-
-        # Get basic signals from the rules
         signals_df = self.rules.generate_signals(OHLC)
 
         # Extract signal column
