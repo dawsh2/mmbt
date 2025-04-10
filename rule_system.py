@@ -42,13 +42,12 @@ class EventDrivenRuleSystem:
                 rule_instance = rule_class(params)
                 strategy = TopNStrategy(rule_objects=[rule_instance])
                 backtester = Backtester(data_handler, strategy)
-                results = backtester.run()
+                results = backtester.run(use_test_data=False) # Ensure training uses train data
                 if results['num_trades'] > 0:
-                    # Optimize for Total Log Return
                     optimization_metric = results['total_log_return']
                     rule_performances[tuple(params.items())] = optimization_metric
                 else:
-                    rule_performances[tuple(params.items())] = -np.inf # Penalize no trades
+                    rule_performances[tuple(params.items())] = -np.inf
                 rule_instance.reset()
                 strategy.reset()
                 backtester.reset()

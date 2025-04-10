@@ -1,24 +1,47 @@
 import pandas as pd
 
-class DataHandler:
-    def __init__(self, filepath):
-        self.filepath = filepath
-        self.bars = []
-        self.current_index = 0
-        self.load_data()
+class CSVDataHandler:
+    def __init__(self, csv_filepath, train_fraction=0.8):
+        self.csv_filepath = csv_filepath
+        self.train_fraction = train_fraction
+        self.full_df = self._load_and_preprocess_data()
+        self.train_df = None
+        self.test_df = None
+        self._split_data()
+        self.current_train_index = 0
+        self.current_test_index = 0
 
-    def load_data(self):
-        df = pd.read_csv(self.filepath, parse_dates=["timestamp"])
-        df = df.dropna(subset=["Close"])  # Ensure no missing price data
-        self.bars = df.to_dict(orient="records")
-        return self.bars
+    def _load_and_preprocess_data(self):
+        df = pd.read_csv(self.csv_filepath, parse_dates=['timestamp'])
+        df = df.sort_values(by='timestamp').reset_index(drop=True)
+        return df
 
-    def get_next_bar(self):
-        if self.current_index < len(self.bars):
-            bar = self.bars[self.current_index]
-            self.current_index += 1
+    def _split_data(self):
+        train_size = int(self.train_fraction * len(self.full_df))
+        self.train_df = self.full_df[:train_size]
+        self.test_df = self.full_df[train_size:]
+        print(f"In-sample data size: {len(self.train_df)}")
+        print(f"Out-of-sample data size: {len(self.test_df)}")
+
+    def get_next_train_bar(self):
+        if self.current_train_index < len(self.train_df):
+            bar = self.train_df.iloc[self.current_train_index].to_dict()
+            self.current_train_index += 1
             return bar
         return None
 
-    def reset(self):
-        self.current_index = 0
+    def get_next_test_bar(self):
+        if self.current_test_index < len(self.test_df):
+            bar = self.test_df.iloc[self.current_test_index].to_dict()
+            self.current_test_index += 1
+            return bar
+        return None
+
+    def reset_train(self):
+        self.current_train_index = 0
+
+    def reset_test(self):
+        self.current_test_index = 0
+
+    def get_full_data(self): # Optional: to access the full DataFrame if needed
+        return self.full_df

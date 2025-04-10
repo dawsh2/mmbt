@@ -17,22 +17,23 @@ class Backtester:
         self.entry_time = None
 
 
-    def run(self):
+    def run(self, use_test_data=False):
         self.strategy.reset()
-        all_signals = [] # Temporary list to store signals
-        self.data_handler.reset()
+        all_signals = []
+        if not use_test_data:
+            self.data_handler.reset_train()
+        else:
+            self.data_handler.reset_test()
         while True:
-            event_data = self.data_handler.get_next_bar()
+            event_data = self.data_handler.get_next_train_bar() if not use_test_data else self.data_handler.get_next_test_bar()
             if event_data is None:
                 break
-            event = BarEvent(event_data)  # Wrap the dictionary in a BarEvent object
-            signal = self.strategy.on_bar(event) # Get the signal directly from the strategy
-
-            if signal is not None: # Ensure the strategy returns something
-                all_signals.append(signal.copy()) # Append the signal dictionary
-
-        results = self.calculate_returns(all_signals)  # Pass the signals to calculate_returns
-        results['signals'] = all_signals # Add the list of signals to the results dictionary
+            event = BarEvent(event_data)
+            signal = self.strategy.on_bar(event)
+            if signal is not None:
+                all_signals.append(signal.copy())
+        results = self.calculate_returns(all_signals)
+        results['signals'] = all_signals
         return results
 
 
@@ -45,27 +46,21 @@ class Backtester:
         for i in range(len(signals)):
             current_signal = signals[i]['signal']
             timestamp = signals[i]['timestamp']
-            price = signals[i]['price']
+            price = signals[i]['price']  # Close price of current bar
 
-            # Execute entry on the bar *after* the signal
-            if i > 0:
-                previous_signal = signals[i-1]['signal']
-                entry_price_on_execute = signals[i]['price'] # Price at the time of potential entry
-
-                if previous_signal == 1 and self.current_position == 0:
-                    print(f"{timestamp} - Execute BUY at {entry_price_on_execute:.2f}")
-                    self.current_position = 1
-                    self.entry_price = entry_price_on_execute
-                    self.entry_time = timestamp
-                elif previous_signal == -1 and self.current_position == 0:
-                    print(f"{timestamp} - Execute SELL at {entry_price_on_execute:.2f}")
-                    self.current_position = -1
-                    self.entry_price = entry_price_on_execute
-                    self.entry_time = timestamp
-
-            # Check for exit conditions on the current bar, *after* potential entry
-            if self.current_position == 1 and \
-               (current_signal == 0 or current_signal == -1):
+            # Make trading decisions based on the current bar's signal
+            if current_signal == 1 and self.current_position == 0:
+                print(f"{timestamp} - Execute BUY at {price:.2f}")
+                self.current_position = 1
+                self.entry_price = price
+                self.entry_time = timestamp
+            elif current_signal == -1 and self.current_position == 0:
+                print(f"{timestamp} - Execute SELL at {price:.2f}")
+                self.current_position = -1
+                self.entry_price = price
+                self.entry_time = timestamp
+            elif self.current_position == 1 and \
+                 (current_signal == 0 or current_signal == -1):
                 if self.entry_price is not None:
                     log_return = math.log(price / self.entry_price)
                     self.trades.append((self.entry_time, "BUY", self.entry_price, timestamp, price, log_return))
@@ -90,6 +85,8 @@ class Backtester:
             "num_trades": len(self.trades),
             "total_percent_return": (math.exp(sum([t[5] for t in self.trades])) - 1) * 100 if self.trades else 0
         }
+
+ 
 
     # def calculate_returns(self, signals):
     #     self.trades = []
