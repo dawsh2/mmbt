@@ -50,12 +50,12 @@ class Backtester:
 
             # Make trading decisions based on the current bar's signal
             if current_signal == 1 and self.current_position == 0:
-                print(f"{timestamp} - Execute BUY at {price:.2f}")
+                # print(f"{timestamp} - Execute BUY at {price:.2f}")
                 self.current_position = 1
                 self.entry_price = price
                 self.entry_time = timestamp
             elif current_signal == -1 and self.current_position == 0:
-                print(f"{timestamp} - Execute SELL at {price:.2f}")
+                # print(f"{timestamp} - Execute SELL at {price:.2f}")
                 self.current_position = -1
                 self.entry_price = price
                 self.entry_time = timestamp
@@ -64,7 +64,7 @@ class Backtester:
                 if self.entry_price is not None:
                     log_return = math.log(price / self.entry_price)
                     self.trades.append((self.entry_time, "BUY", self.entry_price, timestamp, price, log_return))
-                    print(f"{timestamp} - Exit BUY at {price:.2f}, Log Return: {log_return:.4f}")
+                    # print(f"{timestamp} - Exit BUY at {price:.2f}, Log Return: {log_return:.4f}")
                     self.current_position = 0
                     self.entry_price = None
                     self.entry_time = None
@@ -73,7 +73,7 @@ class Backtester:
                 if self.entry_price is not None:
                     log_return = math.log(self.entry_price / price)
                     self.trades.append((self.entry_time, "SELL", self.entry_price, timestamp, price, log_return))
-                    print(f"{timestamp} - Exit SELL at {price:.2f}, Log Return: {log_return:.4f}")
+                    # print(f"{timestamp} - Exit SELL at {price:.2f}, Log Return: {log_return:.4f}")
                     self.current_position = 0
                     self.entry_price = None
                     self.entry_time = None

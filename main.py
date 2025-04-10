@@ -30,7 +30,8 @@ if __name__ == "__main__":
         (Rule15, {'bb_period': [20, 25]}),
         # Add more rules and their parameter grids here
     ]
-    rule_system = EventDrivenRuleSystem(rules_config=rules_config, top_n=3)
+    print("\n--- Training Individual Rules on In-Sample Data ---")
+    rule_system = EventDrivenRuleSystem(rules_config=rules_config, top_n=8) # Adjust signal threshold in TopNStrategy Class in strategy.py
     rule_system.train_rules(data_handler) # 'data_handler' now contains the split data
     top_n_strategy = rule_system.get_top_n_strategy()
 
@@ -39,6 +40,23 @@ if __name__ == "__main__":
         if hasattr(rule_object, 'get_trade_count'):
             print(f"Rule {rule_object.__class__.__name__} (Index {index}): {rule_object.get_trade_count()} trades")
 
+     # Optional: Backtest on In-Sample Data
+    print("\n--- Backtesting on In-Sample Data ---")
+    in_sample_backtester = Backtester(data_handler, top_n_strategy)
+    results_is = in_sample_backtester.run(use_test_data=False)
+    print("\nIn-Sample Backtest Results:")
+    print(f"Total Log Return: {results_is['total_log_return']:.4f}")
+    print(f"Total Return (compounded): {results_is['total_percent_return']:.2f}%")
+    print(f"Average Log Return per Trade: {results_is['average_log_return']:.4f}")
+    print(f"Number of Trades: {results_is['num_trades']}")
+    sharpe_is = in_sample_backtester.calculate_sharpe()
+    print(f"In-Sample Sharpe Ratio: {sharpe_is:.4f}")
+    # print("\nIn-Sample Trades (First 10):")
+    # for i, t in enumerate(results_is["trades"]):
+    #     if i < 10:
+    #         print(f"{t[0]} | {t[1].upper()} | Entry: {t[2]:.2f} → Exit: {t[4]:.2f} | Log Return: {t[5]:.4f}")
+    #     else:
+    #         break
 
     print("\n--- Backtesting on Out-of-Sample Data ---")
     out_of_sample_backtester = Backtester(data_handler, top_n_strategy) # Remove use_test_data here
@@ -52,25 +70,8 @@ if __name__ == "__main__":
     sharpe_oos = out_of_sample_backtester.calculate_sharpe()
     print(f"Out-of-Sample Sharpe Ratio: {sharpe_oos:.4f}")
 
-    print("\nOut-of-Sample Trades:")
-    for t in results_oos["trades"]:
-        print(f"{t[0]} | {t[1].upper()} | Entry: {t[2]:.2f} → Exit: {t[4]:.2f} | Log Return: {t[5]:.4f}")
+    # print("\nOut-of-Sample Trades:")
+    # for t in results_oos["trades"]:
+    #     print(f"{t[0]} | {t[1].upper()} | Entry: {t[2]:.2f} → Exit: {t[4]:.2f} | Log Return: {t[5]:.4f}")
 
-    # Optional: Backtest on In-Sample Data
-    print("\n--- Backtesting on In-Sample Data ---")
-    in_sample_backtester = Backtester(data_handler, top_n_strategy, use_test_data=False)
-    results_is = in_sample_backtester.run(use_test_data=False)
-    print("\nIn-Sample Backtest Results:")
-    print(f"Total Log Return: {results_is['total_log_return']:.4f}")
-    print(f"Total Return (compounded): {results_is['total_percent_return']:.2f}%")
-    print(f"Average Log Return per Trade: {results_is['average_log_return']:.4f}")
-    print(f"Number of Trades: {results_is['num_trades']}")
-    sharpe_is = in_sample_backtester.calculate_sharpe()
-    print(f"In-Sample Sharpe Ratio: {sharpe_is:.4f}")
-    print("\nIn-Sample Trades (First 10):")
-    for i, t in enumerate(results_is["trades"]):
-        if i < 10:
-            print(f"{t[0]} | {t[1].upper()} | Entry: {t[2]:.2f} → Exit: {t[4]:.2f} | Log Return: {t[5]:.4f}")
-        else:
-            break
-
+   

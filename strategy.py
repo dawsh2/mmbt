@@ -1336,9 +1336,9 @@ class TopNStrategy:
     def combine_signals(self, signals):
         # Basic average-vote logic
         avg = sum(signals) / len(signals)
-        if avg > 0:
+        if avg > 0.5:
             return 1
-        elif avg < 0:
+        elif avg < -0.5:
             return -1
         return 0
 
