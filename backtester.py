@@ -48,7 +48,7 @@ class Backtester:
             timestamp = signals[i]['timestamp']
             price = signals[i]['price']  # Close price of current bar
 
-            # Make trading decisions based on the current bar's signal
+            # Make trading decisions based on the current bar's signal -- NO DELAY 
             if current_signal == 1 and self.current_position == 0:
                 # print(f"{timestamp} - Execute BUY at {price:.2f}")
                 self.current_position = 1
