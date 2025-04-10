@@ -2,16 +2,24 @@
     "strategy": "Top-5 Rules Strategy",
     "performance": {
         "strategy": {
-            "number_of_trades": 5036.5,
-            "total_return": NaN,
-            "sharpe_ratio": NaN,
-            "max_drawdown": NaN
+            "number_of_trades": 5602.0,
+            "total_return": 0.959257295815281,
+            "annualized_return": 0.005541249049250796,
+            "annualized_volatility": 0.005804976925694456,
+            "sharpe_ratio": 0.954568660682125,
+            "max_drawdown": -0.021237069508419526,
+            "win_rate": 0.48169651643377287,
+            "profit_factor": 1.2490417205652682
         },
         "buy_and_hold": {
             "number_of_trades": 0,
-            "total_return": NaN,
-            "sharpe_ratio": NaN,
-            "max_drawdown": NaN
+            "total_return": 0.0,
+            "annualized_return": 0.0,
+            "annualized_volatility": 0.0,
+            "sharpe_ratio": 0.0,
+            "max_drawdown": 0.0,
+            "win_rate": 0.0,
+            "profit_factor": 0.0
         }
     }
 }

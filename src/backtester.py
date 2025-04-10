@@ -95,7 +95,7 @@ class Backtester:
                 'buy_and_hold': {}
             }
 
-        # Extract returns and signals and convert to numeric
+        # Extract returns and signals and convert to numeric if needed
         returns = pd.to_numeric(signals_df['LogReturn'], errors='coerce')
         signals = pd.to_numeric(signals_df['Signal'], errors='coerce')
 
@@ -103,25 +103,29 @@ class Backtester:
         print(f"DEBUG - Returns summary: min={returns.min():.6f}, max={returns.max():.6f}, mean={returns.mean():.6f}")
         print(f"DEBUG - Signals value counts: {signals.value_counts().to_dict()}")
 
-        # Calculate strategy returns
+        # Calculate strategy returns (element-wise multiplication)
         strategy_returns = signals * returns 
-        strategy_returns = strategy_returns.dropna()
+
+        # Drop NaN values
+        strategy_returns = strategy_returns.fillna(0)
 
         # Debug information on strategy returns
-        print(f"DEBUG - Strategy returns: min={strategy_returns.min() if not strategy_returns.empty else 0:.6f}, " +
-              f"max={strategy_returns.max() if not strategy_returns.empty else 0:.6f}, " +
-              f"sum={strategy_returns.sum() if not strategy_returns.empty else 0:.6f}")
+        print(f"DEBUG - Strategy returns: min={strategy_returns.min():.6f}, " +
+              f"max={strategy_returns.max():.6f}, " +
+              f"sum={strategy_returns.sum():.6f}, " +
+              f"mean={strategy_returns.mean():.6f}")
 
-        # Count trades
-        trades = (signals.diff() != 0).sum() / 2  # Each trade consists of entry and exit
+        # Count trades (signal changes from one state to another)
+        trades = signals.diff().abs().sum() / 2  # Each trade consists of entry and exit
         print(f"DEBUG - Number of trades: {trades}")
 
         # Calculate buy-and-hold returns for comparison
-        bh_returns = returns.loc[strategy_returns.index]
+        bh_returns = returns.copy()
+        bh_returns = bh_returns.fillna(0)
 
         try:
             # Calculate metrics
-            strategy_metrics = calculate_metrics(strategy_returns)
+            strategy_metrics = calculate_metrics(strategy_returns, signals)
             bh_metrics = calculate_metrics(bh_returns)
 
             # Add number of trades
@@ -137,6 +141,10 @@ class Backtester:
 
         except Exception as e:
             print(f"Error in performance calculation: {e}")
+            import traceback
+            traceback.print_exc()
+
+            # Return basic metrics with zeros to prevent comparison errors
             empty_metrics = {
                 'total_return': 0.0,
                 'annualized_return': 0.0,

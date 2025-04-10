@@ -57,26 +57,60 @@ def calculate_metrics(strategy_returns: pd.Series, signals: Optional[pd.Series] 
         # Default to 0 if no signals provided
         metrics['number_of_trades'] = 0
     
-    # Skip remaining calculations if we have no trades
-    if metrics['number_of_trades'] == 0:
-        metrics['total_return'] = np.nan
-        metrics['sharpe_ratio'] = np.nan
-        metrics['max_drawdown'] = np.nan
+    # Add default values to prevent KeyErrors
+    metrics['total_return'] = 0.0
+    metrics['annualized_return'] = 0.0
+    metrics['annualized_volatility'] = 0.0
+    metrics['sharpe_ratio'] = 0.0
+    metrics['max_drawdown'] = 0.0
+    metrics['win_rate'] = 0.0
+    metrics['profit_factor'] = 0.0
+    
+    # Skip remaining calculations if we have no trades or all returns are 0
+    if metrics['number_of_trades'] == 0 or strategy_returns.sum() == 0:
         return metrics
     
     # Calculate total return (cumulative)
-    cumulative_returns = (1 + strategy_returns).cumprod() - 1
-    metrics['total_return'] = float(cumulative_returns.iloc[-1])
-    
-    # Calculate annualized Sharpe ratio (assuming daily data)
-    annual_factor = 252  # Trading days in a year
-    sharpe_ratio = np.sqrt(annual_factor) * (strategy_returns.mean() / strategy_returns.std())
-    metrics['sharpe_ratio'] = float(sharpe_ratio)
-    
-    # Calculate maximum drawdown
-    rolling_max = (1 + cumulative_returns).cummax()
-    drawdowns = (1 + cumulative_returns) / rolling_max - 1
-    metrics['max_drawdown'] = float(drawdowns.min())
+    try:
+        cumulative_returns = (1 + strategy_returns).cumprod() - 1
+        metrics['total_return'] = float(cumulative_returns.iloc[-1])
+        
+        # Calculate annualized return (assuming daily data)
+        trading_days = len(strategy_returns)
+        annual_factor = 252  # Trading days in a year
+        metrics['annualized_return'] = float((1 + metrics['total_return']) ** (annual_factor / trading_days) - 1)
+        
+        # Calculate annualized volatility
+        metrics['annualized_volatility'] = float(strategy_returns.std() * np.sqrt(annual_factor))
+        
+        # Calculate annualized Sharpe ratio (assuming daily data)
+        if metrics['annualized_volatility'] > 0:
+            metrics['sharpe_ratio'] = float(metrics['annualized_return'] / metrics['annualized_volatility'])
+        
+        # Calculate maximum drawdown
+        if not cumulative_returns.empty:
+            rolling_max = (1 + cumulative_returns).cummax()
+            drawdowns = (1 + cumulative_returns) / rolling_max - 1
+            metrics['max_drawdown'] = float(drawdowns.min())
+            
+        # Calculate win rate
+        winning_trades = (strategy_returns > 0).sum()
+        losing_trades = (strategy_returns < 0).sum()
+        total_active_trades = winning_trades + losing_trades
+        
+        if total_active_trades > 0:
+            metrics['win_rate'] = float(winning_trades / total_active_trades)
+            
+            # Calculate profit factor
+            gross_wins = strategy_returns[strategy_returns > 0].sum()
+            gross_losses = abs(strategy_returns[strategy_returns < 0].sum())
+            
+            if gross_losses > 0:
+                metrics['profit_factor'] = float(gross_wins / gross_losses)
+            else:
+                metrics['profit_factor'] = float(gross_wins)
+    except Exception as e:
+        print(f"Error calculating metrics: {e}")
     
     return metrics
 
@@ -140,5 +174,7 @@ def compare_strategies(metrics_list: List[Dict[str, float]], names: List[str]):
     for key, label, formatter in metrics_to_display:
         row = f"{label:<15}"
         for metrics in metrics_list:
-            row += f" | {formatter(metrics[key]):>15}"
+            # Ensure the key exists, default to 0 if missing
+            value = metrics.get(key, 0.0)
+            row += f" | {formatter(value):>15}"
         print(row)

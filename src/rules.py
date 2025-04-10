@@ -700,6 +700,10 @@ class RuleSystem:
         if weights is not None:
             self.weights = weights
 
+        # Use provided parameters if available
+        params_to_use = rule_params if rule_params else self.best_params
+        indices_to_use = self.best_indices
+
         # Ensure OHLC is a DataFrame
         if not isinstance(OHLC, pd.DataFrame):
             if isinstance(OHLC, tuple) or isinstance(OHLC, list):
@@ -708,21 +712,24 @@ class RuleSystem:
                         'Open': OHLC[0],
                         'High': OHLC[1] if len(OHLC) > 1 else None,
                         'Low': OHLC[2] if len(OHLC) > 2 else None,
-                        'Close': OHLC[3] if len(OHLC) > 3 else None
+                        'Close': OHLC[3] if len(OHLC) > 3 else None,
+                        'Volume': OHLC[4] if len(OHLC) > 4 else None
                     })
                 else:
                     OHLC = pd.DataFrame({
                         'Open': OHLC[0] if len(OHLC) > 0 else [],
                         'High': OHLC[1] if len(OHLC) > 1 else [],
                         'Low': OHLC[2] if len(OHLC) > 2 else [],
-                        'Close': OHLC[3] if len(OHLC) > 3 else []
+                        'Close': OHLC[3] if len(OHLC) > 3 else [],
+                        'Volume': OHLC[4] if len(OHLC) > 4 else []
                     })
-
 
         print(f"DEBUG - Generating signals for {len(self.best_indices)} rules")
 
         all_signals = []
-        for i, (param, idx) in enumerate(zip(self.best_params, self.best_indices)):
+
+        # Generate signals for each rule
+        for i, (param, idx) in enumerate(zip(params_to_use, indices_to_use)):
             rule_func = self.rules[idx][0]
             _, signals = rule_func(param, OHLC)
 
@@ -744,8 +751,12 @@ class RuleSystem:
 
             all_signals.append(signals)
 
-        # Combine signals using weights if enabled
-        if self.use_weights and all_signals:
+        # Combine signals
+        if not all_signals:
+            # No signals generated
+            final_signals = pd.Series(0, index=OHLC.index)
+        elif self.use_weights and all_signals:
+            # Use weighted approach
             # Normalize weights based on scores if no explicit weights provided
             if self.weights is None:
                 total_score = sum(self.best_scores)
@@ -789,230 +800,20 @@ class RuleSystem:
         neutral_count = (final_signals == 0).sum()
         print(f"DEBUG - Combined signals: Buy={buy_count}, Sell={sell_count}, Neutral={neutral_count}")
 
-        # If we need to mimic the old DataFrame return format (for compatibility)
-            # Return signals in DataFrame format for the backtester
+        # Calculate log returns if not in OHLC
         if 'LogReturn' in OHLC.columns:
             log_returns = OHLC['LogReturn']
         else:
             log_returns = np.log(OHLC['Close'] / OHLC['Close'].shift(1)).fillna(0)
 
+        # Create DataFrame with signals and returns
         result_df = pd.DataFrame({
             'Signal': final_signals,
             'LogReturn': log_returns
         })
 
         return result_df
-
     
-    # Rename the original implementation to _generate_signals_impl
-    def _generate_signals_impl(self, OHLC):
-        """
-        Internal implementation of signal generation.
-        """
-        if not self.best_params:
-            raise ValueError("Rules have not been trained yet. Call train_rules first.")
-
-        # Ensure OHLC is in the right format
-        if not isinstance(OHLC, pd.DataFrame):
-            if isinstance(OHLC, tuple) or isinstance(OHLC, list):
-                if isinstance(OHLC[0], pd.Series):
-                    OHLC = pd.DataFrame({
-                        'Open': OHLC[0],
-                        'High': OHLC[1] if len(OHLC) > 1 else None,
-                        'Low': OHLC[2] if len(OHLC) > 2 else None,
-                        'Close': OHLC[3] if len(OHLC) > 3 else None,
-                        'Volume': OHLC[4] if len(OHLC) > 4 else None
-                    })
-                else:
-                    OHLC = pd.DataFrame({
-                        'Open': OHLC[0] if len(OHLC) > 0 else [],
-                        'High': OHLC[1] if len(OHLC) > 1 else [],
-                        'Low': OHLC[2] if len(OHLC) > 2 else [],
-                        'Close': OHLC[3] if len(OHLC) > 3 else [],
-                        'Volume': OHLC[4] if len(OHLC) > 4 else []
-                    })
-
-        print(f"DEBUG - Generating signals for {len(self.best_indices)} rules")
-
-        all_signals = []
-        for i, (param, idx) in enumerate(zip(self.best_params, self.best_indices)):
-            rule_func = self.rules[idx][0]
-            _, signals = rule_func(param, OHLC)
-
-            # Count signal types for debugging
-            buy_count = (signals == 1).sum()
-            sell_count = (signals == -1).sum()
-            neutral_count = (signals == 0).sum()
-            print(f"DEBUG - Rule{idx} signals: Buy={buy_count}, Sell={sell_count}, Neutral={neutral_count}")
-
-            # Print sample signals for debugging
-            t = 100  # Arbitrary index for debugging
-            if len(signals) > t:
-                print(f"DEBUG - Rule{idx} at t={t}: {signals.iloc[t]}")
-                if 'Close' in OHLC:
-                    print(f"DEBUG - Price at t={t}: {OHLC['Close'].iloc[t]}")
-                    if t+1 < len(signals) and t+1 < len(OHLC):
-                        log_return = np.log(OHLC['Close'].iloc[t+1] / OHLC['Close'].iloc[t])
-                        print(f"DEBUG - Signal applied to return at t={t+1}: {signals.iloc[t] * log_return}")
-
-            all_signals.append(signals)
-
-        # Combine signals using weights if enabled
-        if self.use_weights and all_signals:
-            # Normalize weights based on scores if no explicit weights provided
-            if self.weights is None:
-                total_score = sum(self.best_scores)
-                if total_score > 0:
-                    self.weights = [score / total_score for score in self.best_scores]
-                else:
-                    self.weights = [1.0 / len(self.best_scores)] * len(self.best_scores)
-
-            # Apply weights to signals
-            signals_df = pd.DataFrame(all_signals).T
-
-            # Check for and handle NaN values
-            signals_df = signals_df.fillna(0)
-
-            weighted_signals = signals_df.multiply(self.weights, axis=1)
-            combined_signals = weighted_signals.sum(axis=1)
-
-            # Convert to -1/0/1 based on threshold
-            threshold = 0.2
-            final_signals = pd.Series(0, index=combined_signals.index)
-            final_signals[combined_signals > threshold] = 1
-            final_signals[combined_signals < -threshold] = -1
-        else:
-            # Simple majority vote
-            signals_df = pd.DataFrame(all_signals).T
-
-            # Handle NaN values
-            signals_df = signals_df.fillna(0)
-            print(f"DEBUG - After dropping NaNs, signals_df has {len(signals_df)} rows")
-
-            buy_votes = (signals_df == 1).sum(axis=1)
-            sell_votes = (signals_df == -1).sum(axis=1)
-
-            final_signals = pd.Series(0, index=signals_df.index)
-            final_signals[buy_votes > sell_votes] = 1
-            final_signals[sell_votes > buy_votes] = -1
-
-        # Debug signal counts
-        buy_count = (final_signals == 1).sum()
-        sell_count = (final_signals == -1).sum()
-        neutral_count = (final_signals == 0).sum()
-        print(f"DEBUG - Combined signals: Buy={buy_count}, Sell={sell_count}, Neutral={neutral_count}")
-
-        # If we need to mimic the old DataFrame return format (for compatibility)
-        if 'LogReturn' in OHLC.columns:
-            log_returns = OHLC['LogReturn']
-        else:
-            log_returns = np.log(OHLC['Close'] / OHLC['Close'].shift(1)).fillna(0)
-
-        # Create a DataFrame to match the expected format in backtester
-        result_df = pd.DataFrame({
-            'Signal': final_signals,
-            'LogReturn': log_returns
-        })
-
-        return result_df  # Return DataFrame to maintain compatibility
-    def generate_signals(self, OHLC):
-        """
-        Generate trading signals using the best rules and parameters
-        """
-        if not self.best_params:
-            raise ValueError("Rules have not been trained yet. Call train_rules first.")
-        
-        # Ensure OHLC is in the right format
-        if not isinstance(OHLC, pd.DataFrame):
-            if isinstance(OHLC, tuple) or isinstance(OHLC, list):
-                if isinstance(OHLC[0], pd.Series):
-                    OHLC = pd.DataFrame({
-                        'Open': OHLC[0],
-                        'High': OHLC[1] if len(OHLC) > 1 else None,
-                        'Low': OHLC[2] if len(OHLC) > 2 else None,
-                        'Close': OHLC[3] if len(OHLC) > 3 else None,
-                        'Volume': OHLC[4] if len(OHLC) > 4 else None
-                    })
-                else:
-                    OHLC = pd.DataFrame({
-                        'Open': OHLC[0] if len(OHLC) > 0 else [],
-                        'High': OHLC[1] if len(OHLC) > 1 else [],
-                        'Low': OHLC[2] if len(OHLC) > 2 else [],
-                        'Close': OHLC[3] if len(OHLC) > 3 else [],
-                        'Volume': OHLC[4] if len(OHLC) > 4 else []
-                    })
-        
-        print(f"DEBUG - Generating signals for {len(self.best_indices)} rules")
-        
-        all_signals = []
-        for i, (param, idx) in enumerate(zip(self.best_params, self.best_indices)):
-            rule_func = self.rules[idx][0]
-            _, signals = rule_func(param, OHLC)
-            
-            # Count signal types for debugging
-            buy_count = (signals == 1).sum()
-            sell_count = (signals == -1).sum()
-            neutral_count = (signals == 0).sum()
-            print(f"DEBUG - Rule{idx} signals: Buy={buy_count}, Sell={sell_count}, Neutral={neutral_count}")
-            
-            # Print sample signals for debugging
-            t = 100  # Arbitrary index for debugging
-            if len(signals) > t:
-                print(f"DEBUG - Rule{idx} at t={t}: {signals.iloc[t]}")
-                if 'Close' in OHLC:
-                    print(f"DEBUG - Price at t={t}: {OHLC['Close'].iloc[t]}")
-                    if t+1 < len(signals) and t+1 < len(OHLC):
-                        log_return = np.log(OHLC['Close'].iloc[t+1] / OHLC['Close'].iloc[t])
-                        print(f"DEBUG - Signal applied to return at t={t+1}: {signals.iloc[t] * log_return}")
-            
-            all_signals.append(signals)
-        
-        # Combine signals using weights if enabled
-        if self.use_weights and all_signals:
-            # Normalize weights based on scores
-            total_score = sum(self.best_scores)
-            if total_score > 0:
-                weights = [score / total_score for score in self.best_scores]
-            else:
-                weights = [1.0 / len(self.best_scores)] * len(self.best_scores)
-            
-            # Apply weights to signals
-            signals_df = pd.DataFrame(all_signals).T
-            
-            # Check for and handle NaN values
-            signals_df = signals_df.fillna(0)
-            
-            weighted_signals = signals_df.multiply(weights, axis=1)
-            combined_signals = weighted_signals.sum(axis=1)
-            
-            # Convert to -1/0/1 based on threshold
-            threshold = 0.2
-            final_signals = pd.Series(0, index=combined_signals.index)
-            final_signals[combined_signals > threshold] = 1
-            final_signals[combined_signals < -threshold] = -1
-        else:
-            # Simple majority vote
-            signals_df = pd.DataFrame(all_signals).T
-            
-            # Handle NaN values
-            signals_df = signals_df.fillna(0)
-            print(f"DEBUG - After dropping NaNs, signals_df has {len(signals_df)} rows")
-            
-            buy_votes = (signals_df == 1).sum(axis=1)
-            sell_votes = (signals_df == -1).sum(axis=1)
-            
-            final_signals = pd.Series(0, index=signals_df.index)
-            final_signals[buy_votes > sell_votes] = 1
-            final_signals[sell_votes > buy_votes] = -1
-        
-        # Debug signal counts
-        buy_count = (final_signals == 1).sum()
-        sell_count = (final_signals == -1).sum()
-        neutral_count = (final_signals == 0).sum()
-        print(f"DEBUG - Combined signals: Buy={buy_count}, Sell={sell_count}, Neutral={neutral_count}")
-        
-        return final_signals
-
 
     def save_params(self, filename=None):
         """
