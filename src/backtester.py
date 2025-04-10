@@ -104,6 +104,7 @@ class Backtester:
         print(f"DEBUG - Signals value counts: {signals.value_counts().to_dict()}")
 
         # Calculate strategy returns (element-wise multiplication)
+        signals = signals.shift(1).fillna(0)
         strategy_returns = signals * returns 
 
         # Drop NaN values

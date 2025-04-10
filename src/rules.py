@@ -53,7 +53,7 @@ def Rule0(param, OHLC):
     
     # Calculate returns for evaluation
     log_returns = np.log(close_prices / close_prices.shift(1)).fillna(0)
-    strategy_returns = signals.shift(1).fillna(0) * log_returns
+    strategy_returns = signals.fillna(0) * log_returns
     
     # Calculate Sharpe ratio
     sharpe = np.sqrt(252) * strategy_returns.mean() / strategy_returns.std()
@@ -86,7 +86,7 @@ def Rule1(param, OHLC):
     
     # Calculate returns for evaluation
     log_returns = np.log(close_prices / close_prices.shift(1)).fillna(0)
-    strategy_returns = signals.shift(1).fillna(0) * log_returns
+    strategy_returns = signals.fillna(0) * log_returns
     
     # Calculate Sharpe ratio
     sharpe = np.sqrt(252) * strategy_returns.mean() / strategy_returns.std()
@@ -117,7 +117,7 @@ def Rule2(param, OHLC):
     
     # Calculate returns for evaluation
     log_returns = np.log(close_prices / close_prices.shift(1)).fillna(0)
-    strategy_returns = signals.shift(1).fillna(0) * log_returns
+    strategy_returns = signals.fillna(0) * log_returns
     
     # Calculate Sharpe ratio
     sharpe = np.sqrt(252) * strategy_returns.mean() / strategy_returns.std()
@@ -149,7 +149,7 @@ def Rule3(param, OHLC):
     
     # Calculate returns for evaluation
     log_returns = np.log(close_prices / close_prices.shift(1)).fillna(0)
-    strategy_returns = signals.shift(1).fillna(0) * log_returns
+    strategy_returns = signals.fillna(0) * log_returns
     
     # Calculate Sharpe ratio
     sharpe = np.sqrt(252) * strategy_returns.mean() / strategy_returns.std()
@@ -176,7 +176,7 @@ def Rule4(param, OHLC):
     
     # Calculate returns for evaluation
     log_returns = np.log(close_prices / close_prices.shift(1)).fillna(0)
-    strategy_returns = signals.shift(1).fillna(0) * log_returns
+    strategy_returns = signals.fillna(0) * log_returns
     
     # Calculate Sharpe ratio
     sharpe = np.sqrt(252) * strategy_returns.mean() / strategy_returns.std()
@@ -203,7 +203,7 @@ def Rule5(param, OHLC):
     
     # Calculate returns for evaluation
     log_returns = np.log(close_prices / close_prices.shift(1)).fillna(0)
-    strategy_returns = signals.shift(1).fillna(0) * log_returns
+    strategy_returns = signals.fillna(0) * log_returns
     
     # Calculate Sharpe ratio
     sharpe = np.sqrt(252) * strategy_returns.mean() / strategy_returns.std()
@@ -232,7 +232,7 @@ def Rule6(param, OHLC):
     # Calculate returns for evaluation
     close_prices = OHLC['Close']
     log_returns = np.log(close_prices / close_prices.shift(1)).fillna(0)
-    strategy_returns = signals.shift(1).fillna(0) * log_returns
+    strategy_returns = signals.fillna(0) * log_returns
     
     # Calculate Sharpe ratio
     sharpe = np.sqrt(252) * strategy_returns.mean() / strategy_returns.std()
@@ -262,7 +262,7 @@ def Rule7(param, OHLC):
     
     # Calculate returns for evaluation
     log_returns = np.log(close_prices / close_prices.shift(1)).fillna(0)
-    strategy_returns = signals.shift(1).fillna(0) * log_returns
+    strategy_returns = signals.fillna(0) * log_returns
     
     # Calculate Sharpe ratio
     sharpe = np.sqrt(252) * strategy_returns.mean() / strategy_returns.std()
@@ -297,7 +297,7 @@ def Rule8(param, OHLC):
     
     # Calculate returns for evaluation
     log_returns = np.log(close_prices / close_prices.shift(1)).fillna(0)
-    strategy_returns = signals.shift(1).fillna(0) * log_returns
+    strategy_returns = signals.fillna(0) * log_returns
     
     # Calculate Sharpe ratio
     sharpe = np.sqrt(252) * strategy_returns.mean() / strategy_returns.std()
@@ -327,7 +327,7 @@ def Rule9(param, OHLC):
     
     # Calculate returns for evaluation
     log_returns = np.log(close_prices / close_prices.shift(1)).fillna(0)
-    strategy_returns = signals.shift(1).fillna(0) * log_returns
+    strategy_returns = signals.fillna(0) * log_returns
     
     # Calculate Sharpe ratio
     sharpe = np.sqrt(252) * strategy_returns.mean() / strategy_returns.std()
@@ -356,7 +356,7 @@ def Rule10(param, OHLC):
     
     # Calculate returns for evaluation
     log_returns = np.log(close_prices / close_prices.shift(1)).fillna(0)
-    strategy_returns = signals.shift(1).fillna(0) * log_returns
+    strategy_returns = signals.fillna(0) * log_returns
     
     # Calculate Sharpe ratio
     sharpe = np.sqrt(252) * strategy_returns.mean() / strategy_returns.std()
@@ -402,7 +402,7 @@ def Rule11(param, OHLC):
     
     # Calculate returns for evaluation
     log_returns = np.log(close_prices / close_prices.shift(1)).fillna(0)
-    strategy_returns = signals.shift(1).fillna(0) * log_returns
+    strategy_returns = signals.fillna(0) * log_returns
     
     # Calculate Sharpe ratio
     sharpe = np.sqrt(252) * strategy_returns.mean() / strategy_returns.std()
@@ -436,7 +436,7 @@ def Rule12(param, OHLC):
     
     # Calculate returns for evaluation
     log_returns = np.log(close_prices / close_prices.shift(1)).fillna(0)
-    strategy_returns = signals.shift(1).fillna(0) * log_returns
+    strategy_returns = signals.fillna(0) * log_returns
     
     # Calculate Sharpe ratio
     sharpe = np.sqrt(252) * strategy_returns.mean() / strategy_returns.std()
@@ -491,7 +491,7 @@ def Rule13(param, OHLC):
     
     # Calculate returns for evaluation
     log_returns = np.log(close_prices / close_prices.shift(1)).fillna(0)
-    strategy_returns = signals.shift(1).fillna(0) * log_returns
+    strategy_returns = signals.fillna(0) * log_returns
     
     # Calculate Sharpe ratio
     sharpe = np.sqrt(252) * strategy_returns.mean() / strategy_returns.std()
@@ -522,7 +522,7 @@ def Rule14(param, OHLC):
     
     # Calculate returns for evaluation
     log_returns = np.log(close_prices / close_prices.shift(1)).fillna(0)
-    strategy_returns = signals.shift(1).fillna(0) * log_returns
+    strategy_returns = signals.fillna(0) * log_returns
     
     # Calculate Sharpe ratio
     sharpe = np.sqrt(252) * strategy_returns.mean() / strategy_returns.std()
@@ -551,7 +551,7 @@ def Rule15(param, OHLC):
     
     # Calculate returns for evaluation
     log_returns = np.log(close_prices / close_prices.shift(1)).fillna(0)
-    strategy_returns = signals.shift(1).fillna(0) * log_returns
+    strategy_returns = signals.fillna(0) * log_returns
     
     # Calculate Sharpe ratio
     sharpe = np.sqrt(252) * strategy_returns.mean() / strategy_returns.std()

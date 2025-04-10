@@ -44,28 +44,28 @@ def main():
     if success:
         print(f"\nBacktest completed successfully in {elapsed_time:.2f} seconds.")
         
-        # Compare strategies if requested
-        if args.train and args.test:
-            # Create different strategy configurations for comparison
-            strategies = []
+        # # Compare strategies if requested
+        # if args.train and args.test:
+        #     # Create different strategy configurations for comparison
+        #     strategies = []
             
-            # Original strategy
-            strategies.append(config)
+        #     # Original strategy
+        #     strategies.append(config)
             
-            # Create a copy with different configuration
-            if config.use_weights:
-                # Add unweighted strategy
-                unweighted_config = Config()
-                unweighted_config.data_file = config.data_file
-                unweighted_config.train_size = config.train_size
-                unweighted_config.use_weights = False
-                unweighted_config.train = True
-                unweighted_config.test = True
-                strategies.append(unweighted_config)
+        #     # Create a copy with different configuration
+        #     if config.use_weights:
+        #         # Add unweighted strategy
+        #         unweighted_config = Config()
+        #         unweighted_config.data_file = config.data_file
+        #         unweighted_config.train_size = config.train_size
+        #         unweighted_config.use_weights = False
+        #         unweighted_config.train = True
+        #         unweighted_config.test = True
+        #         strategies.append(unweighted_config)
             
-            if len(strategies) > 1:
-                print("\nComparing strategies:")
-                backtester.compare_strategies(strategies, ga_module=ga)
+            # if len(strategies) > 1:
+            #     print("\nComparing strategies:")
+            #     backtester.compare_strategies(strategies, ga_module=ga)
     else:
         print("\nBacktest failed.")
     
