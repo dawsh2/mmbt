@@ -167,32 +167,43 @@ class WeightedStrategy(Strategy):
 
     def generate_signals(self, OHLC, rule_params=None, filter_regime=False):
         """Generate trading signals using weighted rules."""
-        # Call to rules.generate_signals updated to handle legacy API
-        final_signal = self.rules.generate_signals(OHLC, rule_params, filter_regime, self.weights)
+        # Work around the signature mismatch by directly applying our logic here
+        # instead of passing all arguments to rules.generate_signals
 
-        if isinstance(final_signal, pd.Series):
-            # Apply regime filter if needed
-            if filter_regime:
-                final_signal = self._apply_regime_filter(final_signal, OHLC)
+        # Get basic signals from the rules
+        signals_df = self.rules.generate_signals(OHLC)
 
-            # Create a proper DataFrame for backtester compatibility
-            if 'LogReturn' in OHLC.columns:
-                log_returns = OHLC['LogReturn']
-            else:
-                log_returns = np.log(OHLC['Close'] / OHLC['Close'].shift(1)).fillna(0)
-
-            result_df = pd.DataFrame({
-                'Signal': final_signal,
-                'LogReturn': log_returns
-            })
-            self.signals = final_signal
-            return result_df
+        # Extract signal column
+        if isinstance(signals_df, pd.DataFrame) and 'Signal' in signals_df.columns:
+            final_signal = signals_df['Signal']
         else:
-            # It's already a DataFrame with the right format
-            self.signals = final_signal['Signal']
-            return final_signal
+            final_signal = signals_df
 
+        # Apply regime filter if needed
+        if filter_regime:
+            final_signal = self._apply_regime_filter(final_signal, OHLC)
 
+        # If it's already a DataFrame with LogReturn, return it
+        if isinstance(signals_df, pd.DataFrame) and 'LogReturn' in signals_df.columns:
+            # Update the Signal column if we modified it
+            signals_df['Signal'] = final_signal
+            return signals_df
+
+        # Otherwise, create a proper DataFrame for backtester compatibility
+        if 'LogReturn' in OHLC.columns:
+            log_returns = OHLC['LogReturn']
+        else:
+            log_returns = np.log(OHLC['Close'] / OHLC['Close'].shift(1)).fillna(0)
+
+        result_df = pd.DataFrame({
+            'Signal': final_signal,
+            'LogReturn': log_returns
+        })
+
+        self.signals = final_signal
+        return result_df
+
+ 
 
     def _apply_regime_filter(self, signal_series, OHLC):
         """Apply regime filtering to signals."""
