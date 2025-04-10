@@ -69,8 +69,13 @@ def validate_backtest_pipeline():
     print("DEBUG - Non-zero strategy return count:", (strat_returns != 0).sum())
     print("DEBUG - strat_returns describe():\n", strat_returns.describe())
 
-    # Evaluate metrics
-    calculate_metrics(strat_returns, signals=signals)
+    # Evaluate metrics - FIX: Assign the return value to metrics
+    metrics = calculate_metrics(strat_returns, signals=signals)
+    
+    # FIX: Add fail-fast check
+    if not metrics:
+        print("🚨 Metrics failed or returned empty. Check inputs.")
+        return
 
     print("\n[Validation Report]")
     print("-" * 40)
@@ -83,4 +88,3 @@ def validate_backtest_pipeline():
 
 if __name__ == "__main__":
     validate_backtest_pipeline()
-

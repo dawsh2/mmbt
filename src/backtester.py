@@ -168,30 +168,32 @@ class Backtester:
             print(f"Saved results to {self.config.output_file}")
         except Exception as e:
             print(f"Error saving results: {str(e)}")
-    
+
+
     def compare_strategies(self, strategies_list, ga_module=None):
         """Compare multiple strategies on the same data."""
         if self.data_handler.data is None or self.data_handler.data.empty:
             self.data_handler.load_data()
             self.data_handler.preprocess()
             self.data_handler.split_data()
-        
+
         # Train and test each strategy
         results_list = []
         names_list = []
-        
+
         for strategy_config in strategies_list:
             # Create a backtester with this strategy
-            strategy = StrategyFactory.create_strategy(strategy_config)
+            strategy = StrategyFactory.create_strategy(strategy_config) # Create strategy based on the current config
             backtester = Backtester(strategy_config, self.data_handler, strategy)
-            
+
             # Run the backtest
             backtester.run(ga_module)
-            
+
             # Collect results
             results_list.append(backtester.results['performance']['strategy'])
             names_list.append(str(strategy))
-        
+
         # Compare strategies
         from metrics import compare_strategies
         compare_strategies(results_list, names_list)
+
