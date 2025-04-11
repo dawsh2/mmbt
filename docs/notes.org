@@ -1,0 +1,10 @@
+
+Rules first optimization:
+Optimization completed in 3155.81 seconds
+Optimized performance:
+  num_trades: 2293
+  total_return: 8.098885246026866
+  average_return: 3.396259326481886e-05
+  sharpe: 0.3901629879793569
+  optimization_time: 3155.813092947006
+Rules-First optimization completed in 3155.81 seconds

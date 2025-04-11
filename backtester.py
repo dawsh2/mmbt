@@ -19,11 +19,11 @@ class Backtester:
 
     def run(self, use_test_data=False):
         # === Debug: Track number of times run() has been called on this instance
-        if hasattr(self, "run_count"):
-            self.run_count += 1
-        else:
-            self.run_count = 1
-        print(f"\n📊 Backtest Run #{self.run_count} — {'Test' if use_test_data else 'Train'} Data")
+        # if hasattr(self, "run_count"):
+        #     self.run_count += 1
+        # else:
+        #     self.run_count = 1
+        # print(f"\n📊 Backtest Run #{self.run_count} — {'Test' if use_test_data else 'Train'} Data")
 
         self.strategy.reset()
         all_signals = []
@@ -97,12 +97,12 @@ class Backtester:
                     self.entry_signal = None
 
         # Print first few trades for debugging
-        print("\n=== Sample Trades ===")
-        for trade in self.trades[:10]:
-            print(
-                f"{trade[0]} → {trade[3]} | {trade[1]} at {trade[2]:.2f} → {trade[4]:.2f} "
-                f"| Signal: {trade[6]} → {trade[7]} | Log Return: {trade[5]:.6f}"
-            )
+        # print("\n=== Sample Trades ===")
+        # for trade in self.trades[:10]:
+        #     print(
+        #         f"{trade[0]} → {trade[3]} | {trade[1]} at {trade[2]:.2f} → {trade[4]:.2f} "
+        #         f"| Signal: {trade[6]} → {trade[7]} | Log Return: {trade[5]:.6f}"
+        #     )
 
         return {
             "trades": self.trades,
