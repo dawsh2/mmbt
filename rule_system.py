@@ -76,14 +76,6 @@ class EventDrivenRuleSystem:
         self.best_scores = {rule_index: data[1] for rule_index, data in top_rules}
         self.trained_rule_objects = {rule_index: data[2](self.best_params[rule_index]) for rule_index, data in top_rules}
 
-    def get_top_n_strategy(self):
-        return TopNStrategy(rule_objects=list(self.trained_rule_objects.values()))
-
-    def reset(self):
-        for rule in self.trained_rule_objects.values():
-            rule.reset()
-    
- 
 
     def get_top_n_strategy(self):
         """

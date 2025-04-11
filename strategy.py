@@ -1,23 +1,7 @@
 from collections import deque
 import pandas as pd
 import numpy as np
-from ta import ema
-from ta import DEMA
-from ta import TEMA
-from ta import rsi
-from ta import stoch
-from ta import vortex_indicator_pos
-from ta import vortex_indicator_neg
-from ta import ichimoku_a
-from ta import ichimoku_b
-from ta import cci
-from ta import keltner_channel_hband
-from ta import keltner_channel_lband
-from ta import donchian_channel_hband
-from ta import donchian_channel_lband
-from ta import bollinger_hband
-from ta import bollinger_lband
-# 
+
 
 
 class Strategy:
@@ -1423,36 +1407,42 @@ class Rule15:
         self.in_position = False
         self.position_type = None        
 
-        
+
 
 class TopNStrategy:
     """
-    Combines multiple event-driven rule objects into a single strategy.
-    Emits 1, -1, or 0 based on signal consensus (simple average vote).
+    A basic strategy that either returns the signal of the first rule
+    or always returns a neutral signal (0). This modification handles
+    both integer and dictionary returns from individual rules.
     """
     def __init__(self, rule_objects):
         self.rules = rule_objects
-        self.last_signal = None # Store the last emitted signal
+        self.last_signal = None
 
     def on_bar(self, event):
         bar = event.bar
-        rule_signals = [rule.on_bar(bar) for rule in self.rules]
-        combined = self.combine_signals(rule_signals)
+        combined_signal = 0  # Default to neutral
+
+        if self.rules:
+            first_rule_output = self.rules[0].on_bar(bar)
+            if isinstance(first_rule_output, dict) and 'signal' in first_rule_output:
+                combined_signal = first_rule_output['signal']
+            elif isinstance(first_rule_output, (int, float)):  # Handle integer or float signal
+                combined_signal = int(first_rule_output)
+            # Option 2: Always return neutral (more explicitly innocuous)
+            # combined_signal = 0
 
         self.last_signal = {
             "timestamp": bar["timestamp"],
-            "signal": combined,
+            "signal": combined_signal,
             "price": bar["Close"]
         }
-        return self.last_signal # Return the signal dictionary
+        return self.last_signal
 
     def combine_signals(self, signals):
-        # Basic average-vote logic
-        avg = sum(signals) / len(signals)
-        if avg > 0.7:
-            return 1
-        elif avg < -0.7:
-            return -1
+        # This method is likely not used if on_bar directly returns a signal
+        if signals:
+            return signals[0]  # Just return the first signal
         return 0
 
     def reset(self):

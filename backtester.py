@@ -18,7 +18,7 @@ class Backtester:
 
 
     def run(self, use_test_data=False):
-        === Debug: Track number of times run() has been called on this instance
+        # === Debug: Track number of times run() has been called on this instance
         if hasattr(self, "run_count"):
             self.run_count += 1
         else:
@@ -112,20 +112,38 @@ class Backtester:
             "total_percent_return": (math.exp(sum([t[5] for t in self.trades])) - 1) * 100 if self.trades else 0
         }
  
-    
- 
+
+    # WARNING: The following is only accurate for minute data
     def calculate_sharpe(self, risk_free_rate=0):
-        returns = []
-        for trade in self.trades:
-            returns.append(trade[5]) # Log returns
+        """
+        Calculates the annualized Sharpe ratio for minute data, considering only market hours
+        (assuming 6.5 hours per day).
+
+        Args:
+            self: The instance of the Backtester class.
+            risk_free_rate (float): The annualized risk-free rate (default is 0).
+
+        Returns:
+            float: The annualized Sharpe ratio. Returns 0.0 if there are fewer than 2 trades.
+        """
+        returns = [trade[5] for trade in self.trades]  # Extract log returns
 
         if len(returns) < 2:
             return 0.0
 
         returns_series = pd.Series(returns)
         excess_returns = returns_series - risk_free_rate
-        sharpe_ratio = excess_returns.mean() / excess_returns.std() * np.sqrt(252) # Assuming daily data, annualized
+
+        # Calculate the number of trading minutes in a year
+        minutes_per_day = 6.5 * 60
+        trading_days_per_year = 252  # Standard for US markets
+        minutes_per_year = minutes_per_day * trading_days_per_year
+
+        # Annualize the Sharpe ratio by the square root of the number of periods in a year
+        sharpe_ratio = (excess_returns.mean() / excess_returns.std()) * np.sqrt(minutes_per_year)
+
         return sharpe_ratio
+    
 
     def reset(self):
         self.signals = []
