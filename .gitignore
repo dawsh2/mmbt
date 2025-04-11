@@ -1,0 +1,36 @@
+# macOS
+.DS_Store
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Vim
+*.swp
+*.swo
+*.swn
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# Sublime
+*.sublime-workspace
+*.sublime-project
+
+# JetBrains (PyCharm, IntelliJ, etc.)
+.idea/
+
+# General backup and temp files
+*.bak
+*.tmp
+*.log
+*.orig
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Jupyter
+.ipynb_checkpoints/
