@@ -105,18 +105,19 @@ class Rule0:
             self.fast_sma_history.append(fast_sma)
             self.slow_sma_history.append(slow_sma)
 
-            if len(self.fast_sma_history) >= 2 and len(self.slow_sma_history) >= 2:
-                prev_fast_sma = self.fast_sma_history[-2]
-                prev_slow_sma = self.slow_sma_history[-2]
+            # Key change: Check the current relationship between SMAs
+            # rather than only detecting crossovers
+            if len(self.fast_sma_history) >= 1 and len(self.slow_sma_history) >= 1:
                 current_fast_sma = self.fast_sma_history[-1]
                 current_slow_sma = self.slow_sma_history[-1]
 
-                if prev_fast_sma < prev_slow_sma and current_fast_sma > current_slow_sma:
-                    self.current_signal = 1  # Buy signal
-                elif prev_fast_sma > prev_slow_sma and current_fast_sma < current_slow_sma:
-                    self.current_signal = -1 # Sell signal
+                # Signal based on current relationship, not just crossover
+                if current_fast_sma > current_slow_sma:
+                    self.current_signal = 1  # Bullish state
+                elif current_fast_sma < current_slow_sma:
+                    self.current_signal = -1  # Bearish state
                 else:
-                    self.current_signal = 0
+                    self.current_signal = 0  # Equal (rare)
             else:
                 self.current_signal = 0
         else:
@@ -130,10 +131,9 @@ class Rule0:
         self.current_signal = 0
 
 
-
 class Rule1:
     """
-    Event-driven version of Rule1: Simple Moving Average Crossover (formerly Rule1) - Optimized SMA.
+    Event-driven version of Rule1: Simple Moving Average Crossover - Optimized SMA with persistent signals.
     """
     def __init__(self, param):
         self.ma1_period = param['ma1']
@@ -165,18 +165,18 @@ class Rule1:
             sma2 = self.sum2 / self.ma2_period
             self.s2_history.append(sma2)
 
-        if len(self.s1_history) >= 2 and len(self.s2_history) >= 2:
-            prev_s1 = self.s1_history[-2]
-            prev_s2 = self.s2_history[-2]
+        if len(self.s1_history) >= 1 and len(self.s2_history) >= 1:
+            # Get the most recent values
             curr_s1 = self.s1_history[-1]
             curr_s2 = self.s2_history[-1]
 
-            if prev_s1 >= prev_s2 and curr_s1 < curr_s2:
-                self.current_signal = -1
-            elif prev_s1 <= prev_s2 and curr_s1 > curr_s2:
-                self.current_signal = 1
+            # Signal based on current MA relationship, not just crossover
+            if curr_s1 > curr_s2:
+                self.current_signal = 1  # Bullish state
+            elif curr_s1 < curr_s2:
+                self.current_signal = -1  # Bearish state
             else:
-                self.current_signal = 0
+                self.current_signal = 0  # Equal (rare)
         else:
             self.current_signal = 0
         return self.current_signal
@@ -193,7 +193,7 @@ class Rule1:
 
 class Rule2:
     """
-    Event-driven version of Rule2: EMA Crossover with MA Confirmation (formerly Rule2) - Fully Optimized.
+    Event-driven version of Rule2: EMA Crossover with MA Confirmation - Fully Optimized with persistent signals.
     """
     def __init__(self, param):
         self.ema1_period = param['ema1_period']
@@ -230,17 +230,17 @@ class Rule2:
         else:
             self.ma2_history.append(np.nan)
 
-        if len(self.ema1_history) >= 2 and len(self.ma2_history) >= 1:
-            prev_ema1 = self.ema1_history[-2]
+        if len(self.ema1_history) >= 1 and len(self.ma2_history) >= 1:
             curr_ema1 = self.ema1_history[-1]
-            prev_ma2 = self.ma2_history[-2] if len(self.ma2_history) >= 2 else None
             curr_ma2 = self.ma2_history[-1]
             current_price = close
 
-            if not np.isnan(curr_ma2) and not np.isnan(curr_ema1) and not np.isnan(prev_ema1):
-                if prev_ema1 <= prev_ma2 and curr_ema1 > curr_ma2 and current_price > curr_ma2:
+            if not np.isnan(curr_ma2) and not np.isnan(curr_ema1):
+                # Persistent signal based on current state, not just crossover
+                # Also includes price confirmation
+                if curr_ema1 > curr_ma2 and current_price > curr_ma2:
                     self.current_signal = 1
-                elif prev_ema1 >= prev_ma2 and curr_ema1 < curr_ma2 and current_price < curr_ma2:
+                elif curr_ema1 < curr_ma2 and current_price < curr_ma2:
                     self.current_signal = -1
                 else:
                     self.current_signal = 0
@@ -259,9 +259,10 @@ class Rule2:
         self.current_signal = 0
         self.alpha_ema1 = 2 / (self.ema1_period + 1) if self.ema1_period > 0 else 0
 
+
 class Rule3:
     """
-    Event-driven version of Rule3: EMA and EMA (formerly Rule3) - Optimized.
+    Event-driven version of Rule3: EMA and EMA - Optimized with persistent signals.
     """
     def __init__(self, param):
         self.ema1_period = param['ema1_period']
@@ -299,17 +300,16 @@ class Rule3:
         else:
             self.ema2_history.append(np.nan)
 
-        if len(self.ema1_history) >= 2 and len(self.ema2_history) >= 2:
-            prev_ema1 = self.ema1_history[-2]
+        if len(self.ema1_history) >= 1 and len(self.ema2_history) >= 1:
             curr_ema1 = self.ema1_history[-1]
-            prev_ema2 = self.ema2_history[-2]
             curr_ema2 = self.ema2_history[-1]
 
-            if not np.isnan(prev_ema1) and not np.isnan(curr_ema1) and not np.isnan(prev_ema2) and not np.isnan(curr_ema2):
-                if prev_ema1 >= prev_ema2 and curr_ema1 < curr_ema2:
-                    self.current_signal = -1
-                elif prev_ema1 <= prev_ema2 and curr_ema1 > curr_ema2:
+            if not np.isnan(curr_ema1) and not np.isnan(curr_ema2):
+                # Persistent signal based on current relationship between EMAs
+                if curr_ema1 > curr_ema2:
                     self.current_signal = 1
+                elif curr_ema1 < curr_ema2:
+                    self.current_signal = -1
                 else:
                     self.current_signal = 0
             else:
@@ -327,7 +327,6 @@ class Rule3:
         self.current_signal = 0
         self.alpha_ema1 = 2 / (self.ema1_period + 1) if self.ema1_period > 0 else 0
         self.alpha_ema2 = 2 / (self.ema2_period + 1) if self.ema2_period > 0 else 0
-
 
 class Rule4:
     """
@@ -374,17 +373,17 @@ class Rule4:
             self.ma2_sum -= self.history[-(self.ma2_period + 1)]
         ma2_val = self.ma2_sum / self.ma2_period if self.ma2_count >= self.ma2_period else np.nan
 
+        # Fixed section of Rule4.on_bar()
         if len(self.history) >= max(self.dema1_period * 2 - 1 if self.dema1_period > 0 else 0, self.ma2_period):
-            prev_dema1 = self.dema1_value if len(self.history) >= self.dema1_period * 2 else np.nan
             curr_dema1 = self.dema1_value
-            prev_ma2 = ma2_val if len(self.history) >= self.ma2_period + 1 else np.nan
             curr_ma2 = ma2_val
 
-            if not np.isnan(prev_dema1) and not np.isnan(curr_dema1) and not np.isnan(prev_ma2) and not np.isnan(curr_ma2):
-                if prev_dema1 >= prev_ma2 and curr_dema1 < curr_ma2:
-                    self.current_signal = -1
-                elif prev_dema1 <= prev_ma2 and curr_dema1 > curr_ma2:
+            if not np.isnan(curr_dema1) and not np.isnan(curr_ma2):
+                # Persistent signal based on current state
+                if curr_dema1 > curr_ma2:
                     self.current_signal = 1
+                elif curr_dema1 < curr_ma2:
+                    self.current_signal = -1
                 else:
                     self.current_signal = 0
             else:
@@ -404,9 +403,10 @@ class Rule4:
         self.current_signal = 0
         self.alpha1 = 2 / (self.dema1_period + 1) if self.dema1_period > 0 else 0
 
+
 class Rule5:
     """
-    Event-driven version of Rule5: DEMA and DEMA (formerly Rule5) - Optimized.
+    Event-driven version of Rule5: DEMA and DEMA - Optimized with persistent signals.
     """
     def __init__(self, param):
         self.dema1_period = param['dema1_period']
@@ -474,17 +474,16 @@ class Rule5:
         else:
             self.dema2_history.append(np.nan)
 
-        if len(self.dema1_history) >= 2 and len(self.dema2_history) >= 2:
-            prev_dema1 = self.dema1_history[-2]
+        if len(self.dema1_history) >= 1 and len(self.dema2_history) >= 1:
             curr_dema1 = self.dema1_history[-1]
-            prev_dema2 = self.dema2_history[-2]
             curr_dema2 = self.dema2_history[-1]
 
-            if not np.isnan(prev_dema1) and not np.isnan(curr_dema1) and not np.isnan(prev_dema2) and not np.isnan(curr_dema2):
-                if prev_dema1 >= prev_dema2 and curr_dema1 < curr_dema2:
-                    self.current_signal = -1
-                elif prev_dema1 <= prev_dema2 and curr_dema1 > curr_dema2:
+            if not np.isnan(curr_dema1) and not np.isnan(curr_dema2):
+                # Persistent signal based on current DEMA relationship
+                if curr_dema1 > curr_dema2:
                     self.current_signal = 1
+                elif curr_dema1 < curr_dema2:
+                    self.current_signal = -1
                 else:
                     self.current_signal = 0
             else:
@@ -510,9 +509,10 @@ class Rule5:
         self.alpha2 = 2 / (self.dema2_period + 1) if self.dema2_period > 0 else 0
 
 
+
 class Rule6:
     """
-    Event-driven version of Rule6: TEMA and ma crossovers (formerly Rule6) - Optimized TEMA and MA.
+    Event-driven version of Rule6: TEMA and MA crossovers - Optimized TEMA and MA with persistent signals.
     """
     def __init__(self, param):
         self.tema1_period = param['tema1_period']
@@ -563,16 +563,15 @@ class Rule6:
         ma2_val = self.ma2_sum / self.ma2_period if self.ma2_count >= self.ma2_period else np.nan
 
         if len(self.history) >= max(self.tema1_period * 3 - 2 if self.tema1_period > 0 else 0, self.ma2_period):
-            prev_tema1 = self.tema1_value if len(self.history) >= self.tema1_period * 3 - 1 else np.nan
             curr_tema1 = self.tema1_value
-            prev_ma2 = ma2_val if len(self.history) >= self.ma2_period + 1 else np.nan
             curr_ma2 = ma2_val
 
-            if not np.isnan(prev_tema1) and not np.isnan(curr_tema1) and not np.isnan(prev_ma2) and not np.isnan(curr_ma2):
-                if prev_tema1 >= prev_ma2 and curr_tema1 < curr_ma2:
-                    self.current_signal = -1
-                elif prev_tema1 <= prev_ma2 and curr_tema1 > curr_ma2:
+            if not np.isnan(curr_tema1) and not np.isnan(curr_ma2):
+                # Persistent signal based on current TEMA vs MA relationship
+                if curr_tema1 > curr_ma2:
                     self.current_signal = 1
+                elif curr_tema1 < curr_ma2:
+                    self.current_signal = -1
                 else:
                     self.current_signal = 0
             else:
@@ -593,10 +592,9 @@ class Rule6:
         self.current_signal = 0
         self.alpha1 = 2 / (self.tema1_period + 1) if self.tema1_period > 0 else 0
 
-
 class Rule7:
     """
-    Event-driven version of Rule7: Stochastic crossover (formerly Rule7) - Further Optimized with deque.
+    Event-driven version of Rule7: Stochastic crossover - Further Optimized with persistent signals.
     """
     def __init__(self, param):
         self.stoch1_period = param['stoch1_period']
@@ -651,17 +649,16 @@ class Rule7:
         else:
             self.s2_value = np.nan
 
-        if len(self.s1_history) >= 2 and self.s2_value is not np.nan and len(self.s1_history) >= self.stochma2_period + 1:
-            prev_s1 = self.s1_history[-2]
-            curr_s1 = self.s1_history[-1]
-            prev_s2 = self.s2_value
-            curr_s2 = self.s2_value
+        if len(self.s1_history) >= 1 and self.s2_value is not np.nan and len(self.s1_history) >= self.stochma2_period:
+            curr_s1 = self.s1_history[-1]  # %K
+            curr_s2 = self.s2_value        # %D
 
-            if not np.isnan(prev_s1) and not np.isnan(curr_s1) and not np.isnan(prev_s2) and not np.isnan(curr_s2):
-                if prev_s1 >= prev_s2 and curr_s1 < curr_s2:
-                    self.current_signal = -1
-                elif prev_s1 <= prev_s2 and curr_s1 > curr_s2:
+            if not np.isnan(curr_s1) and not np.isnan(curr_s2):
+                # Persistent signal based on current %K vs %D relationship
+                if curr_s1 > curr_s2:
                     self.current_signal = 1
+                elif curr_s1 < curr_s2:
+                    self.current_signal = -1
                 else:
                     self.current_signal = 0
             else:
@@ -684,7 +681,7 @@ class Rule7:
 
 class Rule8:
     """
-    Event-driven version of Rule8: Vortex indicator crossover (formerly Rule8) - Optimized.
+    Event-driven version of Rule8: Vortex indicator crossover - Optimized with persistent signals.
     """
     def __init__(self, param):
         self.vortex1_period = param['vortex1_period']
@@ -775,16 +772,15 @@ class Rule8:
         else:
             self.s2_history.append(np.nan)
 
-        if len(self.s1_history) >= 2 and len(self.s2_history) >= 2:
-            prev_s1 = self.s1_history[-2]
-            curr_s1 = self.s1_history[-1]
-            prev_s2 = self.s2_history[-2]
-            curr_s2 = self.s2_history[-1]
+        if len(self.s1_history) >= 1 and len(self.s2_history) >= 1:
+            curr_s1 = self.s1_history[-1]  # +VI
+            curr_s2 = self.s2_history[-1]  # -VI
 
-            if not np.isnan(prev_s1) and not np.isnan(curr_s1) and not np.isnan(prev_s2) and not np.isnan(curr_s2):
-                if prev_s1 <= prev_s2 and curr_s1 > curr_s2:
+            if not np.isnan(curr_s1) and not np.isnan(curr_s2):
+                # Persistent signal based on current VI+ vs VI- relationship
+                if curr_s1 > curr_s2:
                     self.current_signal = 1
-                elif prev_s1 >= prev_s2 and curr_s1 < curr_s2:
+                elif curr_s1 < curr_s2:
                     self.current_signal = -1
                 else:
                     self.current_signal = 0
@@ -805,10 +801,11 @@ class Rule8:
         self.s1_history = []
         self.s2_history = []
         self.current_signal = 0
+        
 
 class Rule9:
     """
-    Event-driven version of Rule9: Ichimoku cloud - Incremental Calculation.
+    Event-driven version of Rule9: Ichimoku cloud - Incremental Calculation with persistent signals.
     """
     def __init__(self, param):
         self.p1 = param['p1']
@@ -866,28 +863,7 @@ class Rule9:
         senkou_span_a = self._calculate_senkou_span_a()
         senkou_span_b = self._calculate_senkou_span_b()
 
-        if len(self.close_history) >= self.n2:
-            shifted_close = list(self.close_history)[-self.n2]
-            shifted_span_a = np.nan
-            if len(self.senkou_span_a_history) >= self.n2:
-                shifted_span_a = list(self.senkou_span_a_history)[-self.n2]
-
-            shifted_span_b = np.nan
-            if len(self.senkou_span_b_history) >= self.n2:
-                shifted_span_b = list(self.senkou_span_b_history)[-self.n2]
-
-            if not np.isnan(shifted_span_a) and not np.isnan(shifted_span_b):
-                if shifted_close > shifted_span_a and shifted_close > shifted_span_b:
-                    self.current_signal = 1
-                elif shifted_close < shifted_span_a and shifted_close < shifted_span_b:
-                    self.current_signal = -1
-                else:
-                    self.current_signal = 0
-            else:
-                self.current_signal = 0
-        else:
-            self.current_signal = 0
-
+        # Store calculated values
         if not np.isnan(senkou_span_a):
             self.senkou_span_a_history.append(senkou_span_a)
         if not np.isnan(senkou_span_b):
@@ -896,6 +872,24 @@ class Rule9:
             self.conversion_line_history.append(conversion_line)
         if not np.isnan(base_line):
             self.base_line_history.append(base_line)
+
+        # Generate signal based on current price's relationship to the cloud
+        if len(self.senkou_span_a_history) >= 1 and len(self.senkou_span_b_history) >= 1:
+            current_span_a = self.senkou_span_a_history[-1]
+            current_span_b = self.senkou_span_b_history[-1]
+
+            if not np.isnan(current_span_a) and not np.isnan(current_span_b):
+                # Persistent signal based on price vs cloud relationship
+                if close > max(current_span_a, current_span_b):
+                    self.current_signal = 1  # Price above cloud (bullish)
+                elif close < min(current_span_a, current_span_b):
+                    self.current_signal = -1  # Price below cloud (bearish)
+                else:
+                    self.current_signal = 0  # Price inside cloud (neutral)
+            else:
+                self.current_signal = 0
+        else:
+            self.current_signal = 0
 
         return self.current_signal
 
@@ -911,10 +905,12 @@ class Rule9:
 
 class Rule10:
     """
-    Event-driven version of Rule10: RSI Overbought/Oversold (formerly Rule10) - Optimized.
+    Event-driven version of Rule10: RSI Overbought/Oversold - Optimized with persistent signals and zones.
     """
     def __init__(self, param):
         self.rsi1_period = param['rsi1_period']
+        self.overbought_level = param.get('c2_threshold', 70)  # Use c2_threshold or default to 70
+        self.oversold_level = 100 - self.overbought_level  # Complement of overbought level
         self.rsi_value = np.nan
         self.avg_gain = 0
         self.avg_loss = 0
@@ -923,6 +919,7 @@ class Rule10:
         self.loss_history = []
         self.alpha = 1 / self.rsi1_period if self.rsi1_period > 0 else 0
         self.current_signal = 0
+        self.last_zone = 'neutral'  # Track which zone we're in to maintain signal
 
     def on_bar(self, bar):
         close = bar['Close']
@@ -946,15 +943,24 @@ class Rule10:
                 rs = self.avg_gain / self.avg_loss
                 self.rsi_value = 100 - (100 / (1 + rs))
             else:
-                self.rsi_value = 100 if self.avg_gain > 0 else 50 # Handle cases with no loss
+                self.rsi_value = 100 if self.avg_gain > 0 else 50  # Handle cases with no loss
 
-            # Example RSI-based signal logic (adjust as per your original Rule10)
-            if self.rsi_value > 70:
-                self.current_signal = -1  # Oversold
-            elif self.rsi_value < 30:
-                self.current_signal = 1   # Overbought
+            # Signal with hysteresis for persistence
+            if self.rsi_value > self.overbought_level:
+                self.current_signal = -1  # Overbought condition (sell)
+                self.last_zone = 'overbought'
+            elif self.rsi_value < self.oversold_level:
+                self.current_signal = 1    # Oversold condition (buy)
+                self.last_zone = 'oversold'
+            elif self.last_zone == 'overbought' and self.rsi_value > (self.overbought_level - 10):
+                # Stay in overbought zone until RSI drops significantly
+                self.current_signal = -1
+            elif self.last_zone == 'oversold' and self.rsi_value < (self.oversold_level + 10):
+                # Stay in oversold zone until RSI rises significantly
+                self.current_signal = 1
             else:
                 self.current_signal = 0
+                self.last_zone = 'neutral'
         else:
             self.rsi_value = np.nan
             self.current_signal = 0
@@ -970,20 +976,23 @@ class Rule10:
         self.loss_history = []
         self.alpha = 1 / self.rsi1_period if self.rsi1_period > 0 else 0
         self.current_signal = 0
+        self.last_zone = 'neutral'
 
 
 class Rule11:
     """
-    Event-driven version of Rule11: CCI Overbought/Oversold (formerly Rule11) - Optimized.
+    Event-driven version of Rule11: CCI Overbought/Oversold - Optimized with persistent signals and zones.
     """
     def __init__(self, param):
         self.cci1_period = param['cci1_period']
+        self.cci_threshold = param.get('c2_threshold', 100)  # Use c2_threshold or default to 100
         self.cci_value = np.nan
         self.history = {'high': [], 'low': [], 'close': []}
         self.sma_pp = np.nan
         self.mean_deviation = np.nan
         self.current_signal = 0
         self.constant = 0.015
+        self.last_zone = 'neutral'  # Track which zone we're in to maintain signal
 
     def _calculate_pivot_price(self, high, low, close):
         return (high + low + close) / 3.0
@@ -1013,13 +1022,22 @@ class Rule11:
             else:
                 self.cci_value = 0
 
-            # Example CCI-based signal logic (adjust as per your original Rule11)
-            if self.cci_value > 100:
-                self.current_signal = -1  # Overbought
-            elif self.cci_value < -100:
-                self.current_signal = 1   # Oversold
+            # Signal with hysteresis for persistence
+            if self.cci_value > self.cci_threshold:
+                self.current_signal = -1  # Overbought condition (sell)
+                self.last_zone = 'overbought'
+            elif self.cci_value < -self.cci_threshold:
+                self.current_signal = 1    # Oversold condition (buy)
+                self.last_zone = 'oversold'
+            elif self.last_zone == 'overbought' and self.cci_value > (self.cci_threshold * 0.8):
+                # Stay in overbought zone until CCI drops significantly
+                self.current_signal = -1
+            elif self.last_zone == 'oversold' and self.cci_value < (-self.cci_threshold * 0.8):
+                # Stay in oversold zone until CCI rises significantly
+                self.current_signal = 1
             else:
                 self.current_signal = 0
+                self.last_zone = 'neutral'
         else:
             self.cci_value = np.nan
             self.current_signal = 0
@@ -1033,16 +1051,19 @@ class Rule11:
         self.mean_deviation = np.nan
         self.current_signal = 0
         self.constant = 0.015
+        self.last_zone = 'neutral'
+
 
 
 class Rule12:
     """
-    Event-driven version of Rule12: RSI-based strategy - Optimized.
+    Event-driven version of Rule12: RSI-based strategy - Optimized with persistent signals and hysteresis.
     """
     def __init__(self, param):
         self.rsi_period = param['rsi_period']
         self.overbought_level = param.get('overbought', 70)
         self.oversold_level = param.get('oversold', 30)
+        self.exit_buffer = 5  # Buffer for exiting a zone
         self.rsi_value = np.nan
         self.avg_gain = 0
         self.avg_loss = 0
@@ -1050,6 +1071,7 @@ class Rule12:
         self.gain_history = []
         self.loss_history = []
         self.current_signal = 0
+        self.in_trade = False  # Track if we're in a trade
 
     def on_bar(self, bar):
         close = bar['Close']
@@ -1075,12 +1097,29 @@ class Rule12:
             else:
                 self.rsi_value = 100 if self.avg_gain > 0 else 50
 
-            if self.rsi_value > self.overbought_level:
-                self.current_signal = -1  # Sell signal
-            elif self.rsi_value < self.oversold_level:
-                self.current_signal = 1   # Buy signal
+            # Implement signal persistence with hysteresis for better trade management
+            if not self.in_trade:
+                # Entry logic
+                if self.rsi_value < self.oversold_level:
+                    self.current_signal = 1   # Buy signal
+                    self.in_trade = True
+                elif self.rsi_value > self.overbought_level:
+                    self.current_signal = -1  # Sell signal
+                    self.in_trade = True
+                else:
+                    self.current_signal = 0
             else:
-                self.current_signal = 0
+                # Exit logic with hysteresis
+                if self.current_signal == 1:  # In a long position
+                    # Exit long position if RSI moves significantly above oversold
+                    if self.rsi_value > (self.oversold_level + self.exit_buffer):
+                        self.current_signal = 0
+                        self.in_trade = False
+                elif self.current_signal == -1:  # In a short position
+                    # Exit short position if RSI moves significantly below overbought
+                    if self.rsi_value < (self.overbought_level - self.exit_buffer):
+                        self.current_signal = 0
+                        self.in_trade = False
         else:
             self.rsi_value = np.nan
             self.current_signal = 0
@@ -1095,10 +1134,12 @@ class Rule12:
         self.gain_history = []
         self.loss_history = []
         self.current_signal = 0
+        self.in_trade = False
         
+
 class Rule13:
     """
-    Event-driven version of Rule13: Stochastic Oscillator strategy - Optimized.
+    Event-driven version of Rule13: Stochastic Oscillator strategy - Optimized with persistent signals.
     """
     def __init__(self, param):
         self.stoch_period = param['stoch_period']
@@ -1112,6 +1153,8 @@ class Rule13:
         self.stoch_d = np.nan
         self.stoch_k_history = deque(maxlen=self.stoch_d_period)
         self.current_signal = 0
+        self.in_trade = False
+        self.trade_type = None  # 'oversold' or 'overbought'
 
     def on_bar(self, bar):
         high = bar['High']
@@ -1147,12 +1190,31 @@ class Rule13:
             self.stoch_d = np.nan
 
         if not np.isnan(self.stoch_k) and not np.isnan(self.stoch_d):
-            if self.stoch_k > self.oversold_level and self.stoch_d < self.oversold_level and self.stoch_k > self.stoch_d:
-                self.current_signal = 1  # Buy signal (K crosses above D from oversold)
-            elif self.stoch_k < self.overbought_level and self.stoch_d > self.overbought_level and self.stoch_k < self.stoch_d:
-                self.current_signal = -1 # Sell signal (K crosses below D from overbought)
+            # Persistent signal logic
+            if not self.in_trade:
+                # Entry signals with crossover confirmation
+                if self.stoch_k > self.stoch_d and self.stoch_k < self.oversold_level:
+                    self.current_signal = 1  # Buy signal - oversold with %K rising
+                    self.in_trade = True
+                    self.trade_type = 'oversold'
+                elif self.stoch_k < self.stoch_d and self.stoch_k > self.overbought_level:
+                    self.current_signal = -1  # Sell signal - overbought with %K falling
+                    self.in_trade = True
+                    self.trade_type = 'overbought'
             else:
-                self.current_signal = 0
+                # Exit logic
+                if self.trade_type == 'oversold':
+                    # Exit long when stochastic moves to overbought region
+                    if self.stoch_k > self.overbought_level or self.stoch_k < self.stoch_d:
+                        self.current_signal = 0
+                        self.in_trade = False
+                        self.trade_type = None
+                elif self.trade_type == 'overbought':
+                    # Exit short when stochastic moves to oversold region
+                    if self.stoch_k < self.oversold_level or self.stoch_k > self.stoch_d:
+                        self.current_signal = 0
+                        self.in_trade = False
+                        self.trade_type = None
         else:
             self.current_signal = 0
 
@@ -1166,9 +1228,13 @@ class Rule13:
         self.stoch_d = np.nan
         self.stoch_k_history = deque(maxlen=self.stoch_d_period)
         self.current_signal = 0
+        self.in_trade = False
+        self.trade_type = None
+
+
 class Rule14:
     """
-    Event-driven version of Rule14: ATR Trailing Stop - Optimized.
+    Event-driven version of Rule14: ATR Trailing Stop - Optimized with better trade management.
     """
     def __init__(self, param):
         self.atr_period = param['atr_period']
@@ -1180,6 +1246,7 @@ class Rule14:
         self.trailing_stop = np.nan
         self.position = 0  # 1 for long, -1 for short
         self.current_signal = 0
+        self.trend_direction = 0  # Track the market trend
 
     def _calculate_tr(self, high, low, prev_close):
         return max(high - low, abs(high - prev_close), abs(low - prev_close))
@@ -1205,39 +1272,54 @@ class Rule14:
                 prev_atr = self.atr_value if not np.isnan(self.atr_value) else current_tr
                 self.atr_value = (prev_atr * (self.atr_period - 1) + current_tr) / self.atr_period
 
-            if self.atr_value is not np.nan:
+            if not np.isnan(self.atr_value):
                 atr_band = self.atr_value * self.atr_multiplier
-                if self.position == 1:  # Long position
-                    new_stop = close - atr_band
-                    if np.isnan(self.trailing_stop) or new_stop > self.trailing_stop:
-                        self.trailing_stop = new_stop
-                    if low < self.trailing_stop:
-                        self.current_signal = -1  # Exit long
-                        self.position = 0
-                    else:
-                        self.current_signal = 0
-                elif self.position == -1: # Short position
-                    new_stop = close + atr_band
-                    if np.isnan(self.trailing_stop) or new_stop < self.trailing_stop:
-                        self.trailing_stop = new_stop
-                    if high > self.trailing_stop:
-                        self.current_signal = 1   # Exit short
-                        self.position = 0
-                    else:
-                        self.current_signal = 0
-                else:  # No position
-                    # Example entry logic (adjust as needed)
-                    # This is a simplified entry based on price action
-                    if close > high - atr_band:
-                        self.current_signal = 1
+                
+                # Determine trend direction using a simple moving average
+                if len(self.close_history) >= 5:
+                    ma5 = np.mean(list(self.close_history)[-5:])
+                    ma10 = np.mean(list(self.close_history)[-min(10, len(self.close_history)):])
+                    self.trend_direction = 1 if ma5 > ma10 else (-1 if ma5 < ma10 else 0)
+                
+                # Position management with ATR trailing stop
+                if self.position == 0:  # Not in a position
+                    # Enter position in the direction of the trend
+                    if self.trend_direction > 0:
                         self.position = 1
                         self.trailing_stop = close - atr_band
-                    elif close < low + atr_band:
-                        self.current_signal = -1
+                        self.current_signal = 1
+                    elif self.trend_direction < 0:
                         self.position = -1
                         self.trailing_stop = close + atr_band
+                        self.current_signal = -1
                     else:
                         self.current_signal = 0
+                
+                elif self.position == 1:  # Long position
+                    # Update trailing stop if price moves higher
+                    new_stop = close - atr_band
+                    if new_stop > self.trailing_stop:
+                        self.trailing_stop = new_stop
+                    
+                    # Exit if price falls below trailing stop
+                    if low < self.trailing_stop:
+                        self.current_signal = 0
+                        self.position = 0
+                    else:
+                        self.current_signal = 1  # Maintain long signal
+                
+                elif self.position == -1:  # Short position
+                    # Update trailing stop if price moves lower
+                    new_stop = close + atr_band
+                    if new_stop < self.trailing_stop or np.isnan(self.trailing_stop):
+                        self.trailing_stop = new_stop
+                    
+                    # Exit if price rises above trailing stop
+                    if high > self.trailing_stop:
+                        self.current_signal = 0
+                        self.position = 0
+                    else:
+                        self.current_signal = -1  # Maintain short signal
         else:
             self.atr_value = np.nan
             self.current_signal = 0
@@ -1252,11 +1334,12 @@ class Rule14:
         self.trailing_stop = np.nan
         self.position = 0
         self.current_signal = 0
+        self.trend_direction = 0
 
-        
+
 class Rule15:
     """
-    Event-driven version of Rule15: Bollinger Bands strategy - Optimized.
+    Event-driven version of Rule15: Bollinger Bands strategy - Optimized with persistent signals.
     """
     def __init__(self, param):
         self.bb_period = param['bb_period']
@@ -1267,6 +1350,8 @@ class Rule15:
         self.upper_band = np.nan
         self.lower_band = np.nan
         self.current_signal = 0
+        self.in_position = False
+        self.position_type = None  # 'upper_break' or 'lower_break'
 
     def on_bar(self, bar):
         close = bar['Close']
@@ -1293,12 +1378,36 @@ class Rule15:
         if not np.isnan(self.lower_band) and not np.isnan(self.upper_band) and len(self.close_history) >= 2:
             prev_close = list(self.close_history)[-2]
             current_close = list(self.close_history)[-1]
-            if prev_close <= self.lower_band and current_close > self.lower_band:
-                self.current_signal = 1  # Buy signal (price crosses above lower band)
-            elif prev_close >= self.upper_band and current_close < self.upper_band:
-                self.current_signal = -1 # Sell signal (price crosses below upper band)
+            
+            # Signal generation logic with state persistence
+            if not self.in_position:
+                # Entry logic
+                if prev_close <= self.lower_band and current_close > self.lower_band:
+                    self.current_signal = 1  # Buy signal on lower band breakout
+                    self.in_position = True
+                    self.position_type = 'lower_break'
+                elif prev_close >= self.upper_band and current_close < self.upper_band:
+                    self.current_signal = -1  # Sell signal on upper band breakout
+                    self.in_position = True
+                    self.position_type = 'upper_break'
             else:
-                self.current_signal = 0
+                # Exit logic - maintain position until mean reversion or opposite band test
+                if self.position_type == 'lower_break':
+                    # Exit long if price reaches the middle band or upper band
+                    if current_close >= self.sma or current_close >= self.upper_band:
+                        self.current_signal = 0
+                        self.in_position = False
+                        self.position_type = None
+                    else:
+                        self.current_signal = 1  # Maintain long signal
+                elif self.position_type == 'upper_break':
+                    # Exit short if price reaches the middle band or lower band
+                    if current_close <= self.sma or current_close <= self.lower_band:
+                        self.current_signal = 0
+                        self.in_position = False
+                        self.position_type = None
+                    else:
+                        self.current_signal = -1  # Maintain short signal
         else:
             self.current_signal = 0
 
@@ -1311,8 +1420,10 @@ class Rule15:
         self.upper_band = np.nan
         self.lower_band = np.nan
         self.current_signal = 0
+        self.in_position = False
+        self.position_type = None        
 
-
+        
 
 class TopNStrategy:
     """

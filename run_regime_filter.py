@@ -111,20 +111,20 @@ for i, rule in enumerate(top_rule_objects):
 
 # 3. Run baseline strategy
 print("\n=== Running Baseline Strategy ===")
-top_n_strategy = rule_system.get_top_n_strategy()
-data_handler.reset_test()
-while True:
-    bar = data_handler.get_next_test_bar()
-    if bar is None:
-        break
-    event = {"bar": bar}
-    top_n_strategy.on_bar(event)
-
-baseline_backtester = Backtester(data_handler, top_n_strategy)
-baseline_results = baseline_backtester.calculate_returns()
 # top_n_strategy = rule_system.get_top_n_strategy()
+# data_handler.reset_test()
+# while True:
+#     bar = data_handler.get_next_test_bar()
+#     if bar is None:
+#         break
+#     event = {"bar": bar}
+#     top_n_strategy.on_bar(event)
+
 # baseline_backtester = Backtester(data_handler, top_n_strategy)
-# baseline_results = baseline_backtester.run(use_test_data=True)
+# baseline_results = baseline_backtester.calculate_returns()
+top_n_strategy = rule_system.get_top_n_strategy()
+baseline_backtester = Backtester(data_handler, top_n_strategy)
+baseline_results = baseline_backtester.run(use_test_data=True)
 
 print(f"Total Return: {baseline_results['total_percent_return']:.2f}%")
 print(f"Number of Trades: {baseline_results['num_trades']}")

@@ -18,6 +18,13 @@ class Backtester:
 
 
     def run(self, use_test_data=False):
+        # === Debug: Track number of times run() has been called on this instance
+        if hasattr(self, "run_count"):
+            self.run_count += 1
+        else:
+            self.run_count = 1
+        print(f"\n📊 Backtest Run #{self.run_count} — {'Test' if use_test_data else 'Train'} Data")
+
         self.strategy.reset()
         all_signals = []
         if not use_test_data:
@@ -42,45 +49,60 @@ class Backtester:
         self.current_position = 0
         self.entry_price = None
         self.entry_time = None
+        self.entry_signal = None  # NEW
 
         for i in range(len(signals)):
             current_signal = signals[i]['signal']
             timestamp = signals[i]['timestamp']
             price = signals[i]['price']  # Close price of current bar
 
-            # Make trading decisions based on the current bar's signal -- NO DELAY
-
-            # Entry logic 
+            # Entry logic
             if current_signal == 1 and self.current_position == 0:
-                # print(f"{timestamp} - Execute BUY at {price:.2f}")
                 self.current_position = 1
                 self.entry_price = price
                 self.entry_time = timestamp
+                self.entry_signal = current_signal  # Store the entry signal
+
             elif current_signal == -1 and self.current_position == 0:
-                # print(f"{timestamp} - Execute SELL at {price:.2f}")
                 self.current_position = -1
                 self.entry_price = price
                 self.entry_time = timestamp
+                self.entry_signal = current_signal  # Store the entry signal
 
-            # Exit logic 
-            elif self.current_position == 1 and \
-                 (current_signal == 0 or current_signal == -1):
+            # Exit logic
+            elif self.current_position == 1 and (current_signal == 0 or current_signal == -1):
                 if self.entry_price is not None:
                     log_return = math.log(price / self.entry_price)
-                    self.trades.append((self.entry_time, "BUY", self.entry_price, timestamp, price, log_return))
-                    # print(f"{timestamp} - Exit BUY at {price:.2f}, Log Return: {log_return:.4f}")
+                    self.trades.append((
+                        self.entry_time, "BUY", self.entry_price,
+                        timestamp, price, log_return,
+                        self.entry_signal, current_signal  # entry and exit signals
+                    ))
                     self.current_position = 0
                     self.entry_price = None
                     self.entry_time = None
-            elif self.current_position == -1 and \
-                 (current_signal == 0 or current_signal == 1):
+                    self.entry_signal = None
+
+            elif self.current_position == -1 and (current_signal == 0 or current_signal == 1):
                 if self.entry_price is not None:
                     log_return = math.log(self.entry_price / price)
-                    self.trades.append((self.entry_time, "SELL", self.entry_price, timestamp, price, log_return))
-                    # print(f"{timestamp} - Exit SELL at {price:.2f}, Log Return: {log_return:.4f}")
+                    self.trades.append((
+                        self.entry_time, "SELL", self.entry_price,
+                        timestamp, price, log_return,
+                        self.entry_signal, current_signal  # entry and exit signals
+                    ))
                     self.current_position = 0
                     self.entry_price = None
                     self.entry_time = None
+                    self.entry_signal = None
+
+        # Print first few trades for debugging
+        print("\n=== Sample Trades ===")
+        for trade in self.trades[:10]:
+            print(
+                f"{trade[0]} → {trade[3]} | {trade[1]} at {trade[2]:.2f} → {trade[4]:.2f} "
+                f"| Signal: {trade[6]} → {trade[7]} | Log Return: {trade[5]:.6f}"
+            )
 
         return {
             "trades": self.trades,
@@ -89,7 +111,6 @@ class Backtester:
             "num_trades": len(self.trades),
             "total_percent_return": (math.exp(sum([t[5] for t in self.trades])) - 1) * 100 if self.trades else 0
         }
-
  
 
     # def calculate_returns(self, signals):

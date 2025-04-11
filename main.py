@@ -86,7 +86,7 @@ if __name__ == "__main__":
     # ]
     
     print("\n--- Training Individual Rules on In-Sample Data ---")
-    rule_system = EventDrivenRuleSystem(rules_config=rules_config, top_n=5) # Adjust signal threshold in TopNStrategy Class in strategy.py (perhaps run optmization on this as well)
+    rule_system = EventDrivenRuleSystem(rules_config=rules_config, top_n=15) # Adjust signal threshold in TopNStrategy Class in strategy.py (perhaps run optmization on this as well)
     rule_system.train_rules(data_handler)
     top_n_strategy = rule_system.get_top_n_strategy()
 
@@ -220,6 +220,8 @@ if __name__ == "__main__":
 #     # for t in results_oos["trades"]:
 #     #     print(f"{t[0]} | {t[1].upper()} | Entry: {t[2]:.2f} → Exit: {t[4]:.2f} | Log Return: {t[5]:.4f}")
 
-   
-from validation import run_validation
-run_validation(results_oos)
+# from analyze_trade_durations import analyze_trade_durations
+
+# analyze_trade_durations(top_n_strategy["trades"])   
+#from validation import run_validation
+#run_validation(results_oos)
