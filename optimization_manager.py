@@ -393,19 +393,23 @@ class OptimizerManager:
         else:
             # Default to equal weights
             return np.ones(len(self.rule_objects)) / len(self.rule_objects)
-    
+
+    # Add this to the appropriate place in optimizer_manager.py
+    # This would add win_rate calculation to the _evaluate_final_strategy method
+    # in the OptimizerManager class
+
     def _evaluate_final_strategy(self, metrics):
         """
         Evaluate the final optimized strategy.
-        
+
         Args:
             metrics: Performance metric(s) to calculate
-            
+
         Returns:
             dict: Performance metrics
         """
         results = {}
-        
+
         # Determine which strategy to evaluate
         if self.regime_manager:
             strategy = self.regime_manager
@@ -417,23 +421,30 @@ class OptimizerManager:
         else:
             # Default to equal-weighted strategy
             strategy = WeightedRuleStrategy(rule_objects=self.rule_objects)
-        
+
         # Run backtest
         backtester = Backtester(self.data_handler, strategy)
         backtest_results = backtester.run(use_test_data=True)  # Use test data for evaluation
-        
+
         # Extract metrics
         results['num_trades'] = backtest_results['num_trades']
         results['total_return'] = backtest_results['total_percent_return']
         results['average_return'] = backtest_results['average_log_return']
         results['trades'] = backtest_results['trades']
-        
+
         # Calculate Sharpe ratio
         results['sharpe'] = backtester.calculate_sharpe()
-        
+
+        # Calculate win rate
+        if backtest_results['num_trades'] > 0:
+            winning_trades = sum(1 for t in backtest_results['trades'] if t[5] > 0)
+            results['win_rate'] = winning_trades / backtest_results['num_trades']
+        else:
+            results['win_rate'] = 0.0
+
         return results
-    
-    def get_optimized_strategy(self):
+
+      def get_optimized_strategy(self):
         """
         Get the final optimized strategy.
         

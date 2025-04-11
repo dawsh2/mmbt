@@ -65,14 +65,15 @@ class GeneticOptimizer:
         normalized_population = population / row_sums[:, np.newaxis]
         
         return normalized_population
-    
+
+
     def _calculate_fitness(self, chromosome):
         """
         Calculate fitness for a single chromosome by backtesting the weighted strategy.
-        
+
         Args:
             chromosome: Array of weights for the rules
-            
+
         Returns:
             float: Fitness score based on the optimization metric
         """
@@ -81,12 +82,12 @@ class GeneticOptimizer:
             rule_objects=self.rule_objects,
             weights=chromosome
         )
-        
+
         # Reset the strategy and run backtest
         weighted_strategy.reset()
         backtester = Backtester(self.data_handler, weighted_strategy)
         results = backtester.run(use_test_data=False)  # Train on training data
-        
+
         # Calculate fitness based on selected metric
         if self.optimization_metric == 'sharpe':
             if results['num_trades'] >= 5:  # Require minimum trades for meaningful results
@@ -106,10 +107,24 @@ class GeneticOptimizer:
                 fitness = mean_return / (std_return * (-downside))
             else:
                 fitness = -1.0
+        elif self.optimization_metric == 'win_rate':
+            # Calculate win rate (percentage of profitable trades)
+            if results['num_trades'] >= 5:  # Require minimum trades for meaningful results
+                winning_trades = sum(1 for t in results['trades'] if t[5] > 0)
+                win_rate = winning_trades / results['num_trades']
+
+                # We might also want to ensure a minimum number of trades
+                # to avoid strategies that make very few but lucky trades
+                trade_count_factor = min(1.0, results['num_trades'] / 20)  # Reaches 1.0 at 20+ trades
+
+                fitness = win_rate * trade_count_factor
+            else:
+                # Penalize strategies with too few trades
+                fitness = -1.0
         else:
             # Default to total return
             fitness = results['total_log_return']
-            
+
         return fitness
     
     def _calculate_population_fitness(self, population):

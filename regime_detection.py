@@ -260,21 +260,25 @@ class RegimeManager:
         self.current_regime = RegimeType.UNKNOWN
         self.regime_strategies = {}  # Mapping from regime to strategy
         self.default_strategy = WeightedRuleStrategy(rule_objects)
-        
-    def optimize_regime_strategies(self, regimes_to_optimize=None, verbose=True):
+
+    # Modify the optimize_regime_strategies method in RegimeManager class
+    # in regime_detection.py
+
+    def optimize_regime_strategies(self, regimes_to_optimize=None, optimization_metric='win_rate', verbose=True):
         """
         Optimize strategies for different market regimes.
-        
+
         Args:
             regimes_to_optimize: List of regimes to optimize for (or None for all)
+            optimization_metric: Metric to optimize ('win_rate', 'sharpe', 'return', etc.)
             verbose: Whether to print optimization progress
-            
+
         Returns:
             dict: Mapping from regime to optimized weights
         """
         if self.data_handler is None:
             raise ValueError("Data handler must be provided for optimization")
-        
+
         if regimes_to_optimize is None:
             regimes_to_optimize = [
                 RegimeType.TRENDING_UP,
@@ -283,46 +287,47 @@ class RegimeManager:
                 RegimeType.VOLATILE,
                 RegimeType.LOW_VOLATILITY
             ]
-        
+
         # First, identify bars in each regime using the full dataset
         regime_bars = self._identify_regime_bars()
-        
+
         # For each regime, optimize a separate strategy
         for regime in regimes_to_optimize:
             if regime in regime_bars and len(regime_bars[regime]) >= 30:
                 if verbose:
                     print(f"\nOptimizing strategy for {regime.name} regime "
-                          f"({len(regime_bars[regime])} bars)")
-                
+                          f"({len(regime_bars[regime])} bars) using {optimization_metric} metric")
+
                 # Create a regime-specific data handler with only bars from this regime
                 regime_specific_data = self._create_regime_specific_data(regime_bars[regime])
-                
-                # Optimize weights for this regime
+
+                # Optimize weights for this regime using the specified metric
                 from genetic_optimizer import GeneticOptimizer
                 optimizer = GeneticOptimizer(
                     data_handler=regime_specific_data,
                     rule_objects=self.rule_objects,
                     population_size=15,
                     num_generations=30,
-                    optimization_metric='return'
+                    optimization_metric=optimization_metric  # Use the specified metric
                 )
                 optimal_weights = optimizer.optimize(verbose=verbose)
-                
+
                 # Create a strategy with optimized weights
                 self.regime_strategies[regime] = WeightedRuleStrategy(
                     rule_objects=self.rule_objects,
                     weights=optimal_weights
                 )
-                
+
                 if verbose:
                     print(f"Optimized weights for {regime.name}: {optimal_weights}")
             else:
                 if verbose and regime in regime_bars:
                     print(f"Insufficient data for {regime.name} regime "
                           f"({len(regime_bars.get(regime, []))} bars). Using default strategy.")
-        
+
         return {regime: strategy.weights for regime, strategy in self.regime_strategies.items()}
-    
+        
+
     def _identify_regime_bars(self):
         """
         Identify which bars belong to each regime.
