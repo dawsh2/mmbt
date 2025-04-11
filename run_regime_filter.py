@@ -149,7 +149,7 @@ regime_manager = RegimeManager(
 
 # Analyze regime distribution in the training data
 data_handler.reset_train()
-regime_detector.reset()
+trend_detector.reset()
 regime_counts = {
     RegimeType.TRENDING_UP: 0,
     RegimeType.TRENDING_DOWN: 0,
@@ -194,7 +194,7 @@ plot_equity_curve(regime_results["trades"], "Regime-Based Strategy Equity Curve"
 
 # 6. Analyze regime distribution and performance in the test data
 data_handler.reset_test()
-regime_detector.reset()
+trend_detector.reset()
 regime_counts_test = {
     RegimeType.TRENDING_UP: 0,
     RegimeType.TRENDING_DOWN: 0,
