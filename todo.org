@@ -1,0 +1,32 @@
+** Code Refactoring
+*** NEXT Move 'minute_strategy_params' from root directory
+*** TODO Refactor cli/main.py
+*** TODO Refactor prepare_minute_data function
+*** TODO Downsize and document core logic
+*** TODO Improve function-level docstrings
+*** TODO Begin including file-level descriptions
+
+** Documentation & Design
+*** TODO Consider creating a high-level data flow diagram
+*** TODO Consider documenting overall project structure
+*** TODO Begin writing org-mode docs
+*** TODO Explore literate programming style using org-mode
+*** TODO Instruct Claude to read the documentation or readme.md
+
+** Optimization System
+*** TODO Modularize optimization system
+    - Allow selection of metrics component-by-component
+    - Allow choosing optimization ordering:
+      - Optimize rules → then regime filter
+      - Or regime filter → then rules
+    - Make note of joint optimization possibilities
+    - Consider Bayesian optimization options
+
+*** TODO Enable user to choose which regime filter to use
+
+** Futures Trading Integration
+*** TODO Work with Tradovate API (or another) for futures paper trading
+** Workflow 
+*** TODO AI Agent Optimization  
+**** NEXT Add Instructions for Agent to only provide pasteable commands (no line breaks)_
+**** TODO Create standardized document 

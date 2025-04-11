@@ -97,27 +97,27 @@ if __name__ == "__main__":
         print(f"... and {len(results_oos['trades']) - 10} more trades")
 
     # Optional: Backtest on In-Sample Data
-    print("\n--- Backtesting on In-Sample Data ---")
-    in_sample_backtester = Backtester(data_handler, top_n_strategy)
-    results_is = in_sample_backtester.run(use_test_data=False)
+    # print("\n--- Backtesting on In-Sample Data ---")
+    # in_sample_backtester = Backtester(data_handler, top_n_strategy)
+    # results_is = in_sample_backtester.run(use_test_data=False)
     
-    print("\nIn-Sample Backtest Results:")
-    print(f"Total Log Return: {results_is['total_log_return']:.4f}")
-    print(f"Total Return (compounded): {results_is['total_percent_return']:.2f}%")
-    print(f"Average Log Return per Trade: {results_is['average_log_return']:.4f}")
-    print(f"Number of Trades: {results_is['num_trades']}")
-    sharpe_is = in_sample_backtester.calculate_sharpe()
-    print(f"In-Sample Sharpe Ratio: {sharpe_is:.4f}")
+    # print("\nIn-Sample Backtest Results:")
+    # print(f"Total Log Return: {results_is['total_log_return']:.4f}")
+    # print(f"Total Return (compounded): {results_is['total_percent_return']:.2f}%")
+    # print(f"Average Log Return per Trade: {results_is['average_log_return']:.4f}")
+    # print(f"Number of Trades: {results_is['num_trades']}")
+    # sharpe_is = in_sample_backtester.calculate_sharpe()
+    # print(f"In-Sample Sharpe Ratio: {sharpe_is:.4f}")
     
-    print("\nIn-Sample Trades (First 10):")
-    for i, t in enumerate(results_is["trades"]):
-        if i < 10:
-            print(f"{t[0]} | {t[1].upper()} | Entry: {t[2]:.2f} → Exit: {t[4]:.2f} | Log Return: {t[5]:.4f}")
-        else:
-            break
+    # print("\nIn-Sample Trades (First 10):")
+    # for i, t in enumerate(results_is["trades"]):
+    #     if i < 10:
+    #         print(f"{t[0]} | {t[1].upper()} | Entry: {t[2]:.2f} → Exit: {t[4]:.2f} | Log Return: {t[5]:.4f}")
+    #     else:
+    #         break
     
-    if len(results_is["trades"]) > 10:
-        print(f"... and {len(results_is['trades']) - 10} more trades")
+    # if len(results_is["trades"]) > 10:
+    #     print(f"... and {len(results_is['trades']) - 10} more trades")
 
 
 

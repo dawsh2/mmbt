@@ -23,13 +23,19 @@ class EventDrivenRuleSystem:
         """
         expanded_config = []
         for rule_class, param_ranges in rules_config:
+            print(f"Expanding parameters for {rule_class.__name__}:")
+            print(f"  Original param ranges: {param_ranges}")
+
             param_names = param_ranges.keys()
             param_values = param_ranges.values()
             param_combinations = list(itertools.product(*param_values))
             parameter_sets = [dict(zip(param_names, combo)) for combo in param_combinations]
+
+            print(f"  Generated {len(parameter_sets)} parameter sets")
+            print(f"  First few sets: {parameter_sets[:3]}")
+
             expanded_config.append((rule_class, parameter_sets))
         return expanded_config
-
 
     # Metric for rule optmization is defined here
     def train_rules(self, data_handler):
@@ -39,6 +45,7 @@ class EventDrivenRuleSystem:
             rule_performances = {}
             print(f"Training Rule {rule_class.__name__} with {len(param_sets)} parameter sets...")
             for params in param_sets:
+                print(f"Creating {rule_class.__name__} with params: {params}")
                 rule_instance = rule_class(params)
                 strategy = TopNStrategy(rule_objects=[rule_instance])
                 backtester = Backtester(data_handler, strategy)

@@ -1166,6 +1166,9 @@ class Rule13:
         self.stoch_d = np.nan
         self.stoch_k_history = deque(maxlen=self.stoch_d_period)
         self.current_signal = 0
+
+
+        
 class Rule14:
     """
     Event-driven version of Rule14: ATR Trailing Stop - Optimized.
