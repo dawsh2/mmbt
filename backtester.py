@@ -18,12 +18,12 @@ class Backtester:
 
 
     def run(self, use_test_data=False):
-        # === Debug: Track number of times run() has been called on this instance
-        # if hasattr(self, "run_count"):
-        #     self.run_count += 1
-        # else:
-        #     self.run_count = 1
-        # print(f"\n📊 Backtest Run #{self.run_count} — {'Test' if use_test_data else 'Train'} Data")
+        === Debug: Track number of times run() has been called on this instance
+        if hasattr(self, "run_count"):
+            self.run_count += 1
+        else:
+            self.run_count = 1
+        print(f"\n📊 Backtest Run #{self.run_count} — {'Test' if use_test_data else 'Train'} Data")
 
         self.strategy.reset()
         all_signals = []
@@ -112,61 +112,6 @@ class Backtester:
             "total_percent_return": (math.exp(sum([t[5] for t in self.trades])) - 1) * 100 if self.trades else 0
         }
  
-
-    # def calculate_returns(self, signals):
-    #     self.trades = []
-    #     self.current_position = 0
-    #     self.entry_price = None
-    #     self.entry_time = None
-    #     total_log_return = 0
-    #     trade_returns = []
-
-    #     for i in range(1, len(signals)):
-    #         prev_signal = signals[i-1]['signal']
-    #         current_signal = signals[i]['signal']
-    #         price = signals[i]['price']
-    #         timestamp = signals[i]['timestamp']
-
-    #         if current_signal == 1 and self.current_position == 0:
-    #             self.current_position = 1
-    #             self.entry_price = price
-    #             self.entry_time = timestamp
-    #         elif current_signal == -1 and self.current_position == 0:
-    #             self.current_position = -1
-    #             self.entry_price = price
-    #             self.entry_time = timestamp
-    #         elif (current_signal == 0 and self.current_position == 1) or \
-    #              (current_signal == -1 and self.current_position == 1):
-    #             if self.entry_price is not None:
-    #                 log_return = math.log(price / self.entry_price)
-    #                 self.trades.append((self.entry_time, "BUY", self.entry_price, timestamp, price, log_return))
-    #                 total_log_return += log_return
-    #                 trade_returns.append(log_return)
-    #                 self.current_position = 0
-    #                 self.entry_price = None
-    #                 self.entry_time = None
-    #         elif (current_signal == 0 and self.current_position == -1) or \
-    #              (current_signal == 1 and self.current_position == -1):
-    #             if self.entry_price is not None:
-    #                 log_return = math.log(self.entry_price / price)
-    #                 self.trades.append((self.entry_time, "SELL", self.entry_price, timestamp, price, log_return))
-    #                 total_log_return += log_return
-    #                 trade_returns.append(log_return)
-    #                 self.current_position = 0
-    #                 self.entry_price = None
-    #                 self.entry_time = None
-
-    #     num_trades = len(self.trades)
-    #     average_log_return = np.mean(trade_returns) if trade_returns else 0
-    #     total_percent_return = (math.exp(total_log_return) - 1) * 100 if total_log_return else 0
-
-    #     return {
-    #         "trades": self.trades,
-    #         "total_log_return": total_log_return,
-    #         "average_log_return": average_log_return,
-    #         "num_trades": num_trades,
-    #         "total_percent_return": total_percent_return
-    #     }
     
  
     def calculate_sharpe(self, risk_free_rate=0):

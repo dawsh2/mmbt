@@ -1,6 +1,9 @@
 ** TODO [TOP-LEVEL TASK] Get Performance Up
-No idea why it's so slow, 
-*** NEXT Manually 
+No idea why it's so bad. The returns are terrible. 
+*** NEXT Manually Verify Returns Calculation
+** Codebase
+*** NEXT Migrate to Python's ta or talipp library?
+*** NEXT Create README w/ Class overview, data flow, etc
 ** Futures Trading Integration
 *** TODO Work with Tradovate API (or another) for futures paper trading
 ** Workflow
