@@ -304,7 +304,7 @@ class RegimeManager:
                     rule_objects=self.rule_objects,
                     population_size=15,
                     num_generations=30,
-                    optimization_metric='sharpe'
+                    optimization_metric='return'
                 )
                 optimal_weights = optimizer.optimize(verbose=verbose)
                 

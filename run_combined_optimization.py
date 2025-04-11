@@ -12,20 +12,181 @@ from rule_system import EventDrivenRuleSystem
 from backtester import Backtester
 from strategy import TopNStrategy
 from strategy import (
-    Rule0, Rule1, Rule2, Rule3, Rule4, Rule5, Rule6, Rule7, 
+    Rule0, Rule1, Rule2, Rule3, Rule4, Rule5, Rule6, Rule7,
     Rule8, Rule9, Rule10, Rule11, Rule12, Rule13, Rule14, Rule15
 )
 from genetic_optimizer import GeneticOptimizer, WeightedRuleStrategy
 from regime_detection import (
-    RegimeType, TrendStrengthRegimeDetector, 
+    RegimeType, TrendStrengthRegimeDetector,
     VolatilityRegimeDetector, RegimeManager
 )
 from optimizer_manager import (
     OptimizerManager, OptimizationMethod, OptimizationSequence
 )
 
+def plot_equity_curve(trades, title, initial_capital=10000):
+    """Plot equity curve from trade data."""
+    if not trades:
+        print(f"Warning: No trades to plot for {title}")
+        return
 
-def plot_equity_curve(rules_first_backtest["trades"], "Rules-First Optimization Equity Curve")
+    equity = [initial_capital]
+    for trade in trades:
+        log_return = trade[5]
+        equity.append(equity[-1] * np.exp(log_return))
+
+    plt.figure(figsize=(12, 6))
+    plt.plot(equity)
+    plt.title(title)
+    plt.xlabel('Trade Number')
+    plt.ylabel('Equity ($)')
+    plt.grid(True)
+    plt.tight_layout()
+    plt.savefig(f"{title.replace(' ', '_').replace(':', '')}.png")
+    plt.close()
+
+def plot_performance_comparison(results_dict, title="Strategy Performance Comparison"):
+    """Plot equity curves for multiple strategies."""
+    plt.figure(figsize=(14, 8))
+
+    # Plot equity curves
+    for approach_name, results in results_dict.items():
+        if 'trades' not in results or not results['trades']:
+            print(f"Warning: No trades for {approach_name}")
+            continue
+
+        # Create equity curve from trade results
+        equity = [10000]  # Start with $10,000
+        for trade in results['trades']:
+            log_return = trade[5]
+            equity.append(equity[-1] * np.exp(log_return))
+
+        plt.plot(equity, label=f"{approach_name} ({results['total_return']:.2f}%)")
+
+    plt.title(title)
+    plt.xlabel('Trade Number')
+    plt.ylabel('Equity ($)')
+    plt.grid(True)
+    plt.legend()
+    plt.tight_layout()
+    plt.savefig(f"{title.replace(' ', '_')}.png")
+    plt.close()
+
+# Define filepath - adjust as needed
+filepath = "data/data.csv"  # Update this path to your data file location
+
+print(f"Looking for data file at: {filepath}")
+if not os.path.exists(filepath):
+    print(f"File not found: {filepath}")
+    print("Current directory:", os.getcwd())
+    print("Files in current directory:", os.listdir())
+    exit(1)
+else:
+    print(f"File found, starting optimization...")
+
+# 1. Load and prepare data
+start_time = time.time()
+data_handler = CSVDataHandler(filepath, train_fraction=0.8)
+print(f"Data loaded in {time.time() - start_time:.2f} seconds")
+
+# 2. Train basic rules and select top performers
+print("\n=== Training Basic Rules ===")
+rules_config = [
+    (Rule0, {'fast_window': [5, 10], 'slow_window': [20, 30, 50]}),
+    (Rule1, {'ma1': [10, 20], 'ma2': [30, 50]}),
+    (Rule2, {'ema1_period': [10, 20], 'ma2_period': [30, 50]}),
+    (Rule3, {'ema1_period': [10, 20], 'ema2_period': [30, 50]}),
+    (Rule4, {'dema1_period': [10, 20], 'ma2_period': [30, 50]}),
+    (Rule5, {'dema1_period': [10, 20], 'dema2_period': [30, 50]}),
+    (Rule6, {'tema1_period': [10, 20], 'ma2_period': [30, 50]}),
+    (Rule7, {'stoch1_period': [10, 14], 'stochma2_period': [3, 5]}),
+    (Rule8, {'vortex1_period': [10, 14], 'vortex2_period': [10, 14]}),
+    (Rule9, {'p1': [9, 12], 'p2': [26, 30]}),
+    (Rule10, {'rsi1_period': [10, 14]}),
+    (Rule11, {'cci1_period': [14, 20]}),
+    (Rule12, {'rsi_period': [10, 14]}),
+    (Rule13, {'stoch_period': [10, 14], 'stoch_d_period': [3, 5]}),
+    (Rule14, {'atr_period': [14, 20]}),
+    (Rule15, {'bb_period': [20, 25]}),
+]
+
+rule_system_start = time.time()
+rule_system = EventDrivenRuleSystem(rules_config=rules_config, top_n=16) # Use all rules
+rule_system.train_rules(data_handler)
+top_rule_objects = list(rule_system.trained_rule_objects.values())
+print(f"Rule training completed in {time.time() - rule_system_start:.2f} seconds")
+
+print("\nSelected Top Rules:")
+for i, rule in enumerate(top_rule_objects):
+    rule_name = rule.__class__.__name__
+    print(f"  {i+1}. {rule_name}")
+
+# 3. Run baseline strategy
+print("\n=== Running Baseline Strategy ===")
+top_n_strategy = rule_system.get_top_n_strategy()
+data_handler.reset_test()
+while True:
+    bar = data_handler.get_next_test_bar()
+    if bar is None:
+        break
+    event = {"bar": bar}
+    top_n_strategy.on_bar(event)
+
+baseline_backtester = Backtester(data_handler, top_n_strategy)
+baseline_results = baseline_backtester.calculate_returns()
+# top_n_strategy = rule_system.get_top_n_strategy()
+# baseline_backtester = Backtester(data_handler, top_n_strategy)
+# baseline_results = baseline_backtester.run(use_test_data=True)
+
+print(f"Total Return: {baseline_results['total_percent_return']:.2f}%")
+print(f"Number of Trades: {baseline_results['num_trades']}")
+sharpe_baseline = baseline_backtester.calculate_sharpe()
+print(f"Sharpe Ratio: {sharpe_baseline:.4f}")
+
+plot_equity_curve(baseline_results["trades"], "Baseline Strategy Equity Curve")
+
+# 4. Create regime detector
+trend_detector = TrendStrengthRegimeDetector(adx_period=14, adx_threshold=25)
+
+# 5. Run different optimization approaches using OptimizerManager
+print("\n=== Running Combined Optimization Approaches ===")
+
+# Configure genetic optimization parameters (use smaller values for faster execution)
+genetic_params = {
+    'genetic': {
+        'population_size': 15,
+        'num_generations': 30,
+        'mutation_rate': 0.1
+    }
+}
+
+# Approach 1: Rules-First Optimization
+print("\n=== Approach 1: Rules-First Optimization ===")
+optimizer_rules_first = OptimizerManager(
+    data_handler=data_handler,
+    rule_objects=top_rule_objects
+)
+
+rules_first_start = time.time()
+rules_first_results = optimizer_rules_first.optimize(
+    method=OptimizationMethod.GENETIC,
+    sequence=OptimizationSequence.RULES_FIRST,
+    metrics='sharpe',
+    regime_detector=trend_detector,
+    optimization_params=genetic_params,
+    verbose=True
+)
+print(f"Rules-First optimization completed in {time.time() - rules_first_start:.2f} seconds")
+
+# Get the optimized strategy
+rules_first_strategy = optimizer_rules_first.get_optimized_strategy()
+
+# Backtest the strategy
+rules_first_backtester = Backtester(data_handler, rules_first_strategy)
+rules_first_backtest = rules_first_backtester.run(use_test_data=True)
+rules_first_sharpe = rules_first_backtester.calculate_sharpe()
+
+plot_equity_curve(rules_first_backtest["trades"], "Rules-First Optimization Equity Curve")
 
 # Approach 2: Regimes-First Optimization
 print("\n=== Approach 2: Regimes-First Optimization ===")
@@ -162,10 +323,10 @@ while True:
     bar = data_handler.get_next_test_bar()
     if bar is None:
         break
-        
+
     regime = trend_detector.detect_regime(bar)
     regime_counts[regime] = regime_counts.get(regime, 0) + 1
-    
+
     # Store timestamp to regime mapping
     trade_regimes[bar['timestamp']] = regime
 
@@ -208,157 +369,3 @@ print(f"Number of Trades: {comparison[best_approach]['num_trades']}")
 
 print(f"\nTotal runtime: {time.time() - start_time:.2f} seconds")
 print("\nOptimization complete! Results and charts saved.")
-trades, title, initial_capital=10000):
-    """Plot equity curve from trade data."""
-    if not trades:
-        print(f"Warning: No trades to plot for {title}")
-        return
-        
-    equity = [initial_capital]
-    for trade in trades:
-        log_return = trade[5]
-        equity.append(equity[-1] * np.exp(log_return))
-    
-    plt.figure(figsize=(12, 6))
-    plt.plot(equity)
-    plt.title(title)
-    plt.xlabel('Trade Number')
-    plt.ylabel('Equity ($)')
-    plt.grid(True)
-    plt.tight_layout()
-    plt.savefig(f"{title.replace(' ', '_').replace(':', '')}.png")
-    plt.close()
-
-
-def plot_performance_comparison(results_dict, title="Strategy Performance Comparison"):
-    """Plot equity curves for multiple strategies."""
-    plt.figure(figsize=(14, 8))
-    
-    # Plot equity curves
-    for approach_name, results in results_dict.items():
-        if 'trades' not in results or not results['trades']:
-            print(f"Warning: No trades for {approach_name}")
-            continue
-            
-        # Create equity curve from trade results
-        equity = [10000]  # Start with $10,000
-        for trade in results['trades']:
-            log_return = trade[5]
-            equity.append(equity[-1] * np.exp(log_return))
-        
-        plt.plot(equity, label=f"{approach_name} ({results['total_return']:.2f}%)")
-    
-    plt.title(title)
-    plt.xlabel('Trade Number')
-    plt.ylabel('Equity ($)')
-    plt.grid(True)
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(f"{title.replace(' ', '_')}.png")
-    plt.close()
-
-
-# Define filepath - adjust as needed
-filepath = "data/data.csv"  # Update this path to your data file location
-
-print(f"Looking for data file at: {filepath}")
-if not os.path.exists(filepath):
-    print(f"File not found: {filepath}")
-    print("Current directory:", os.getcwd())
-    print("Files in current directory:", os.listdir())
-    exit(1)
-else:
-    print(f"File found, starting optimization...")
-
-# 1. Load and prepare data
-start_time = time.time()
-data_handler = CSVDataHandler(filepath, train_fraction=0.8)
-print(f"Data loaded in {time.time() - start_time:.2f} seconds")
-
-# 2. Train basic rules and select top performers
-print("\n=== Training Basic Rules ===")
-rules_config = [
-    (Rule0, {'fast_window': [5, 10], 'slow_window': [20, 30, 50]}),
-    (Rule1, {'ma1': [10, 20], 'ma2': [30, 50]}),
-    (Rule2, {'ema1_period': [10, 20], 'ma2_period': [30, 50]}),
-    (Rule3, {'ema1_period': [10, 20], 'ema2_period': [30, 50]}),
-    (Rule4, {'dema1_period': [10, 20], 'ma2_period': [30, 50]}),
-    (Rule5, {'dema1_period': [10, 20], 'dema2_period': [30, 50]}),
-    (Rule6, {'tema1_period': [10, 20], 'ma2_period': [30, 50]}),
-    (Rule7, {'stoch1_period': [10, 14], 'stochma2_period': [3, 5]}),
-    (Rule8, {'vortex1_period': [10, 14], 'vortex2_period': [10, 14]}),
-    (Rule9, {'p1': [9, 12], 'p2': [26, 30]}),
-    (Rule10, {'rsi1_period': [10, 14]}),
-    (Rule11, {'cci1_period': [14, 20]}),
-    (Rule12, {'rsi_period': [10, 14]}),
-    (Rule13, {'stoch_period': [10, 14], 'stoch_d_period': [3, 5]}),
-    (Rule14, {'atr_period': [14, 20]}),
-    (Rule15, {'bb_period': [20, 25]}),
-]
-
-rule_system_start = time.time()
-rule_system = EventDrivenRuleSystem(rules_config=rules_config, top_n=5)
-rule_system.train_rules(data_handler)
-top_rule_objects = list(rule_system.trained_rule_objects.values())
-print(f"Rule training completed in {time.time() - rule_system_start:.2f} seconds")
-
-print("\nSelected Top Rules:")
-for i, rule in enumerate(top_rule_objects):
-    rule_name = rule.__class__.__name__
-    print(f"  {i+1}. {rule_name}")
-
-# 3. Run baseline strategy
-print("\n=== Running Baseline Strategy ===")
-top_n_strategy = rule_system.get_top_n_strategy()
-baseline_backtester = Backtester(data_handler, top_n_strategy)
-baseline_results = baseline_backtester.run(use_test_data=True)
-
-print(f"Total Return: {baseline_results['total_percent_return']:.2f}%")
-print(f"Number of Trades: {baseline_results['num_trades']}")
-sharpe_baseline = baseline_backtester.calculate_sharpe()
-print(f"Sharpe Ratio: {sharpe_baseline:.4f}")
-
-plot_equity_curve(baseline_results["trades"], "Baseline Strategy Equity Curve")
-
-# 4. Create regime detector
-trend_detector = TrendStrengthRegimeDetector(adx_period=14, adx_threshold=25)
-
-# 5. Run different optimization approaches using OptimizerManager
-print("\n=== Running Combined Optimization Approaches ===")
-
-# Configure genetic optimization parameters (use smaller values for faster execution)
-genetic_params = {
-    'genetic': {
-        'population_size': 15,
-        'num_generations': 30,
-        'mutation_rate': 0.1
-    }
-}
-
-# Approach 1: Rules-First Optimization
-print("\n=== Approach 1: Rules-First Optimization ===")
-optimizer_rules_first = OptimizerManager(
-    data_handler=data_handler,
-    rule_objects=top_rule_objects
-)
-
-rules_first_start = time.time()
-rules_first_results = optimizer_rules_first.optimize(
-    method=OptimizationMethod.GENETIC,
-    sequence=OptimizationSequence.RULES_FIRST,
-    metrics='sharpe',
-    regime_detector=trend_detector,
-    optimization_params=genetic_params,
-    verbose=True
-)
-print(f"Rules-First optimization completed in {time.time() - rules_first_start:.2f} seconds")
-
-# Get the optimized strategy
-rules_first_strategy = optimizer_rules_first.get_optimized_strategy()
-
-# Backtest the strategy
-rules_first_backtester = Backtester(data_handler, rules_first_strategy)
-rules_first_backtest = rules_first_backtester.run(use_test_data=True)
-rules_first_sharpe = rules_first_backtester.calculate_sharpe()
-
-
