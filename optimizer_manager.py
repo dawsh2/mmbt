@@ -12,6 +12,7 @@ from enum import Enum, auto
 from backtester import Backtester
 from genetic_optimizer import GeneticOptimizer, WeightedRuleStrategy
 from regime_detection import RegimeManager, RegimeType
+from strategy import WeightedRuleStrategyFactory  # Import the factory
 
 
 class OptimizationMethod(Enum):
@@ -162,9 +163,13 @@ class OptimizerManager:
             if verbose:
                 print("\nStep 2: Optimizing regime-specific strategies...")
             
+            # Create strategy factory
+            strategy_factory = WeightedRuleStrategyFactory()
+            
             # Create and optimize regime manager
             self.regime_manager = RegimeManager(
                 regime_detector=regime_detector,
+                strategy_factory=strategy_factory,  # Added strategy factory
                 rule_objects=self.rule_objects,
                 data_handler=self.data_handler
             )
@@ -192,9 +197,13 @@ class OptimizerManager:
         if verbose:
             print("Step 1: Identifying market regimes...")
         
+        # Create strategy factory
+        strategy_factory = WeightedRuleStrategyFactory()
+        
         # Create regime manager
         self.regime_manager = RegimeManager(
             regime_detector=regime_detector,
+            strategy_factory=strategy_factory,  # Added strategy factory
             rule_objects=self.rule_objects,
             data_handler=self.data_handler
         )
@@ -271,8 +280,12 @@ class OptimizerManager:
         )
         
         if regime_detector:
+            # Create strategy factory
+            strategy_factory = WeightedRuleStrategyFactory()
+            
             self.regime_manager = RegimeManager(
                 regime_detector=regime_detector,
+                strategy_factory=strategy_factory,  # Added strategy factory
                 rule_objects=self.rule_objects,
                 data_handler=self.data_handler
             )
@@ -316,10 +329,14 @@ class OptimizerManager:
             if verbose:
                 print("Step 2: Optimizing regime-specific strategies...")
             
+            # Create strategy factory
+            strategy_factory = WeightedRuleStrategyFactory()
+            
             # Create regime manager if needed
             if self.regime_manager is None:
                 self.regime_manager = RegimeManager(
                     regime_detector=regime_detector,
+                    strategy_factory=strategy_factory,  # Added strategy factory
                     rule_objects=self.rule_objects,
                     data_handler=self.data_handler
                 )
