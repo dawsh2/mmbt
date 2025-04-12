@@ -3,7 +3,7 @@ from enum import Enum, auto
 from datetime import datetime
 import pandas as pd
 from typing import Optional, Dict, Any, List
-from backtester import BarEvent
+# from backtester import BarEvent
 
 
 
