@@ -26,7 +26,7 @@ class GeneticOptimizer:
                  num_parents=8, 
                  num_generations=50,
                  mutation_rate=0.1,
-                 optimization_metric='sharpe',
+                 optimization_metric='return',
                  random_seed=None,
                  deterministic=False,
                  batch_size=None):

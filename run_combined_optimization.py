@@ -24,16 +24,41 @@ from optimizer_manager import (
     OptimizerManager, OptimizationMethod, OptimizationSequence
 )
 
+
 def plot_equity_curve(trades, title, initial_capital=10000):
     """Plot equity curve from trade data."""
     if not trades:
         print(f"Warning: No trades to plot for {title}")
         return
-
+        
     equity = [initial_capital]
-    for trade in trades:
-        log_return = trade[5]
-        equity.append(equity[-1] * np.exp(log_return))
+    
+    # Check if trades are in dictionary format or tuple format
+    if isinstance(trades[0], dict):
+        # Dictionary format
+        for trade in trades:
+            # Look for profit or log_return key in the trade dict
+            if 'profit' in trade:
+                log_return = trade['profit']
+            elif 'log_return' in trade:
+                log_return = trade['log_return']
+            else:
+                # Calculate log return from entry and exit prices
+                entry_price = trade['entry_price']
+                exit_price = trade['exit_price']
+                position = trade['position'].lower()
+                if position == 'long':
+                    log_return = np.log(exit_price / entry_price)
+                else:  # short position
+                    log_return = np.log(entry_price / exit_price)
+                    
+            equity.append(equity[-1] * np.exp(log_return))
+    else:
+        # Tuple/list format
+        for trade in trades:
+            # Traditional tuple format, log return is at index 5
+            log_return = trade[5]
+            equity.append(equity[-1] * np.exp(log_return))
 
     plt.figure(figsize=(12, 6))
     plt.plot(equity)
@@ -42,8 +67,10 @@ def plot_equity_curve(trades, title, initial_capital=10000):
     plt.ylabel('Equity ($)')
     plt.grid(True)
     plt.tight_layout()
-    plt.savefig(f"{title.replace(' ', '_').replace(':', '')}.png")
+    plt.savefig(f"{title.replace(' ', '_')}.png")
     plt.close()
+
+
 
 def plot_performance_comparison(results_dict, title="Strategy Performance Comparison"):
     """Plot equity curves for multiple strategies."""
@@ -107,7 +134,7 @@ rules_config = [
     (Rule12, {'rsi_period': [10, 14]}),
     (Rule13, {'stoch_period': [10, 14], 'stoch_d_period': [3, 5]}),
     (Rule14, {'atr_period': [14, 20]}),
-    (Rule15, {'bb_period': [20, 25]}),
+    (Rule15, {'bb_period': [20, 25], 'bb_std_dev_multiplier': [1.5, 2.0, 2.5]})
 ]
 
 rule_system_start = time.time()
@@ -125,15 +152,8 @@ for i, rule in enumerate(top_rule_objects):
 print("\n=== Running Baseline Strategy ===")
 top_n_strategy = rule_system.get_top_n_strategy()
 data_handler.reset_test()
-while True:
-    bar = data_handler.get_next_test_bar()
-    if bar is None:
-        break
-    event = BarEvent(bar)  # Create a proper event object
-    top_n_strategy.on_bar(event)
-
 baseline_backtester = Backtester(data_handler, top_n_strategy)
-baseline_results = baseline_backtester.calculate_returns()
+baseline_results = baseline_backtester.run(use_test_data=True) 
 # top_n_strategy = rule_system.get_top_n_strategy()
 # baseline_backtester = Backtester(data_handler, top_n_strategy)
 # baseline_results = baseline_backtester.run(use_test_data=True)
