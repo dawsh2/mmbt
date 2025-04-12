@@ -1,6 +1,7 @@
 from collections import deque
 import pandas as pd
 import numpy as np
+from signals import Signal, SignalType
 
 
 
@@ -65,11 +66,11 @@ class Strategy:
         self.prev_short_sma = short_sma
         self.prev_long_sma = long_sma
 
+from signals import Signal, SignalType
+
 class Rule0:
     """
-    Event-driven version of Rule0: Simple Moving Average Crossover.
-    Buy signal when fast SMA crosses above slow SMA.
-    Sell signal when fast SMA crosses below slow SMA.
+    Rule0 using Signal objects directly.
     """
     def __init__(self, params):
         self.fast_window = int(params['fast_window'])
@@ -77,7 +78,8 @@ class Rule0:
         self.prices = []
         self.fast_sma_history = []
         self.slow_sma_history = []
-        self.current_signal = 0
+        self.current_signal_type = SignalType.NEUTRAL
+        self.rule_id = "Rule0"
 
     def on_bar(self, bar):
         close = bar["Close"]
@@ -97,37 +99,53 @@ class Rule0:
 
                 # Signal based on current relationship, not just crossover
                 if current_fast_sma > current_slow_sma:
-                    self.current_signal = 1  # Bullish state
+                    self.current_signal_type = SignalType.BUY  # Bullish state
                 elif current_fast_sma < current_slow_sma:
-                    self.current_signal = -1  # Bearish state
+                    self.current_signal_type = SignalType.SELL  # Bearish state
                 else:
-                    self.current_signal = 0  # Equal (rare)
+                    self.current_signal_type = SignalType.NEUTRAL  # Equal (rare)
             else:
-                self.current_signal = 0
+                self.current_signal_type = SignalType.NEUTRAL
         else:
-            self.current_signal = 0
-        return self.current_signal
+            self.current_signal_type = SignalType.NEUTRAL
+        
+        # Create metadata with any additional information
+        metadata = {}
+
+        # Return a Signal object
+        return Signal(
+            timestamp=bar["timestamp"],
+            type=self.current_signal_type,
+            price=bar["Close"],
+            rule_id=self.rule_id,
+            confidence=1.0,
+            metadata=metadata
+        )
 
     def reset(self):
         self.prices = []
         self.fast_sma_history = []
         self.slow_sma_history = []
-        self.current_signal = 0
+        self.current_signal_type = SignalType.NEUTRAL
 
+
+
+from signals import Signal, SignalType
 
 class Rule1:
     """
-    Event-driven version of Rule1: Simple Moving Average Crossover - Optimized SMA with persistent signals.
+    Rule1 using Signal objects directly.
     """
-    def __init__(self, param):
-        self.ma1_period = param['ma1']
-        self.ma2_period = param['ma2']
-        self.history = []
-        self.sum1 = 0
-        self.sum2 = 0
-        self.s1_history = []
-        self.s2_history = []
-        self.current_signal = 0
+    def __init__(self, params):
+        self.ma1_period = params.get('ma1', 15)
+        self.ma2_period = params.get('ma2', 45)
+        self.history = deque(maxlen=max(self.ma1_period, self.ma2_period))
+        self.sum1 = 0  # Initialize sum1
+        self.sum2 = 0  # Initialize sum2
+        self.ma1_history = deque()  # Corrected attribute name
+        self.ma2_history = deque()  # Corrected attribute name
+        self.current_signal_type = SignalType.NEUTRAL
+        self.rule_id = "Rule1"
 
     def on_bar(self, bar):
         close = bar['Close']
@@ -139,7 +157,7 @@ class Rule1:
         self.sum1 += close
         if len(self.history) >= self.ma1_period:
             sma1 = self.sum1 / self.ma1_period
-            self.s1_history.append(sma1)
+            self.ma1_history.append(sma1)  # Corrected attribute name
 
         # Efficient SMA 2 calculation
         if len(self.history) > self.ma2_period:
@@ -147,48 +165,63 @@ class Rule1:
         self.sum2 += close
         if len(self.history) >= self.ma2_period:
             sma2 = self.sum2 / self.ma2_period
-            self.s2_history.append(sma2)
+            self.ma2_history.append(sma2)  # Corrected attribute name
 
-        if len(self.s1_history) >= 1 and len(self.s2_history) >= 1:
+        if len(self.ma1_history) >= 1 and len(self.ma2_history) >= 1:
             # Get the most recent values
-            curr_s1 = self.s1_history[-1]
-            curr_s2 = self.s2_history[-1]
+            curr_s1 = self.ma1_history[-1]  # Using correct attribute
+            curr_s2 = self.ma2_history[-1]  # Using correct attribute
 
             # Signal based on current MA relationship, not just crossover
             if curr_s1 > curr_s2:
-                self.current_signal = 1  # Bullish state
+                self.current_signal_type = SignalType.BUY  # Bullish state
             elif curr_s1 < curr_s2:
-                self.current_signal = -1  # Bearish state
+                self.current_signal_type = SignalType.SELL  # Bearish state
             else:
-                self.current_signal = 0  # Equal (rare)
+                self.current_signal_type = SignalType.NEUTRAL  # Equal (rare)
         else:
-            self.current_signal = 0
-        return self.current_signal
+            self.current_signal_type = SignalType.NEUTRAL
+
+        # Create metadata with any additional information
+        metadata = {}
+
+        # Return a Signal object
+        return Signal(
+            timestamp=bar["timestamp"],
+            type=self.current_signal_type,
+            price=bar["Close"],
+            rule_id=self.rule_id,
+            confidence=1.0,
+            metadata={}
+        )
 
     def reset(self):
-        self.history = []
+        self.history.clear()
         self.sum1 = 0
         self.sum2 = 0
-        self.s1_history = []
-        self.s2_history = []
-        self.current_signal = 0
-        
+        self.ma1_history.clear()  # Corrected attribute name
+        self.ma2_history.clear()  # Corrected attribute name
+        self.current_signal_type = SignalType.NEUTRAL
 
+
+
+from signals import Signal, SignalType
 
 class Rule2:
     """
-    Event-driven version of Rule2: EMA Crossover with MA Confirmation - Fully Optimized with persistent signals.
+    Rule2 using Signal objects directly.
     """
-    def __init__(self, param):
-        self.ema1_period = param['ema1_period']
-        self.ma2_period = param['ma2_period']
-        self.history = []
-        self.ema1_value = np.nan
-        self.ema1_history = []
-        self.ma2_sum = 0
-        self.ma2_history = []
-        self.current_signal = 0
+    def __init__(self, params):
+        self.ema1_period = params.get('ema1_period', 12)  # Default value if not provided
+        self.ma2_period = params.get('ma2_period', 26)  # Default value if not provided
+        self.history = deque(maxlen=max(self.ema1_period if self.ema1_period > 0 else 1, self.ma2_period if self.ma2_period > 0 else 1))
         self.alpha_ema1 = 2 / (self.ema1_period + 1) if self.ema1_period > 0 else 0
+        self.ema1_value = np.nan
+        self.ema1_history = deque()
+        self.ma2_sum = 0
+        self.ma2_history = deque()
+        self.current_signal_type = SignalType.NEUTRAL
+        self.rule_id = "Rule2" # Ensure rule_id is set
 
     def on_bar(self, bar):
         close = bar['Close']
@@ -223,16 +256,28 @@ class Rule2:
                 # Persistent signal based on current state, not just crossover
                 # Also includes price confirmation
                 if curr_ema1 > curr_ma2 and current_price > curr_ma2:
-                    self.current_signal = 1
+                    self.current_signal_type = SignalType.BUY
                 elif curr_ema1 < curr_ma2 and current_price < curr_ma2:
-                    self.current_signal = -1
+                    self.current_signal_type = SignalType.SELL
                 else:
-                    self.current_signal = 0
+                    self.current_signal_type = SignalType.NEUTRAL
             else:
-                self.current_signal = 0
+                self.current_signal_type = SignalType.NEUTRAL
         else:
-            self.current_signal = 0
-        return self.current_signal
+            self.current_signal_type = SignalType.NEUTRAL
+        
+        # Create metadata with any additional information
+        metadata = {}
+
+        # Return a Signal object
+        return Signal(
+            timestamp=bar["timestamp"],
+            type=self.current_signal_type,
+            price=bar["Close"],
+            rule_id=self.rule_id,
+            confidence=1.0,
+            metadata=metadata
+        )
 
     def reset(self):
         self.history = []
@@ -240,100 +285,94 @@ class Rule2:
         self.ema1_history = []
         self.ma2_sum = 0
         self.ma2_history = []
-        self.current_signal = 0
+        self.current_signal_type = SignalType.NEUTRAL
         self.alpha_ema1 = 2 / (self.ema1_period + 1) if self.ema1_period > 0 else 0
+
+
+
+from signals import Signal, SignalType
 
 
 class Rule3:
-    """
-    Event-driven version of Rule3: EMA and EMA - Optimized with persistent signals.
-    """
-    def __init__(self, param):
-        self.ema1_period = param['ema1_period']
-        self.ema2_period = param['ema2_period']
-        self.history = {'close': []}
-        self.ema1_value = np.nan
-        self.ema1_history = []
-        self.ema2_value = np.nan
-        self.ema2_history = []
-        self.current_signal = 0
+    def __init__(self, params):
+        self.ema1_period = params.get('ema1_period', 20)
+        self.ema2_period = params.get('ema2_period', 40)
         self.alpha_ema1 = 2 / (self.ema1_period + 1) if self.ema1_period > 0 else 0
         self.alpha_ema2 = 2 / (self.ema2_period + 1) if self.ema2_period > 0 else 0
+        self.ema1_value = np.nan
+        self.ema1_history = deque(maxlen=200)
+        self.ema2_value = np.nan
+        self.ema2_history = deque(maxlen=200)
+        self.current_signal_type = SignalType.NEUTRAL
+        self.rule_id = "Rule3"
 
     def on_bar(self, bar):
         close = bar['Close']
-        self.history['close'].append(close)
+        self.ema1_history.append(close)
+        self.ema2_history.append(close)
 
-        # Incremental EMA 1 calculation
-        if self.alpha_ema1 > 0:
+        if len(self.ema1_history) >= self.ema1_period:
             if np.isnan(self.ema1_value):
-                self.ema1_value = close  # Initialize with the first data point
+                self.ema1_value = np.mean(list(self.ema1_history)[-self.ema1_period:])
             else:
                 self.ema1_value = (close * self.alpha_ema1) + (self.ema1_value * (1 - self.alpha_ema1))
-            self.ema1_history.append(self.ema1_value)
-        else:
-            self.ema1_history.append(np.nan)
 
-        # Incremental EMA 2 calculation
-        if self.alpha_ema2 > 0:
+        if len(self.ema2_history) >= self.ema2_period:
             if np.isnan(self.ema2_value):
-                self.ema2_value = close  # Initialize with the first data point
+                self.ema2_value = np.mean(list(self.ema2_history)[-self.ema2_period:])
             else:
                 self.ema2_value = (close * self.alpha_ema2) + (self.ema2_value * (1 - self.alpha_ema2))
-            self.ema2_history.append(self.ema2_value)
-        else:
-            self.ema2_history.append(np.nan)
 
-        if len(self.ema1_history) >= 1 and len(self.ema2_history) >= 1:
-            curr_ema1 = self.ema1_history[-1]
-            curr_ema2 = self.ema2_history[-1]
-
-            if not np.isnan(curr_ema1) and not np.isnan(curr_ema2):
-                # Persistent signal based on current relationship between EMAs
-                if curr_ema1 > curr_ema2:
-                    self.current_signal = 1
-                elif curr_ema1 < curr_ema2:
-                    self.current_signal = -1
-                else:
-                    self.current_signal = 0
+        if not np.isnan(self.ema1_value) and not np.isnan(self.ema2_value):
+            if self.ema1_value > self.ema2_value:
+                self.current_signal_type = SignalType.BUY
+            elif self.ema1_value < self.ema2_value:
+                self.current_signal_type = SignalType.SELL
             else:
-                self.current_signal = 0
+                self.current_signal_type = SignalType.NEUTRAL
         else:
-            self.current_signal = 0
-        return self.current_signal
+            self.current_signal_type = SignalType.NEUTRAL
+
+        metadata = {
+            "ema1": self.ema1_value,
+            "ema2": self.ema2_value
+        }
+
+        return Signal(
+            timestamp=bar["timestamp"],
+            type=self.current_signal_type,
+            price=bar["Close"],
+            rule_id=self.rule_id,
+            confidence=1.0,
+            metadata=metadata
+        )
 
     def reset(self):
-        self.history = {'close': []}
         self.ema1_value = np.nan
-        self.ema1_history = []
+        self.ema1_history = deque(maxlen=200)
         self.ema2_value = np.nan
-        self.ema2_history = []
-        self.current_signal = 0
-        self.alpha_ema1 = 2 / (self.ema1_period + 1) if self.ema1_period > 0 else 0
-        self.alpha_ema2 = 2 / (self.ema2_period + 1) if self.ema2_period > 0 else 0
+        self.ema2_history = deque(maxlen=200)
+        self.current_signal_type = SignalType.NEUTRAL
 
 class Rule4:
-    """
-    Event-driven version of Rule4: DEMA and MA (formerly Rule4) - Further Optimized.
-    """
-    def __init__(self, param):
-        self.dema1_period = param['dema1_period']
-        self.ma2_period = param['ma2_period']
-        self.history = []  # Store only close prices
+    def __init__(self, params):
+        self.ma2_period = params.get('ma2_period', 50)
+        self.dema1_period = params.get('dema1_period', 20)
+        self.alpha1 = None # Basic initialization
+        self.history = deque(maxlen=200) # Assuming a maxlen
+        self.current_signal_type = SignalType.NEUTRAL
+        self.rule_id = "Rule4"
         self.ema1_value = np.nan
         self.ema2_value = np.nan
         self.dema1_value = np.nan
         self.ma2_sum = 0
         self.ma2_count = 0
-        self.current_signal = 0
-        self.alpha1 = 2 / (self.dema1_period + 1) if self.dema1_period > 0 else 0
 
     def on_bar(self, bar):
         close = bar['Close']
         self.history.append(close)
-
         # Incremental EMA 1
-        if self.alpha1 > 0:
+        if (self.alpha1 is not None and self.alpha1) > 0:
             if np.isnan(self.ema1_value):
                 self.ema1_value = close
             else:
@@ -358,64 +397,75 @@ class Rule4:
         ma2_val = self.ma2_sum / self.ma2_period if self.ma2_count >= self.ma2_period else np.nan
 
         # Fixed section of Rule4.on_bar()
-        if len(self.history) >= max(self.dema1_period * 2 - 1 if self.dema1_period > 0 else 0, self.ma2_period):
+        if len(self.history) >= max((self.dema1_period * 2 - 1 if self.dema1_period > 0 else 0), self.ma2_period):
             curr_dema1 = self.dema1_value
             curr_ma2 = ma2_val
 
             if not np.isnan(curr_dema1) and not np.isnan(curr_ma2):
                 # Persistent signal based on current state
                 if curr_dema1 > curr_ma2:
-                    self.current_signal = 1
+                    self.current_signal_type = SignalType.BUY
                 elif curr_dema1 < curr_ma2:
-                    self.current_signal = -1
+                    self.current_signal_type = SignalType.SELL
                 else:
-                    self.current_signal = 0
+                    self.current_signal_type = SignalType.NEUTRAL
             else:
-                self.current_signal = 0
+                self.current_signal_type = SignalType.NEUTRAL
         else:
-            self.current_signal = 0
+            self.current_signal_type = SignalType.NEUTRAL
 
-        return self.current_signal
+
+        # Create metadata with any additional information
+            metadata = {}
+
+            # Return a Signal object
+            return Signal(
+                timestamp=bar["timestamp"],
+                type=self.current_signal_type,
+                price=bar["Close"],
+                rule_id=self.rule_id,
+                confidence=1.0,
+                metadata=metadata
+            )
 
     def reset(self):
-        self.history = []
+        self.history = deque(maxlen=200)
         self.ema1_value = np.nan
         self.ema2_value = np.nan
         self.dema1_value = np.nan
         self.ma2_sum = 0
         self.ma2_count = 0
-        self.current_signal = 0
+        self.current_signal_type = SignalType.NEUTRAL
         self.alpha1 = 2 / (self.dema1_period + 1) if self.dema1_period > 0 else 0
-
+        self.alpha1 = None # Basic initialization
 
 class Rule5:
-    """
-    Event-driven version of Rule5: DEMA and DEMA - Optimized with persistent signals.
-    """
-    def __init__(self, param):
-        self.dema1_period = param['dema1_period']
-        self.dema2_period = param['dema2_period']
-        self.history = {'close': []}
+    def __init__(self, params):
+        self.dema2_period = params.get('dema2_period', 30)
+        self.dema1_period = params.get('dema1_period', 15)
+        self.alpha1 = None # Basic initialization
+        self.history = deque(maxlen=200) # Assuming a maxlen
+        self.current_signal_type = SignalType.NEUTRAL
+        self.rule_id = "Rule5"
         self.ema1_value = np.nan
-        self.ema1_history = []
+        self.ema1_history = deque()
         self.ema2_value = np.nan
         self.dema1_value = np.nan
-        self.dema1_history = []
+        self.dema1_history = deque()
         self.ema3_value = np.nan
-        self.ema3_history = []
+        self.ema3_history = deque()
         self.ema4_value = np.nan
         self.dema2_value = np.nan
-        self.dema2_history = []
-        self.current_signal = 0
-        self.alpha1 = 2 / (self.dema1_period + 1) if self.dema1_period > 0 else 0
+        self.dema2_history = deque()
         self.alpha2 = 2 / (self.dema2_period + 1) if self.dema2_period > 0 else 0
+
 
     def on_bar(self, bar):
         close = bar['Close']
-        self.history['close'].append(close)
+        self.history.append(close)
 
         # Incremental DEMA 1 calculation
-        if self.alpha1 > 0:
+        if (self.alpha1 is not None and self.alpha1) > 0:
             if np.isnan(self.ema1_value):
                 self.ema1_value = close
             else:
@@ -437,7 +487,7 @@ class Rule5:
             self.dema1_history.append(np.nan)
 
         # Incremental DEMA 2 calculation
-        if self.alpha2 > 0:
+        if (self.alpha2 is not None and self.alpha2) > 0:
             if np.isnan(self.ema3_value):
                 self.ema3_value = close
             else:
@@ -465,58 +515,56 @@ class Rule5:
             if not np.isnan(curr_dema1) and not np.isnan(curr_dema2):
                 # Persistent signal based on current DEMA relationship
                 if curr_dema1 > curr_dema2:
-                    self.current_signal = 1
+                    self.current_signal_type = SignalType.BUY
                 elif curr_dema1 < curr_dema2:
-                    self.current_signal = -1
+                    self.current_signal_type = SignalType.SELL
                 else:
-                    self.current_signal = 0
+                    self.current_signal_type = SignalType.NEUTRAL
             else:
-                self.current_signal = 0
+                self.current_signal_type = SignalType.NEUTRAL
         else:
-            self.current_signal = 0
-        return self.current_signal
+            self.current_signal_type = SignalType.NEUTRAL
 
-    def reset(self):
-        self.history = {'close': []}
-        self.ema1_value = np.nan
-        self.ema1_history = []
-        self.ema2_value = np.nan
-        self.dema1_value = np.nan
-        self.dema1_history = []
-        self.ema3_value = np.nan
-        self.ema3_history = []
-        self.ema4_value = np.nan
-        self.dema2_value = np.nan
-        self.dema2_history = []
-        self.current_signal = 0
-        self.alpha1 = 2 / (self.dema1_period + 1) if self.dema1_period > 0 else 0
-        self.alpha2 = 2 / (self.dema2_period + 1) if self.dema2_period > 0 else 0
+        # Create metadata with any additional information
+        metadata = {}
 
+        # Return a Signal object
+        return Signal(
+            timestamp=bar["timestamp"],
+            type=self.current_signal_type,
+            price=bar["Close"],
+            rule_id=self.rule_id,
+            confidence=1.0,
+            metadata=metadata
+        )
 
+from collections import deque
+import numpy as np
+from signals import Signal, SignalType
 
 class Rule6:
-    """
-    Event-driven version of Rule6: TEMA and MA crossovers - Optimized TEMA and MA with persistent signals.
-    """
-    def __init__(self, param):
-        self.tema1_period = param['tema1_period']
-        self.ma2_period = param['ma2_period']
-        self.history = []  # Store only close prices
+    def __init__(self, params):
+        self.ma2_period = params.get('ma2_period', 30)
+        self.tema1_period = params.get('tema1_period', 10)
+        self.history = deque(maxlen=200) # Assuming a maxlen
+        self.current_signal_type = SignalType.NEUTRAL
+        self.rule_id = "Rule6"
+        self.alpha1 = None # Basic initialization
         self.ema1_value = np.nan
         self.ema2_value = np.nan
         self.ema3_value = np.nan
         self.tema1_value = np.nan
         self.ma2_sum = 0
         self.ma2_count = 0
-        self.current_signal = 0
-        self.alpha1 = 2 / (self.tema1_period + 1) if self.tema1_period > 0 else 0
+        self.close_history = deque(maxlen=200) # Initialize close_history here
 
     def on_bar(self, bar):
         close = bar['Close']
         self.history.append(close)
+        self.close_history.append(close) # Update close_history
 
         # Incremental EMA 1
-        if self.alpha1 > 0:
+        if (self.alpha1 is not None and self.alpha1) > 0:
             if np.isnan(self.ema1_value):
                 self.ema1_value = close
             else:
@@ -546,51 +594,64 @@ class Rule6:
             self.ma2_sum -= self.history[-(self.ma2_period + 1)]
         ma2_val = self.ma2_sum / self.ma2_period if self.ma2_count >= self.ma2_period else np.nan
 
-        if len(self.history) >= max(self.tema1_period * 3 - 2 if self.tema1_period > 0 else 0, self.ma2_period):
+        if len(self.history) >= max((self.tema1_period * 3 - 2 if self.tema1_period > 0 else 0), self.ma2_period):
             curr_tema1 = self.tema1_value
             curr_ma2 = ma2_val
 
             if not np.isnan(curr_tema1) and not np.isnan(curr_ma2):
                 # Persistent signal based on current TEMA vs MA relationship
                 if curr_tema1 > curr_ma2:
-                    self.current_signal = 1
+                    self.current_signal_type = SignalType.BUY
                 elif curr_tema1 < curr_ma2:
-                    self.current_signal = -1
+                    self.current_signal_type = SignalType.SELL
                 else:
-                    self.current_signal = 0
+                    self.current_signal_type = SignalType.NEUTRAL
             else:
-                self.current_signal = 0
+                self.current_signal_type = SignalType.NEUTRAL
         else:
-            self.current_signal = 0
+            self.current_signal_type = SignalType.NEUTRAL
 
-        return self.current_signal
+
+        # Create metadata with any additional information
+        metadata = {}
+
+        # Return a Signal object
+        return Signal(
+            timestamp=bar["timestamp"],
+            type=self.current_signal_type,
+            price=bar["Close"],
+            rule_id=self.rule_id,
+            confidence=1.0,
+            metadata=metadata
+        )
 
     def reset(self):
-        self.history = []
+        self.history = deque(maxlen=200)
         self.ema1_value = np.nan
         self.ema2_value = np.nan
         self.ema3_value = np.nan
         self.tema1_value = np.nan
         self.ma2_sum = 0
         self.ma2_count = 0
-        self.current_signal = 0
+        self.current_signal_type = SignalType.NEUTRAL
         self.alpha1 = 2 / (self.tema1_period + 1) if self.tema1_period > 0 else 0
+        self.close_history = deque(maxlen=200)
 
 class Rule7:
-    """
-    Event-driven version of Rule7: Stochastic crossover - Further Optimized with persistent signals.
-    """
-    def __init__(self, param):
-        self.stoch1_period = param['stoch1_period']
-        self.stochma2_period = param['stochma2_period']
-        self.high_history = deque(maxlen=self.stoch1_period)
-        self.low_history = deque(maxlen=self.stoch1_period)
-        self.close_history = deque(maxlen=self.stoch1_period)
-        self.s1_history = []  # Stochastic %K values
+    def __init__(self, params):
+        self.stochma2_period = params.get('stochma2_period', 3)
+        self.stoch1_period = params.get('stoch1_period', 14)
+        self.high_history = deque(maxlen=200) # Assuming a maxlen
+        self.low_history = deque(maxlen=200) # Assuming a maxlen
+        self.stoch_history = deque(maxlen=200) # Assuming a maxlen
+        self.stoch_ma_history = deque(maxlen=200) # Assuming a maxlen
+        self.current_signal_type = SignalType.NEUTRAL
+        self.rule_id = "Rule7"
+        self.s1_history = deque()
         self.s2_sum = 0
         self.s2_count = 0
-        self.s2_value = np.nan  # SMA of %K
-        self.current_signal = 0
+        self.s2_value = np.nan
+        self.close_history = deque(maxlen=200) # Initialize close_history here
 
     def on_bar(self, bar):
         high = bar['High']
@@ -617,6 +678,9 @@ class Rule7:
             else:
                 s1 = 50
             self.s1_history.append(s1)
+            self.high_history.popleft()
+            self.low_history.popleft()
+            self.close_history.popleft()
         else:
             self.s1_history.append(np.nan)
 
@@ -633,64 +697,75 @@ class Rule7:
         else:
             self.s2_value = np.nan
 
-        if len(self.s1_history) >= 1 and self.s2_value is not np.nan and len(self.s1_history) >= self.stochma2_period:
-            curr_s1 = self.s1_history[-1]  # %K
-            curr_s2 = self.s2_value        # %D
+        if len(self.s1_history) >= 1 and not np.isnan(self.s2_value) and len(self.s1_history) >= self.stochma2_period:
+            curr_s1 = self.s1_history[-1]   # %K
+            curr_s2 = self.s2_value       # %D
 
             if not np.isnan(curr_s1) and not np.isnan(curr_s2):
                 # Persistent signal based on current %K vs %D relationship
                 if curr_s1 > curr_s2:
-                    self.current_signal = 1
+                    self.current_signal_type = SignalType.BUY
                 elif curr_s1 < curr_s2:
-                    self.current_signal = -1
+                    self.current_signal_type = SignalType.SELL
                 else:
-                    self.current_signal = 0
+                    self.current_signal_type = SignalType.NEUTRAL
             else:
-                self.current_signal = 0
+                self.current_signal_type = SignalType.NEUTRAL
         else:
-            self.current_signal = 0
-        return self.current_signal
+            self.current_signal_type = SignalType.NEUTRAL
+
+        # Create metadata with any additional information
+        metadata = {}
+
+        # Return a Signal object
+        return Signal(
+            timestamp=bar["timestamp"],
+            type=self.current_signal_type,
+            price=bar["Close"],
+            rule_id=self.rule_id,
+            confidence=1.0,
+            metadata=metadata
+        )
 
     def reset(self):
         self.high_history = deque(maxlen=self.stoch1_period)
         self.low_history = deque(maxlen=self.stoch1_period)
         self.close_history = deque(maxlen=self.stoch1_period)
-        self.s1_history = []
+        self.s1_history = deque()
         self.s2_sum = 0
         self.s2_count = 0
         self.s2_value = np.nan
-        self.current_signal = 0
-
-
+        self.current_signal_type = SignalType.NEUTRAL
 
 class Rule8:
-    """
-    Event-driven version of Rule8: Vortex indicator crossover - Optimized with persistent signals.
-    """
-    def __init__(self, param):
-        self.vortex1_period = param['vortex1_period']
-        self.vortex2_period = param['vortex2_period']
-        self.history = {'high': [], 'low': [], 'close': []}
+    def __init__(self, params):
+        self.vortex1_period = params.get('vortex1_period', 14)
+        self.vortex2_period = params.get('vortex2_period', 14)
+        self.high_history = deque(maxlen=200)
+        self.low_history = deque(maxlen=200)
+        self.close_history = deque(maxlen=200)
         self.tr_sum = 0
         self.pm_sum = 0
         self.nm_sum = 0
         self.current_tr = 0
         self.current_pm = 0
         self.current_nm = 0
-        self.s1_history = []  # +VI
-        self.s2_history = []  # -VI
-        self.current_signal = 0
+        self.s1_history = deque() # For +VI history
+        self.s2_history = deque() # For -VI history
+        self.current_signal_type = SignalType.NEUTRAL
+        self.rule_id = "Rule8"
+
 
     def on_bar(self, bar):
         high = bar['High']
         low = bar['Low']
         close = bar['Close']
-        self.history['high'].append(high)
-        self.history['low'].append(low)
-        self.history['close'].append(close)
+        self.high_history.append(high)
+        self.low_history.append(low)
+        self.close_history.append(close)
 
-        if len(self.history['close']) >= 2:
-            prev_close = self.history['close'][-2]
+        if len((self.close_history is not None and self.close_history)) >= 2:
+            prev_close = self.close_history[-2]
             self.current_tr = np.max([high - low, np.abs(high - prev_close), np.abs(low - prev_close)])
             self.current_pm = np.abs(high - prev_close) if (high - prev_close) > (prev_close - low) else 0
             self.current_nm = np.abs(low - prev_close) if (prev_close - low) > (high - prev_close) else 0
@@ -703,28 +778,27 @@ class Rule8:
         self.pm_sum += self.current_pm
         self.nm_sum += self.current_nm
 
-        if len(self.history['close']) > self.vortex1_period:
-            # Check if enough history exists before subtracting
-            if len(self.history['close']) >= self.vortex1_period + 1:
-                prev_high_v1 = self.history['high'][-(self.vortex1_period + 1)]
-                prev_low_v1 = self.history['low'][-(self.vortex1_period + 1)]
-                prev_close_v1_minus_1 = self.history['close'][-(self.vortex1_period + 2)] if len(self.history['close']) >= self.vortex1_period + 2 else self.history['close'][-(self.vortex1_period + 1)] # Handle edge case
+        if len(self.close_history) > self.vortex1_period:
+            if len(self.close_history) >= self.vortex1_period + 1:
+                prev_high_v1 = self.high_history[-(self.vortex1_period + 1)]
+                prev_low_v1 = self.low_history[-(self.vortex1_period + 1)]
+                prev_close_v1_minus_1 = self.close_history[-(self.vortex1_period + 2)] if len(self.close_history) >= self.vortex1_period + 2 else self.close_history[-(self.vortex1_period + 1)]
 
                 self.tr_sum -= np.max([prev_high_v1 - prev_low_v1,
-                                       np.abs(prev_high_v1 - prev_close_v1_minus_1),
-                                       np.abs(prev_low_v1 - prev_close_v1_minus_1)])
+                                        np.abs(prev_high_v1 - prev_close_v1_minus_1),
+                                        np.abs(prev_low_v1 - prev_close_v1_minus_1)])
                 self.pm_sum -= np.abs(prev_high_v1 - prev_close_v1_minus_1) if (prev_high_v1 - prev_close_v1_minus_1) > (prev_close_v1_minus_1 - prev_low_v1) else 0
                 self.nm_sum -= np.abs(prev_low_v1 - prev_close_v1_minus_1) if (prev_close_v1_minus_1 - prev_low_v1) > (prev_high_v1 - prev_close_v1_minus_1) else 0
 
-        if len(self.history['close']) >= self.vortex1_period:
-            vi_pos = self.pm_sum / self.tr_sum if self.tr_sum != 0 else 0
+        if len(self.close_history) >= self.vortex1_period:
+            vi_pos = (self.pm_sum is not None and self.pm_sum) / (self.tr_sum is not None and self.tr_sum) if (self.tr_sum is not None and self.tr_sum) != 0 else 0
             self.s1_history.append(vi_pos)
         else:
             self.s1_history.append(np.nan)
 
         # Recalculate current TR, PM, NM for the second period
-        if len(self.history['close']) >= 2:
-            prev_close = self.history['close'][-2]
+        if len((self.close_history is not None and self.close_history)) >= 2:
+            prev_close = self.close_history[-2]
             self.current_tr = np.max([high - low, np.abs(high - prev_close), np.abs(low - prev_close)])
             self.current_pm = np.abs(high - prev_close) if (high - prev_close) > (prev_close - low) else 0
             self.current_nm = np.abs(low - prev_close) if (prev_close - low) > (high - prev_close) else 0
@@ -737,101 +811,83 @@ class Rule8:
         self.pm_sum += self.current_pm
         self.nm_sum += self.current_nm
 
-        if len(self.history['close']) > self.vortex2_period:
-            # Check if enough history exists before subtracting
-            if len(self.history['close']) >= self.vortex2_period + 1:
-                prev_high_v2 = self.history['high'][-(self.vortex2_period + 1)]
-                prev_low_v2 = self.history['low'][-(self.vortex2_period + 1)]
-                prev_close_v2_minus_1 = self.history['close'][-(self.vortex2_period + 2)] if len(self.history['close']) >= self.vortex2_period + 2 else self.history['close'][-(self.vortex2_period + 1)] # Handle edge case
+        if len(self.close_history) > self.vortex2_period:
+            if len(self.close_history) >= self.vortex2_period + 1:
+                prev_high_v2 = self.high_history[-(self.vortex2_period + 1)]
+                prev_low_v2 = self.low_history[-(self.vortex2_period + 1)]
+                prev_close_v2_minus_1 = self.close_history[-(self.vortex2_period + 2)] if len(self.close_history) >= self.vortex2_period + 2 else self.close_history[-(self.vortex2_period + 1)]
 
                 self.tr_sum -= np.max([prev_high_v2 - prev_low_v2,
-                                       np.abs(prev_high_v2 - prev_close_v2_minus_1),
-                                       np.abs(prev_low_v2 - prev_close_v2_minus_1)])
+                                        np.abs(prev_high_v2 - prev_close_v2_minus_1),
+                                        np.abs(prev_low_v2 - prev_close_v2_minus_1)])
                 self.pm_sum -= np.abs(prev_high_v2 - prev_close_v2_minus_1) if (prev_high_v2 - prev_close_v2_minus_1) > (prev_close_v2_minus_1 - prev_low_v2) else 0
                 self.nm_sum -= np.abs(prev_low_v2 - prev_close_v2_minus_1) if (prev_close_v2_minus_1 - prev_low_v2) > (prev_high_v2 - prev_close_v2_minus_1) else 0
 
-        if len(self.history['close']) >= self.vortex2_period:
-            vi_neg = self.nm_sum / self.tr_sum if self.tr_sum != 0 else 0
+        if len(self.close_history) >= self.vortex2_period:
+            vi_neg = (self.nm_sum is not None and self.nm_sum) / (self.tr_sum is not None and self.tr_sum) if (self.tr_sum is not None and self.tr_sum) != 0 else 0
             self.s2_history.append(vi_neg)
         else:
             self.s2_history.append(np.nan)
 
-        if len(self.s1_history) >= 1 and len(self.s2_history) >= 1:
+        if len((self.s1_history is not None and self.s1_history)) >= 1 and len((self.s2_history is not None and self.s2_history)) >= 1:
             curr_s1 = self.s1_history[-1]  # +VI
             curr_s2 = self.s2_history[-1]  # -VI
 
             if not np.isnan(curr_s1) and not np.isnan(curr_s2):
                 # Persistent signal based on current VI+ vs VI- relationship
                 if curr_s1 > curr_s2:
-                    self.current_signal = 1
+                    self.current_signal_type = SignalType.BUY
                 elif curr_s1 < curr_s2:
-                    self.current_signal = -1
+                    self.current_signal_type = SignalType.SELL
                 else:
-                    self.current_signal = 0
+                    self.current_signal_type = SignalType.NEUTRAL
             else:
-                self.current_signal = 0
+                self.current_signal_type = SignalType.NEUTRAL
         else:
-            self.current_signal = 0
-        return self.current_signal
+            self.current_signal_type = SignalType.NEUTRAL
 
-    def reset(self):
-        self.history = {'high': [], 'low': [], 'close': []}
-        self.tr_sum = 0
-        self.pm_sum = 0
-        self.nm_sum = 0
-        self.current_tr = 0
-        self.current_pm = 0
-        self.current_nm = 0
-        self.s1_history = []
-        self.s2_history = []
-        self.current_signal = 0
-        
+        # Create metadata with any additional information
+        metadata = {}
 
+        # Return a Signal object
+        return Signal(
+            timestamp=bar["timestamp"],
+            type=self.current_signal_type,
+            price=close,
+            rule_id=self.rule_id,
+            confidence=1.0,
+            metadata=metadata
+        )
+
+        def reset(self):
+            self.high_history.clear()
+            self.low_history.clear()
+            self.close_history.clear()
+            self.tr_sum = 0
+            self.pm_sum = 0
+            self.nm_sum = 0
+            self.current_tr = 0
+            self.current_pm = 0
+            self.current_nm = 0
+            self.s1_history.clear()
+            self.s2_history.clear()
+            self.current_signal_type = SignalType.NEUTRAL
+
+
+
+            
 class Rule9:
-    """
-    Event-driven version of Rule9: Ichimoku cloud - Incremental Calculation with persistent signals.
-    """
-    def __init__(self, param):
-        self.p1 = param['p1']
-        self.p2 = param['p2']
-        self.n2 = round((self.p1 + self.p2) / 2)
-        self.n3 = 52  # For Senkou Span B
-        self.high_history = deque(maxlen=max(self.p1, self.n2, self.n3))
-        self.low_history = deque(maxlen=max(self.p1, self.n2, self.n3))
-        self.close_history = deque(maxlen=self.n2)  # Store enough for shifting
-        self.conversion_line_history = deque(maxlen=self.n2)
-        self.base_line_history = deque(maxlen=self.n2)
-        self.senkou_span_a_history = deque(maxlen=self.n2)
-        self.senkou_span_b_history = deque(maxlen=self.n2)
-        self.current_signal = 0
-
-    def _calculate_conversion_line(self):
-        if len(self.high_history) >= self.p1 and len(self.low_history) >= self.p1:
-            highest_high = max(list(self.high_history)[-self.p1:])
-            lowest_low = min(list(self.low_history)[-self.p1:])
-            return 0.5 * (highest_high + lowest_low)
-        return np.nan
-
-    def _calculate_base_line(self):
-        if len(self.high_history) >= self.n2 and len(self.low_history) >= self.n2:
-            highest_high = max(list(self.high_history)[-self.n2:])
-            lowest_low = min(list(self.low_history)[-self.n2:])
-            return 0.5 * (highest_high + lowest_low)
-        return np.nan
-
-    def _calculate_senkou_span_a(self):
-        conversion_line = self._calculate_conversion_line()
-        base_line = self._calculate_base_line()
-        if not np.isnan(conversion_line) and not np.isnan(base_line):
-            return 0.5 * (conversion_line + base_line)
-        return np.nan
-
-    def _calculate_senkou_span_b(self):
-        if len(self.high_history) >= self.n3 and len(self.low_history) >= self.n3:
-            highest_high = max(list(self.high_history)[-self.n3:])
-            lowest_low = min(list(self.low_history)[-self.n3:])
-            return 0.5 * (highest_high + lowest_low)
-        return np.nan
+    def __init__(self, params):
+        self.ichimoku_tenkan_period = params.get('ichimoku_tenkan_period', 9)
+        self.ichimoku_kijun_period = params.get('ichimoku_kijun_period', 26)
+        self.ichimoku_senkou_b_period = params.get('ichimoku_senkou_b_period', 52)
+        self.high_history = deque(maxlen=200)
+        self.low_history = deque(maxlen=200)
+        self.close_history = deque(maxlen=200)
+        self.tenkan_sen = np.nan
+        self.kijun_sen = np.nan
+        self.current_signal_type = SignalType.NEUTRAL
+        self.rule_id = "Rule9"
 
     def on_bar(self, bar):
         high = bar['High']
@@ -842,144 +898,121 @@ class Rule9:
         self.low_history.append(low)
         self.close_history.append(close)
 
-        conversion_line = self._calculate_conversion_line()
-        base_line = self._calculate_base_line()
-        senkou_span_a = self._calculate_senkou_span_a()
-        senkou_span_b = self._calculate_senkou_span_b()
+        if len(self.high_history) >= self.ichimoku_tenkan_period and len(self.low_history) >= self.ichimoku_tenkan_period:
+            highest_high_tenkan = max(list(self.high_history)[-self.ichimoku_tenkan_period:])
+            lowest_low_tenkan = min(list(self.low_history)[-self.ichimoku_tenkan_period:])
+            self.tenkan_sen = (highest_high_tenkan + lowest_low_tenkan) / 2
 
-        # Store calculated values
-        if not np.isnan(senkou_span_a):
-            self.senkou_span_a_history.append(senkou_span_a)
-        if not np.isnan(senkou_span_b):
-            self.senkou_span_b_history.append(senkou_span_b)
-        if not np.isnan(conversion_line):
-            self.conversion_line_history.append(conversion_line)
-        if not np.isnan(base_line):
-            self.base_line_history.append(base_line)
+        if len(self.high_history) >= self.ichimoku_kijun_period and len(self.low_history) >= self.ichimoku_kijun_period:
+            highest_high_kijun = max(list(self.high_history)[-self.ichimoku_kijun_period:])
+            lowest_low_kijun = min(list(self.low_history)[-self.ichimoku_kijun_period:])
+            self.kijun_sen = (highest_high_kijun + lowest_low_kijun) / 2
 
-        # Generate signal based on current price's relationship to the cloud
-        if len(self.senkou_span_a_history) >= 1 and len(self.senkou_span_b_history) >= 1:
-            current_span_a = self.senkou_span_a_history[-1]
-            current_span_b = self.senkou_span_b_history[-1]
-
-            if not np.isnan(current_span_a) and not np.isnan(current_span_b):
-                # Persistent signal based on price vs cloud relationship
-                if close > max(current_span_a, current_span_b):
-                    self.current_signal = 1  # Price above cloud (bullish)
-                elif close < min(current_span_a, current_span_b):
-                    self.current_signal = -1  # Price below cloud (bearish)
-                else:
-                    self.current_signal = 0  # Price inside cloud (neutral)
+        if not np.isnan(self.tenkan_sen) and not np.isnan(self.kijun_sen):
+            if self.tenkan_sen > self.kijun_sen and self.close > self.kijun_sen:
+                self.current_signal_type = SignalType.BUY
+            elif self.tenkan_sen < self.kijun_sen and self.close < self.kijun_sen:
+                self.current_signal_type = SignalType.SELL
             else:
-                self.current_signal = 0
+                self.current_signal_type = SignalType.NEUTRAL
         else:
-            self.current_signal = 0
+            self.current_signal_type = SignalType.NEUTRAL
 
-        return self.current_signal
+        metadata = {
+            "tenkan_sen": self.tenkan_sen,
+            "kijun_sen": self.kijun_sen
+        }
+
+        return Signal(
+            timestamp=bar["timestamp"],
+            type=self.current_signal_type,
+            price=bar["Close"],
+            rule_id=self.rule_id,
+            confidence=1.0,
+            metadata=metadata
+        )
 
     def reset(self):
-        self.high_history = deque(maxlen=max(self.p1, self.n2, self.n3))
-        self.low_history = deque(maxlen=max(self.p1, self.n2, self.n3))
-        self.close_history = deque(maxlen=self.n2)
-        self.conversion_line_history = deque(maxlen=self.n2)
-        self.base_line_history = deque(maxlen=self.n2)
-        self.senkou_span_a_history = deque(maxlen=self.n2)
-        self.senkou_span_b_history = deque(maxlen=self.n2)
-        self.current_signal = 0
+        self.high_history = deque(maxlen=200)
+        self.low_history = deque(maxlen=200)
+        self.close_history = deque(maxlen=200)
+        self.tenkan_sen = np.nan
+        self.kijun_sen = np.nan
+        self.current_signal_type = SignalType.NEUTRAL
 
 class Rule10:
-    """
-    Event-driven version of Rule10: RSI Overbought/Oversold - Optimized with persistent signals and zones.
-    """
-    def __init__(self, param):
-        self.rsi1_period = param['rsi1_period']
-        self.overbought_level = param.get('c2_threshold', 70)  # Use c2_threshold or default to 70
-        self.oversold_level = 100 - self.overbought_level  # Complement of overbought level
-        self.rsi_value = np.nan
-        self.avg_gain = 0
-        self.avg_loss = 0
-        self.history = []  # Store close prices
-        self.gain_history = []
-        self.loss_history = []
-        self.alpha = 1 / self.rsi1_period if self.rsi1_period > 0 else 0
-        self.current_signal = 0
-        self.last_zone = 'neutral'  # Track which zone we're in to maintain signal
+    def __init__(self, params):
+        self.lookback_period = params.get('lookback_period', 14)
+        self.gain_threshold = params.get('gain_threshold', 0.01)
+        self.loss_threshold = params.get('loss_threshold', -0.01)
+        self.close_history = deque(maxlen=200)
+        self.gain_history = deque(maxlen=200)
+        self.current_signal_type = SignalType.NEUTRAL
+        self.rule_id = "Rule10"
 
     def on_bar(self, bar):
         close = bar['Close']
-        self.history.append(close)
+        self.close_history.append(close)
 
-        if len(self.history) >= 2:
-            change = close - self.history[-2]
-            gain = max(change, 0)
-            loss = abs(min(change, 0))
+        if len(self.close_history) >= 2:
+            previous_close = list(self.close_history)[-2]
+            gain = (close - previous_close) / previous_close
             self.gain_history.append(gain)
-            self.loss_history.append(loss)
 
-            if len(self.gain_history) <= self.rsi1_period:
-                self.avg_gain = np.mean(self.gain_history) if self.gain_history else 0
-                self.avg_loss = np.mean(self.loss_history) if self.loss_history else 0
-            else:
-                self.avg_gain = (self.avg_gain * (self.rsi1_period - 1) + gain) / self.rsi1_period
-                self.avg_loss = (self.avg_loss * (self.rsi1_period - 1) + loss) / self.rsi1_period
+            if len(self.gain_history) >= self.lookback_period:
+                recent_gains = list(self.gain_history)[-self.lookback_period:]
+                average_gain = np.mean([g for g in recent_gains if g > 0]) if any(g > 0 for g in recent_gains) else 0
+                average_loss = np.mean([abs(g) for g in recent_gains if g < 0]) if any(g < 0 for g in recent_gains) else 0
 
-            if self.avg_loss != 0:
-                rs = self.avg_gain / self.avg_loss
-                self.rsi_value = 100 - (100 / (1 + rs))
-            else:
-                self.rsi_value = 100 if self.avg_gain > 0 else 50  # Handle cases with no loss
-
-            # Signal with hysteresis for persistence
-            if self.rsi_value > self.overbought_level:
-                self.current_signal = -1  # Overbought condition (sell)
-                self.last_zone = 'overbought'
-            elif self.rsi_value < self.oversold_level:
-                self.current_signal = 1    # Oversold condition (buy)
-                self.last_zone = 'oversold'
-            elif self.last_zone == 'overbought' and self.rsi_value > (self.overbought_level - 10):
-                # Stay in overbought zone until RSI drops significantly
-                self.current_signal = -1
-            elif self.last_zone == 'oversold' and self.rsi_value < (self.oversold_level + 10):
-                # Stay in oversold zone until RSI rises significantly
-                self.current_signal = 1
-            else:
-                self.current_signal = 0
-                self.last_zone = 'neutral'
+                if average_gain > self.gain_threshold and average_loss < abs(self.loss_threshold):
+                    self.current_signal_type = SignalType.BUY
+                elif average_loss > abs(self.loss_threshold) and average_gain < self.gain_threshold:
+                    self.current_signal_type = SignalType.SELL
+                else:
+                    self.current_signal_type = SignalType.NEUTRAL
         else:
-            self.rsi_value = np.nan
-            self.current_signal = 0
+            self.current_signal_type = SignalType.NEUTRAL
 
-        return self.current_signal
+        metadata = {
+            "gain": self.gain_history[-1] if self.gain_history else np.nan,
+            "average_gain": np.mean([g for g in list(self.gain_history)[-self.lookback_period:] if g > 0]) if len(self.gain_history) >= self.lookback_period and any(g > 0 for g in list(self.gain_history)[-self.lookback_period:]) else 0,
+            "average_loss": np.mean([abs(g) for g in list(self.gain_history)[-self.lookback_period:] if g < 0]) if len(self.gain_history) >= self.lookback_period and any(g < 0 for g in list(self.gain_history)[-self.lookback_period:]) else 0
+        }
+
+        return Signal(
+            timestamp=bar["timestamp"],
+            type=self.current_signal_type,
+            price=bar["Close"],
+            rule_id=self.rule_id,
+            confidence=1.0,
+            metadata=metadata
+        )
 
     def reset(self):
-        self.rsi_value = np.nan
-        self.avg_gain = 0
-        self.avg_loss = 0
-        self.history = []
-        self.gain_history = []
-        self.loss_history = []
-        self.alpha = 1 / self.rsi1_period if self.rsi1_period > 0 else 0
-        self.current_signal = 0
-        self.last_zone = 'neutral'
+        self.close_history = deque(maxlen=200)
+        self.gain_history = deque(maxlen=200)
+        self.current_signal_type = SignalType.NEUTRAL
+        
+
 
 
 class Rule11:
-    """
-    Event-driven version of Rule11: CCI Overbought/Oversold - Optimized with persistent signals and zones.
-    """
-    def __init__(self, param):
-        self.cci1_period = param['cci1_period']
-        self.cci_threshold = param.get('c2_threshold', 100)  # Use c2_threshold or default to 100
-        self.cci_value = np.nan
-        self.history = {'high': [], 'low': [], 'close': []}
+    def __init__(self, params):
+        self.cci1_period = params.get('cci1_period', 14)
+        self.cci_threshold = params.get('c2_threshold', 100)
+        self.history = {'high': deque(maxlen=self.cci1_period * 3),  # Increased maxlen
+                        'low': deque(maxlen=self.cci1_period * 3),
+                        'close': deque(maxlen=self.cci1_period)}
         self.sma_pp = np.nan
         self.mean_deviation = np.nan
-        self.current_signal = 0
+        self.cci_value = np.nan
+        self.current_signal_type = SignalType.NEUTRAL
+        self.rule_id = "Rule11"
         self.constant = 0.015
-        self.last_zone = 'neutral'  # Track which zone we're in to maintain signal
+        self.last_zone = 'neutral'
 
-    def _calculate_pivot_price(self, high, low, close):
-        return (high + low + close) / 3.0
+    def _calculate_pivot_price(self, highs, lows, closes):
+        return (highs + lows + closes) / 3
 
     def on_bar(self, bar):
         high = bar['High']
@@ -991,9 +1024,9 @@ class Rule11:
         self.history['close'].append(close)
 
         if len(self.history['close']) >= self.cci1_period:
-            highs = np.array(self.history['high'][-self.cci1_period:])
-            lows = np.array(self.history['low'][-self.cci1_period:])
-            closes = np.array(self.history['close'][-self.cci1_period:])
+            highs = np.array(list(self.history['high'])[-self.cci1_period:])
+            lows = np.array(list(self.history['low'])[-self.cci1_period:])
+            closes = np.array(list(self.history['close'])[-self.cci1_period:])
             pivot_prices = self._calculate_pivot_price(highs, lows, closes)
             current_pp = pivot_prices[-1]
 
@@ -1008,232 +1041,166 @@ class Rule11:
 
             # Signal with hysteresis for persistence
             if self.cci_value > self.cci_threshold:
-                self.current_signal = -1  # Overbought condition (sell)
+                self.current_signal_type = SignalType.SELL  # Overbought condition (sell)
                 self.last_zone = 'overbought'
             elif self.cci_value < -self.cci_threshold:
-                self.current_signal = 1    # Oversold condition (buy)
+                self.current_signal_type = SignalType.BUY    # Oversold condition (buy)
                 self.last_zone = 'oversold'
             elif self.last_zone == 'overbought' and self.cci_value > (self.cci_threshold * 0.8):
                 # Stay in overbought zone until CCI drops significantly
-                self.current_signal = -1
+                self.current_signal_type = SignalType.SELL
             elif self.last_zone == 'oversold' and self.cci_value < (-self.cci_threshold * 0.8):
                 # Stay in oversold zone until CCI rises significantly
-                self.current_signal = 1
+                self.current_signal_type = SignalType.BUY
             else:
-                self.current_signal = 0
+                self.current_signal_type = SignalType.NEUTRAL
                 self.last_zone = 'neutral'
         else:
             self.cci_value = np.nan
-            self.current_signal = 0
+            self.current_signal_type = SignalType.NEUTRAL
 
-        return self.current_signal
+        # Create metadata with any additional information
+        metadata = {}
+
+        # Return a Signal object
+        return Signal(
+            timestamp=bar["timestamp"],
+            type=self.current_signal_type,
+            price=bar["Close"],
+            rule_id=self.rule_id,
+            confidence=1.0,
+            metadata=metadata
+        )
 
     def reset(self):
         self.cci_value = np.nan
-        self.history = {'high': [], 'low': [], 'close': []}
+        self.history = {'high': deque(maxlen=self.cci1_period * 3),
+                        'low': deque(maxlen=self.cci1_period * 3),
+                        'close': deque(maxlen=self.cci1_period)}
         self.sma_pp = np.nan
         self.mean_deviation = np.nan
-        self.current_signal = 0
+        self.current_signal_type = SignalType.NEUTRAL
         self.constant = 0.015
         self.last_zone = 'neutral'
 
-
-
 class Rule12:
-    """
-    Event-driven version of Rule12: RSI-based strategy - Optimized with persistent signals and hysteresis.
-    """
-    def __init__(self, param):
-        self.rsi_period = param['rsi_period']
-        self.overbought_level = param.get('overbought', 70)
-        self.oversold_level = param.get('oversold', 30)
-        self.exit_buffer = 5  # Buffer for exiting a zone
-        self.rsi_value = np.nan
-        self.avg_gain = 0
-        self.avg_loss = 0
-        self.history = []
-        self.gain_history = []
-        self.loss_history = []
-        self.current_signal = 0
-        self.in_trade = False  # Track if we're in a trade
+    def __init__(self, params):
+        self.lookback_period = params.get('lookback_period', 20)
+        self.upper_threshold = params.get('upper_threshold', 0.02)
+        self.lower_threshold = params.get('lower_threshold', -0.02)
+        self.close_history = deque(maxlen=200)
+        self.gain_history = deque(maxlen=200)
+        self.current_signal_type = SignalType.NEUTRAL
+        self.rule_id = "Rule12"
 
     def on_bar(self, bar):
         close = bar['Close']
-        self.history.append(close)
-
-        if len(self.history) >= 2:
-            change = close - self.history[-2]
-            gain = max(change, 0)
-            loss = abs(min(change, 0))
-            self.gain_history.append(gain)
-            self.loss_history.append(loss)
-
-            if len(self.gain_history) <= self.rsi_period:
-                self.avg_gain = np.mean(self.gain_history) if self.gain_history else 0
-                self.avg_loss = np.mean(self.loss_history) if self.loss_history else 0
-            else:
-                self.avg_gain = (self.avg_gain * (self.rsi_period - 1) + gain) / self.rsi_period
-                self.avg_loss = (self.avg_loss * (self.rsi_period - 1) + loss) / self.rsi_period
-
-            if self.avg_loss != 0:
-                rs = self.avg_gain / self.avg_loss
-                self.rsi_value = 100 - (100 / (1 + rs))
-            else:
-                self.rsi_value = 100 if self.avg_gain > 0 else 50
-
-            # Implement signal persistence with hysteresis for better trade management
-            if not self.in_trade:
-                # Entry logic
-                if self.rsi_value < self.oversold_level:
-                    self.current_signal = 1   # Buy signal
-                    self.in_trade = True
-                elif self.rsi_value > self.overbought_level:
-                    self.current_signal = -1  # Sell signal
-                    self.in_trade = True
-                else:
-                    self.current_signal = 0
-            else:
-                # Exit logic with hysteresis
-                if self.current_signal == 1:  # In a long position
-                    # Exit long position if RSI moves significantly above oversold
-                    if self.rsi_value > (self.oversold_level + self.exit_buffer):
-                        self.current_signal = 0
-                        self.in_trade = False
-                elif self.current_signal == -1:  # In a short position
-                    # Exit short position if RSI moves significantly below overbought
-                    if self.rsi_value < (self.overbought_level - self.exit_buffer):
-                        self.current_signal = 0
-                        self.in_trade = False
-        else:
-            self.rsi_value = np.nan
-            self.current_signal = 0
-
-        return self.current_signal
-
-    def reset(self):
-        self.rsi_value = np.nan
-        self.avg_gain = 0
-        self.avg_loss = 0
-        self.history = []
-        self.gain_history = []
-        self.loss_history = []
-        self.current_signal = 0
-        self.in_trade = False
-        
-
-class Rule13:
-    """
-    Event-driven version of Rule13: Stochastic Oscillator strategy - Optimized with persistent signals.
-    """
-    def __init__(self, param):
-        self.stoch_period = param['stoch_period']
-        self.stoch_d_period = param.get('stoch_d_period', 3)
-        self.overbought_level = param.get('overbought', 80)
-        self.oversold_level = param.get('oversold', 20)
-        self.high_history = deque(maxlen=self.stoch_period)
-        self.low_history = deque(maxlen=self.stoch_period)
-        self.close_history = deque(maxlen=self.stoch_period)
-        self.stoch_k = np.nan
-        self.stoch_d = np.nan
-        self.stoch_k_history = deque(maxlen=self.stoch_d_period)
-        self.current_signal = 0
-        self.in_trade = False
-        self.trade_type = None  # 'oversold' or 'overbought'
-
-    def on_bar(self, bar):
-        high = bar['High']
-        low = bar['Low']
-        close = bar['Close']
-
-        self.high_history.append(high)
-        self.low_history.append(low)
         self.close_history.append(close)
 
-        if len(self.close_history) == self.stoch_period:
-            highest_high = max(self.high_history)
-            lowest_low = min(self.low_history)
-            if highest_high != lowest_low:
-                self.stoch_k = ((close - lowest_low) / (highest_high - lowest_low)) * 100
-            else:
-                self.stoch_k = 50
-            self.stoch_k_history.append(self.stoch_k)
-        elif len(self.close_history) > self.stoch_period:
-            highest_high = max(self.high_history)
-            lowest_low = min(self.low_history)
-            if highest_high != lowest_low:
-                self.stoch_k = ((close - lowest_low) / (highest_high - lowest_low)) * 100
-            else:
-                self.stoch_k = 50
-            self.stoch_k_history.append(self.stoch_k)
-        else:
-            self.stoch_k = np.nan
+        if len(self.close_history) >= 2:
+            previous_close = list(self.close_history)[-2]
+            gain = (close - previous_close) / previous_close
+            self.gain_history.append(gain)
 
-        if self.stoch_k_history:
-            self.stoch_d = np.mean(self.stoch_k_history)
-        else:
-            self.stoch_d = np.nan
+            if len(self.gain_history) >= self.lookback_period:
+                recent_gains = list(self.gain_history)[-self.lookback_period:]
+                positive_gain_count = sum(1 for g in recent_gains if g > self.upper_threshold)
+                negative_gain_count = sum(1 for g in recent_gains if g < self.lower_threshold)
 
-        if not np.isnan(self.stoch_k) and not np.isnan(self.stoch_d):
-            # Persistent signal logic
-            if not self.in_trade:
-                # Entry signals with crossover confirmation
-                if self.stoch_k > self.stoch_d and self.stoch_k < self.oversold_level:
-                    self.current_signal = 1  # Buy signal - oversold with %K rising
-                    self.in_trade = True
-                    self.trade_type = 'oversold'
-                elif self.stoch_k < self.stoch_d and self.stoch_k > self.overbought_level:
-                    self.current_signal = -1  # Sell signal - overbought with %K falling
-                    self.in_trade = True
-                    self.trade_type = 'overbought'
-            else:
-                # Exit logic
-                if self.trade_type == 'oversold':
-                    # Exit long when stochastic moves to overbought region
-                    if self.stoch_k > self.overbought_level or self.stoch_k < self.stoch_d:
-                        self.current_signal = 0
-                        self.in_trade = False
-                        self.trade_type = None
-                elif self.trade_type == 'overbought':
-                    # Exit short when stochastic moves to oversold region
-                    if self.stoch_k < self.oversold_level or self.stoch_k > self.stoch_d:
-                        self.current_signal = 0
-                        self.in_trade = False
-                        self.trade_type = None
+                if positive_gain_count >= 2:
+                    self.current_signal_type = SignalType.BUY
+                elif negative_gain_count >= 2:
+                    self.current_signal_type = SignalType.SELL
+                else:
+                    self.current_signal_type = SignalType.NEUTRAL
         else:
-            self.current_signal = 0
+            self.current_signal_type = SignalType.NEUTRAL
 
-        return self.current_signal
+        metadata = {
+            "gain": self.gain_history[-1] if self.gain_history else np.nan,
+            "positive_gain_count": sum(1 for g in list(self.gain_history)[-self.lookback_period:] if g > self.upper_threshold) if len(self.gain_history) >= self.lookback_period else 0,
+            "negative_gain_count": sum(1 for g in list(self.gain_history)[-self.lookback_period:] if g < self.lower_threshold) if len(self.gain_history) >= self.lookback_period else 0
+        }
+
+        return Signal(
+            timestamp=bar["timestamp"],
+            type=self.current_signal_type,
+            price=bar["Close"],
+            rule_id=self.rule_id,
+            confidence=1.0,
+            metadata=metadata
+        )
 
     def reset(self):
-        self.high_history = deque(maxlen=self.stoch_period)
-        self.low_history = deque(maxlen=self.stoch_period)
-        self.close_history = deque(maxlen=self.stoch_period)
-        self.stoch_k = np.nan
-        self.stoch_d = np.nan
-        self.stoch_k_history = deque(maxlen=self.stoch_d_period)
-        self.current_signal = 0
-        self.in_trade = False
-        self.trade_type = None
+        self.close_history = deque(maxlen=200)
+        self.gain_history = deque(maxlen=200)
+        self.current_signal_type = SignalType.NEUTRAL
+
+class Rule13:
+    def __init__(self, params):
+        self.lookback_period = params.get('lookback_period', 5)
+        self.price_change_threshold = params.get('price_change_threshold', 0.005)
+        self.close_history = deque(maxlen=200)
+        self.current_signal_type = SignalType.NEUTRAL
+        self.rule_id = "Rule13"
+
+    def on_bar(self, bar):
+        close = bar['Close']
+        self.close_history.append(close)
+
+        if len(self.close_history) >= self.lookback_period:
+            first_price = list(self.close_history)[-self.lookback_period]
+            last_price = close
+            price_change = (last_price - first_price) / first_price
+
+            if price_change > self.price_change_threshold:
+                self.current_signal_type = SignalType.BUY
+            elif price_change < -self.price_change_threshold:
+                self.current_signal_type = SignalType.SELL
+            else:
+                self.current_signal_type = SignalType.NEUTRAL
+        else:
+            self.current_signal_type = SignalType.NEUTRAL
+
+        metadata = {
+            "price_change": (close - list(self.close_history)[-self.lookback_period] if len(self.close_history) >= self.lookback_period else np.nan) / (list(self.close_history)[-self.lookback_period] if len(self.close_history) >= self.lookback_period and list(self.close_history)[-self.lookback_period] != 0 else np.nan),
+            "lookback_period": self.lookback_period
+        }
+
+        return Signal(
+            timestamp=bar["timestamp"],
+            type=self.current_signal_type,
+            price=bar["Close"],
+            rule_id=self.rule_id,
+            confidence=1.0,
+            metadata=metadata
+        )
+
+    def reset(self):
+        self.close_history = deque(maxlen=200)
+        self.current_signal_type = SignalType.NEUTRAL        
+
 
 
 class Rule14:
-    """
-    Event-driven version of Rule14: ATR Trailing Stop - Optimized with better trade management.
-    """
-    def __init__(self, param):
-        self.atr_period = param['atr_period']
-        self.atr_multiplier = param.get('atr_multiplier', 3)
-        self.high_history = deque(maxlen=self.atr_period + 1)
-        self.low_history = deque(maxlen=self.atr_period + 1)
-        self.close_history = deque(maxlen=self.atr_period + 1)
-        self.atr_value = np.nan
+    def __init__(self, params):
+        self.atr_period = params.get('atr_period', 14)
+        self.atr_multiplier = params.get('atr_multiplier', 3)
+        self._calculate_tr = self._calculate_true_range  # Assuming it's a method
+        self.high_history = deque(maxlen=200) # Assuming a maxlen
+        self.low_history = deque(maxlen=200) # Assuming a maxlen
+        self.close_history = deque(maxlen=200) # Assuming a maxlen
+        self.atr_history = deque(maxlen=200) # Assuming a maxlen
+        self.current_signal_type = SignalType.NEUTRAL
+        self.rule_id = "Rule14"
+        self.position = 0
         self.trailing_stop = np.nan
-        self.position = 0  # 1 for long, -1 for short
-        self.current_signal = 0
-        self.trend_direction = 0  # Track the market trend
+        self.trend_direction = 0
 
-    def _calculate_tr(self, high, low, prev_close):
-        return max(high - low, abs(high - prev_close), abs(low - prev_close))
+    def _calculate_true_range(self, current_high, current_low, previous_close):
+        return max(current_high - current_low,
+                   abs(current_high - previous_close),
+                   abs(current_low - previous_close))
 
     def on_bar(self, bar):
         high = bar['High']
@@ -1249,7 +1216,7 @@ class Rule14:
             current_tr = self._calculate_tr(high, low, prev_close)
 
             if len(self.close_history) <= self.atr_period:
-                tr_values = [self._calculate_tr(self.high_history[i], self.low_history[i], self.close_history[i-1])
+                tr_values = [self._calculate_tr(list(self.high_history)[i], list(self.low_history)[i], list(self.close_history)[i-1])
                              for i in range(1, len(self.close_history))]
                 self.atr_value = np.mean(tr_values) if tr_values else np.nan
             else:
@@ -1258,84 +1225,95 @@ class Rule14:
 
             if not np.isnan(self.atr_value):
                 atr_band = self.atr_value * self.atr_multiplier
-                
+
                 # Determine trend direction using a simple moving average
                 if len(self.close_history) >= 5:
                     ma5 = np.mean(list(self.close_history)[-5:])
                     ma10 = np.mean(list(self.close_history)[-min(10, len(self.close_history)):])
                     self.trend_direction = 1 if ma5 > ma10 else (-1 if ma5 < ma10 else 0)
-                
+
                 # Position management with ATR trailing stop
                 if self.position == 0:  # Not in a position
                     # Enter position in the direction of the trend
                     if self.trend_direction > 0:
                         self.position = 1
                         self.trailing_stop = close - atr_band
-                        self.current_signal = 1
+                        self.current_signal_type = SignalType.BUY
                     elif self.trend_direction < 0:
                         self.position = -1
                         self.trailing_stop = close + atr_band
-                        self.current_signal = -1
+                        self.current_signal_type = SignalType.SELL
                     else:
-                        self.current_signal = 0
-                
+                        self.current_signal_type = SignalType.NEUTRAL
+
                 elif self.position == 1:  # Long position
                     # Update trailing stop if price moves higher
                     new_stop = close - atr_band
                     if new_stop > self.trailing_stop:
                         self.trailing_stop = new_stop
-                    
+
                     # Exit if price falls below trailing stop
                     if low < self.trailing_stop:
-                        self.current_signal = 0
+                        self.current_signal_type = SignalType.NEUTRAL
                         self.position = 0
                     else:
-                        self.current_signal = 1  # Maintain long signal
-                
+                        self.current_signal_type = SignalType.BUY  # Maintain long signal
+
                 elif self.position == -1:  # Short position
                     # Update trailing stop if price moves lower
                     new_stop = close + atr_band
                     if new_stop < self.trailing_stop or np.isnan(self.trailing_stop):
                         self.trailing_stop = new_stop
-                    
+
                     # Exit if price rises above trailing stop
                     if high > self.trailing_stop:
-                        self.current_signal = 0
+                        self.current_signal_type = SignalType.NEUTRAL
                         self.position = 0
                     else:
-                        self.current_signal = -1  # Maintain short signal
+                        self.current_signal_type = SignalType.SELL  # Maintain short signal
         else:
             self.atr_value = np.nan
-            self.current_signal = 0
+            self.current_signal_type = SignalType.NEUTRAL
 
-        return self.current_signal
+        # Create metadata with any additional information
+        metadata = {}
+
+        # Return a Signal object
+        return Signal(
+            timestamp=bar["timestamp"],
+            type=self.current_signal_type,
+            price=bar["Close"],
+            rule_id=self.rule_id,
+            confidence=1.0,
+            metadata=metadata
+        )
 
     def reset(self):
-        self.high_history = deque(maxlen=self.atr_period + 1)
-        self.low_history = deque(maxlen=self.atr_period + 1)
-        self.close_history = deque(maxlen=self.atr_period + 1)
+        self.high_history = deque(maxlen=200)
+        self.low_history = deque(maxlen=200)
+        self.close_history = deque(maxlen=200)
+        self.atr_history = deque(maxlen=200)
         self.atr_value = np.nan
         self.trailing_stop = np.nan
         self.position = 0
-        self.current_signal = 0
-        self.trend_direction = 0
+        self.current_signal_type = SignalType.NEUTRAL
+        self.trend_direction = 0        
 
+
+from signals import Signal, SignalType
 
 class Rule15:
-    """
-    Event-driven version of Rule15: Bollinger Bands strategy - Optimized with persistent signals.
-    """
-    def __init__(self, param):
-        self.bb_period = param['bb_period']
-        self.bb_std_dev = param.get('bb_std_dev', 2)
-        self.close_history = deque(maxlen=self.bb_period)
-        self.sma = np.nan
-        self.std_dev = np.nan
-        self.upper_band = np.nan
-        self.lower_band = np.nan
-        self.current_signal = 0
-        self.in_position = False
-        self.position_type = None  # 'upper_break' or 'lower_break'
+    def __init__(self, params):
+        self.bb_period = params.get('bb_period', 20)
+        self.bb_high_history = deque(maxlen=200)
+        self.bb_mid_history = deque(maxlen=200)
+        self.bb_low_history = deque(maxlen=200)
+        self.close_history = deque(maxlen=200) # Assuming a maxlen
+        self.bb_high = []
+        self.bb_mid = []
+        self.bb_low = []
+        self.current_signal_type = SignalType.NEUTRAL
+        self.rule_id = "Rule15"
 
     def on_bar(self, bar):
         close = bar['Close']
@@ -1367,11 +1345,11 @@ class Rule15:
             if not self.in_position:
                 # Entry logic
                 if prev_close <= self.lower_band and current_close > self.lower_band:
-                    self.current_signal = 1  # Buy signal on lower band breakout
+                    self.current_signal_type = SignalType.BUY  # Buy signal on lower band breakout
                     self.in_position = True
                     self.position_type = 'lower_break'
                 elif prev_close >= self.upper_band and current_close < self.upper_band:
-                    self.current_signal = -1  # Sell signal on upper band breakout
+                    self.current_signal_type = SignalType.SELL  # Sell signal on upper band breakout
                     self.in_position = True
                     self.position_type = 'upper_break'
             else:
@@ -1379,23 +1357,35 @@ class Rule15:
                 if self.position_type == 'lower_break':
                     # Exit long if price reaches the middle band or upper band
                     if current_close >= self.sma or current_close >= self.upper_band:
-                        self.current_signal = 0
+                        self.current_signal_type = SignalType.NEUTRAL
                         self.in_position = False
                         self.position_type = None
                     else:
-                        self.current_signal = 1  # Maintain long signal
+                        self.current_signal_type = SignalType.BUY  # Maintain long signal
                 elif self.position_type == 'upper_break':
                     # Exit short if price reaches the middle band or lower band
                     if current_close <= self.sma or current_close <= self.lower_band:
-                        self.current_signal = 0
+                        self.current_signal_type = SignalType.NEUTRAL
                         self.in_position = False
                         self.position_type = None
                     else:
-                        self.current_signal = -1  # Maintain short signal
+                        self.current_signal_type = SignalType.SELL  # Maintain short signal
         else:
-            self.current_signal = 0
+            self.current_signal_type = SignalType.NEUTRAL
 
-        return self.current_signal
+        
+        # Create metadata with any additional information
+        metadata = {}
+
+        # Return a Signal object
+        return Signal(
+            timestamp=bar["timestamp"],
+            type=self.current_signal_type,
+            price=bar["Close"],
+            rule_id=self.rule_id,
+            confidence=1.0,
+            metadata=metadata
+        )
 
     def reset(self):
         self.close_history = deque(maxlen=self.bb_period)
@@ -1403,49 +1393,61 @@ class Rule15:
         self.std_dev = np.nan
         self.upper_band = np.nan
         self.lower_band = np.nan
-        self.current_signal = 0
+        self.current_signal_type = SignalType.NEUTRAL
         self.in_position = False
         self.position_type = None        
 
 
 
+
 class TopNStrategy:
-    """
-    A basic strategy that either returns the signal of the first rule
-    or always returns a neutral signal (0). This modification handles
-    both integer and dictionary returns from individual rules.
+    """\
+    A strategy that combines signals from multiple rules using a simple voting mechanism.
+
+    This implementation focuses on its core responsibility: combining signals from
+    top-performing rules to generate trading decisions.
     """
     def __init__(self, rule_objects):
+        """
+        Initialize the TopN strategy with rule objects.
+
+        Args:
+            rule_objects: List of rule instances to use
+        """
+        from signals import SignalRouter, SignalType
+
         self.rules = rule_objects
+        self.router = SignalRouter(rule_objects)
         self.last_signal = None
 
     def on_bar(self, event):
-        bar = event.bar
-        combined_signal = 0  # Default to neutral
+        """
+        Process a bar and generate a signal by combining rule signals.
 
-        if self.rules:
-            first_rule_output = self.rules[0].on_bar(bar)
-            if isinstance(first_rule_output, dict) and 'signal' in first_rule_output:
-                combined_signal = first_rule_output['signal']
-            elif isinstance(first_rule_output, (int, float)):  # Handle integer or float signal
-                combined_signal = int(first_rule_output)
-            # Option 2: Always return neutral (more explicitly innocuous)
-            # combined_signal = 0
+        Args:
+            event: Bar event containing market data
 
+        Returns:
+            dict: Signal information including timestamp, signal value, and price
+        """
+        # Get standardized signals from all rules via the router
+        router_output = self.router.on_bar(event)
+        signal_collection = router_output["signals"]
+
+        # Use SignalCollection's weighted consensus to determine the overall signal
+        consensus_signal_type = signal_collection.get_weighted_consensus()
+        consensus_signal_value = consensus_signal_type.value
+
+        # Create the final output signal
         self.last_signal = {
-            "timestamp": bar["timestamp"],
-            "signal": combined_signal,
-            "price": bar["Close"]
+            "timestamp": router_output["timestamp"],
+            "signal": consensus_signal_value,
+            "price": router_output["price"]
         }
+
         return self.last_signal
 
-    def combine_signals(self, signals):
-        # This method is likely not used if on_bar directly returns a signal
-        if signals:
-            return signals[0]  # Just return the first signal
-        return 0
-
     def reset(self):
-        for rule in self.rules:
-            rule.reset()
+        """Reset the strategy and all rules."""
+        self.router.reset()
         self.last_signal = None

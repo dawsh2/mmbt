@@ -24,7 +24,9 @@ class GeneticOptimizer:
                  num_parents=8, 
                  num_generations=50,
                  mutation_rate=0.1,
-                 optimization_metric='sharpe'):
+                 optimization_metric='sharpe',
+                 random_seed=None,
+                 deterministic=False):
         """
         Initialize the genetic optimizer.
         
@@ -36,6 +38,8 @@ class GeneticOptimizer:
             num_generations: Number of generations to run the optimization
             mutation_rate: Rate of mutation in the genetic algorithm
             optimization_metric: Metric to optimize ('sharpe', 'return', 'drawdown', etc.)
+            random_seed: Optional seed for random number generator to ensure reproducible results
+            deterministic: If True, ensures deterministic behavior across multiple runs
         """
         self.data_handler = data_handler
         self.rule_objects = rule_objects
@@ -48,7 +52,21 @@ class GeneticOptimizer:
         self.best_weights = None
         self.best_fitness = None
         self.fitness_history = []
+        self.random_seed = random_seed
+        self.deterministic = deterministic
+        
+        # Set random seed if provided or if deterministic mode is enabled
+        if self.deterministic and self.random_seed is None:
+            self.random_seed = 42  # Default seed for deterministic mode
+            
+        # Initialize the random state
+        self._set_random_seed()
     
+    def _set_random_seed(self):
+        """Set the random seed if specified for reproducible results."""
+        if self.random_seed is not None:
+            np.random.seed(self.random_seed)
+
     def _initialize_population(self):
         """
         Initialize a random population of weight vectors.
@@ -170,6 +188,9 @@ class GeneticOptimizer:
         Returns:
             numpy.ndarray: Offspring chromosomes
         """
+        # Reset random seed for reproducibility if needed
+        self._set_random_seed()
+        
         offspring_size = self.population_size - self.num_parents
         offspring = np.empty((offspring_size, self.num_weights))
         
@@ -198,6 +219,9 @@ class GeneticOptimizer:
         Returns:
             numpy.ndarray: Mutated offspring
         """
+        # Reset random seed for reproducibility if needed
+        self._set_random_seed()
+        
         for i in range(len(offspring)):
             # Determine if this chromosome should be mutated
             if np.random.random() < self.mutation_rate:
@@ -241,6 +265,11 @@ class GeneticOptimizer:
         if verbose:
             print(f"Starting genetic optimization with {self.num_weights} rules...")
             print(f"Population size: {self.population_size}, Generations: {self.num_generations}")
+            if self.deterministic:
+                print(f"Running in deterministic mode with seed: {self.random_seed}")
+
+        # Reset the random seed at the beginning of optimization
+        self._set_random_seed()
 
         # Initialize population
         population = self._initialize_population()
@@ -304,7 +333,15 @@ class GeneticOptimizer:
 
         return self.best_weights
 
-
+    def set_random_seed(self, seed):
+        """
+        Set a new random seed for the optimizer.
+        
+        Args:
+            seed: Integer seed for the random number generator
+        """
+        self.random_seed = seed
+        self._set_random_seed()
     
     def plot_fitness_history(self):
         """

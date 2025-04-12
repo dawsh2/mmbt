@@ -80,8 +80,11 @@ class EventDrivenRuleSystem:
     def get_top_n_strategy(self):
         """
         Returns a TopNStrategy instance with the top performing rules.
+        This method creates a strategy that combines signals from the top rules.
         """
-        return TopNStrategy(rule_objects=list(self.trained_rule_objects.values()))
+        # Create the TopNStrategy with the trained rule objects
+        strategy = TopNStrategy(rule_objects=list(self.trained_rule_objects.values()))
+        return strategy
 
     def reset(self):
         for rule in self.trained_rule_objects.values():
