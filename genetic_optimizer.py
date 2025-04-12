@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 from backtester import Backtester
 from strategy import TopNStrategy
 import time
+from signals import SignalType
+
 
 class GeneticOptimizer:
     """
@@ -95,7 +97,7 @@ class GeneticOptimizer:
         Returns:
             float: Fitness score based on the optimization metric
         """
-        # Create a copy of TopNStrategy with the weighted combination method
+        # Create a copy of WeightedRuleStrategy with the weighted combination method
         weighted_strategy = WeightedRuleStrategy(
             rule_objects=self.rule_objects,
             weights=chromosome
@@ -144,7 +146,7 @@ class GeneticOptimizer:
             fitness = results['total_log_return']
 
         return fitness
-    
+        
     def _calculate_population_fitness(self, population):
         """
         Calculate fitness for the entire population.
@@ -357,85 +359,43 @@ class GeneticOptimizer:
         plt.show()
 
 
+
 class WeightedRuleStrategy:
-    """
-    Strategy that combines multiple rule signals using weighted voting.
-    
-    This strategy extends the TopNStrategy concept by applying weights to each rule's
-    signal when combining them, rather than using a simple average.
-    """
-    
-    def __init__(self, rule_objects, weights=None):
-        """
-        Initialize the weighted rule strategy.
-        
-        Args:
-            rule_objects: List of rule instances to use
-            weights: List of weights for each rule (will be normalized)
-        """
-        self.rules = rule_objects
-        
-        # If weights not provided, use equal weighting
-        if weights is None:
-            self.weights = np.ones(len(rule_objects)) / len(rule_objects)
-        else:
-            # Ensure weights are normalized
-            self.weights = np.array(weights) / np.sum(weights)
-            
-        self.last_signal = None
-    
+    def __init__(self, rule_objects, weights):
+        self.rule_objects = rule_objects
+        self.weights = np.array(weights)
+        self.rule_signals = [None] * len(rule_objects)
+
     def on_bar(self, event):
-        """
-        Process a new bar and generate signals.
-        
-        Args:
-            event: Bar event containing market data
-            
-        Returns:
-            dict: Signal information including timestamp, signal, and price
-        """
-        bar = event.bar
-        # Get signals from each rule
-        rule_signals = [rule.on_bar(bar) for rule in self.rules]
-        
-        # Combine signals using weights
-        combined = self.combine_signals(rule_signals)
-        
-        self.last_signal = {
-            "timestamp": bar["timestamp"],
-            "signal": combined,
-            "price": bar["Close"]
-        }
-        return self.last_signal
-    
-    def combine_signals(self, signals):
-        """
-        Combine rule signals using weighted voting.
-        
-        Args:
-            signals: List of signals from each rule
-            
-        Returns:
-            int: Combined signal (-1, 0, or 1)
-        """
-        # Convert signals to numpy array
-        signals_array = np.array(signals)
-        
-        # Calculate weighted average
-        weighted_sum = np.sum(signals_array * self.weights)
-        
-        # Convert to discrete signal
-        if weighted_sum > 0.2:  # Threshold for buy
-            return 1
-        elif weighted_sum < -0.2:  # Threshold for sell
-            return -1
+        bar = event.bar  # Extract the bar dictionary from the BarEvent
+        combined_signals = []
+        for i, rule in enumerate(self.rule_objects):
+            signal_object = rule.on_bar(bar) # Now we expect a Signal object
+            #print(f"Signal Object from {rule.rule_id}: {signal_object}")
+            #print(f"Type of signal_object: {type(signal_object)}")
+            if signal_object and hasattr(signal_object, 'type'):
+                combined_signals.append(signal_object.type.value * self.weights[i])
+            else:
+                combined_signals.append(0) # Or handle missing signal appropriately
+
+        weighted_sum = np.sum(combined_signals)
+
+        if weighted_sum > 0.5:
+            final_signal = SignalType.BUY
+        elif weighted_sum < -0.5:
+            final_signal = SignalType.SELL
         else:
-            return 0
-    
+            final_signal = SignalType.NEUTRAL
+
+        return {
+            "timestamp": bar["timestamp"], # Use the extracted bar
+            "signal": final_signal,
+            "price": bar["Close"]        # Use the extracted bar
+        }
+
     def reset(self):
-        """
-        Reset the strategy.
-        """
-        for rule in self.rules:
-            rule.reset()
-        self.last_signal = None
+        for rule in self.rule_objects:
+            if hasattr(rule, 'reset'):
+                rule.reset()
+        self.rule_signals = [None] * len(self.rule_objects)
+        

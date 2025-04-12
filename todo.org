@@ -1,6 +1,7 @@
 ** TODO [TOP-LEVEL TASK] Get Performance Up
 No idea why it's so bad. The returns are terrible. 
 *** NEXT Manually Verify Returns Calculation
+*** NEXT Use a contrived data set and compatible rule to validate returns - genius! 
 ** Codebase
 *** NEXT Migrate to Python's ta or talipp library?
 *** NEXT Create README w/ Class overview, data flow, etc

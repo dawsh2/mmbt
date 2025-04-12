@@ -1,6 +1,9 @@
 import numpy as np
 import pandas as pd
 import math
+from signals import SignalType
+from memory_profiler import profile
+
 
 class BarEvent:
     def __init__(self, data):
@@ -10,110 +13,95 @@ class Backtester:
     def __init__(self, data_handler, strategy):
         self.data_handler = data_handler
         self.strategy = strategy
-        self.signals = []
-        self.trades = []
+        self.signals_df = pd.DataFrame(columns=['timestamp', 'signal', 'price'])
+        self.trades_df = pd.DataFrame(columns=['entry_time', 'entry_price', 'exit_time', 'exit_price', 'profit', 'position'])
         self.current_position = 0
         self.entry_price = None
         self.entry_time = None
 
-
+    @profile
     def run(self, use_test_data=False):
         # === Debug: Track number of times run() has been called on this instance
         if hasattr(self, "run_count"):
             self.run_count += 1
         else:
             self.run_count = 1
-        print(f"\n📊 Backtest Run #{self.run_count} — {'Test' if use_test_data else 'Train'} Data")
 
         self.strategy.reset()
         all_signals = []
+        data = []
+
         if not use_test_data:
             self.data_handler.reset_train()
+            get_next_bar = self.data_handler.get_next_train_bar
         else:
             self.data_handler.reset_test()
+            get_next_bar = self.data_handler.get_next_test_bar
+
         while True:
-            event_data = self.data_handler.get_next_train_bar() if not use_test_data else self.data_handler.get_next_test_bar()
+            event_data = get_next_bar()
             if event_data is None:
                 break
+            data.append(event_data)
             event = BarEvent(event_data)
             signal = self.strategy.on_bar(event)
             if signal is not None:
-                all_signals.append(signal.copy())
-        results = self.calculate_returns(all_signals)
-        results['signals'] = all_signals
-        return results
+                all_signals.append(signal)
+                self.signals_df = pd.concat([self.signals_df, pd.DataFrame([{'timestamp': signal.timestamp, 'signal': signal.signal_type.value, 'price': signal.price}])], ignore_index=True)
 
+            self._process_signal_for_trades(signal, event_data.get('timestamp'), event_data.get('Close'))
 
-    def calculate_returns(self, signals):
-        self.trades = []
-        self.current_position = 0
-        self.entry_price = None
-        self.entry_time = None
-        self.entry_signal = None  # NEW
+        results_df = pd.DataFrame(data)
+        results_df = pd.merge(results_df, self.signals_df, on='timestamp', how='left')
+        results_df['trades'] = [self.trades_df] * len(results_df) # Store the trades DataFrame in each row for simplicity
 
-        for i in range(len(signals)):
-            current_signal = signals[i]['signal']
-            timestamp = signals[i]['timestamp']
-            price = signals[i]['price']  # Close price of current bar
+        return results_df
 
-            # Entry logic
-            if current_signal == 1 and self.current_position == 0:
+    @profile
+    def _process_signal_for_trades(self, signal, timestamp, price):
+        if signal is None:
+            return
+
+        signal_type = signal.signal_type
+
+        if self.current_position == 0:
+            if signal_type == SignalType.BUY:
                 self.current_position = 1
                 self.entry_price = price
                 self.entry_time = timestamp
-                self.entry_signal = current_signal  # Store the entry signal
-
-            elif current_signal == -1 and self.current_position == 0:
+                #print(f"{timestamp} - BUY at {price:.2f}")
+            elif signal_type == SignalType.SELL:
                 self.current_position = -1
                 self.entry_price = price
                 self.entry_time = timestamp
-                self.entry_signal = current_signal  # Store the entry signal
+                #print(f"{timestamp} - SELL at {price:.2f}")
+        elif self.current_position == 1:
+            if signal_type == SignalType.SELL or signal_type == SignalType.NEUTRAL:
+                exit_price = price
+                exit_time = timestamp
+                profit = (exit_price - self.entry_price)
+                self.trades_df = pd.concat([self.trades_df, pd.DataFrame([{'entry_time': self.entry_time, 'entry_price': self.entry_price,
+                                                                               'exit_time': exit_time, 'exit_price': exit_price,
+                                                                               'profit': profit, 'position': 'LONG'}])], ignore_index=True)
+                self.current_position = 0
+                #print(f"{exit_time} - Exit LONG at {exit_price:.2f}, Profit: {profit:.2f}")
+        elif self.current_position == -1:
+            if signal_type == SignalType.BUY or signal_type == SignalType.NEUTRAL:
+                exit_price = price
+                exit_time = timestamp
+                profit = (self.entry_price - exit_price)
+                self.trades_df = pd.concat([self.trades_df, pd.DataFrame([{'entry_time': self.entry_time, 'entry_price': self.entry_price,
+                                                                               'exit_time': exit_time, 'exit_price': exit_price,
+                                                                               'profit': profit, 'position': 'SHORT'}])], ignore_index=True)
+                self.current_position = 0
+                #print(f"{exit_time} - Exit SHORT at {exit_price:.2f}, Profit: {profit:.2f}")
 
-            # Exit logic
-            elif self.current_position == 1 and (current_signal == 0 or current_signal == -1):
-                if self.entry_price is not None:
-                    log_return = math.log(price / self.entry_price)
-                    self.trades.append((
-                        self.entry_time, "BUY", self.entry_price,
-                        timestamp, price, log_return,
-                        self.entry_signal, current_signal  # entry and exit signals
-                    ))
-                    self.current_position = 0
-                    self.entry_price = None
-                    self.entry_time = None
-                    self.entry_signal = None
+    @profile
+    def calculate_returns(self, signals):
+        # This method is now largely handled within _process_signal_for_trades
+        return self.trades_df
 
-            elif self.current_position == -1 and (current_signal == 0 or current_signal == 1):
-                if self.entry_price is not None:
-                    log_return = math.log(self.entry_price / price)
-                    self.trades.append((
-                        self.entry_time, "SELL", self.entry_price,
-                        timestamp, price, log_return,
-                        self.entry_signal, current_signal  # entry and exit signals
-                    ))
-                    self.current_position = 0
-                    self.entry_price = None
-                    self.entry_time = None
-                    self.entry_signal = None
-
-        # Print first few trades for debugging
-        # print("\n=== Sample Trades ===")
-        # for trade in self.trades[:10]:
-        #     print(
-        #         f"{trade[0]} → {trade[3]} | {trade[1]} at {trade[2]:.2f} → {trade[4]:.2f} "
-        #         f"| Signal: {trade[6]} → {trade[7]} | Log Return: {trade[5]:.6f}"
-        #     )
-
-        return {
-            "trades": self.trades,
-            "total_log_return": sum([t[5] for t in self.trades]),
-            "average_log_return": np.mean([t[5] for t in self.trades]) if self.trades else 0,
-            "num_trades": len(self.trades),
-            "total_percent_return": (math.exp(sum([t[5] for t in self.trades])) - 1) * 100 if self.trades else 0
-        }
- 
-
-    # WARNING: The following is only accurate for minute data
+    @profile
     def calculate_sharpe(self, risk_free_rate=0):
         """
         Calculates the annualized Sharpe ratio for minute data, considering only market hours
@@ -126,13 +114,11 @@ class Backtester:
         Returns:
             float: The annualized Sharpe ratio. Returns 0.0 if there are fewer than 2 trades.
         """
-        returns = [trade[5] for trade in self.trades]  # Extract log returns
-
-        if len(returns) < 2:
+        if len(self.trades_df) < 2:
             return 0.0
 
-        returns_series = pd.Series(returns)
-        excess_returns = returns_series - risk_free_rate
+        returns = self.trades_df['profit']
+        excess_returns = returns - risk_free_rate
 
         # Calculate the number of trading minutes in a year
         minutes_per_day = 6.5 * 60
@@ -143,11 +129,11 @@ class Backtester:
         sharpe_ratio = (excess_returns.mean() / excess_returns.std()) * np.sqrt(minutes_per_year)
 
         return sharpe_ratio
-    
 
+    @profile
     def reset(self):
-        self.signals = []
-        self.trades = []
+        self.signals_df = pd.DataFrame(columns=['timestamp', 'signal', 'price'])
+        self.trades_df = pd.DataFrame(columns=['entry_time', 'entry_price', 'exit_time', 'exit_price', 'profit', 'position'])
         self.current_position = 0
         self.entry_price = None
         self.entry_time = None

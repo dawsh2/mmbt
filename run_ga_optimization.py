@@ -13,19 +13,21 @@ from rule_system import EventDrivenRuleSystem
 from backtester import Backtester
 from strategy import TopNStrategy
 from strategy import (
-    Rule0, Rule1, Rule2, Rule3, Rule4, Rule5, Rule6, Rule7, 
+    Rule0, Rule1, Rule2, Rule3, Rule4, Rule5, Rule6, Rule7,
     Rule8, Rule9, Rule10, Rule11, Rule12, Rule13, Rule14, Rule15
 )
 from genetic_optimizer import GeneticOptimizer, WeightedRuleStrategy
+from memory_profiler import profile
 
 
+@profile
 def plot_equity_curve(trades, title, initial_capital=10000):
     """Plot equity curve from trade data."""
     equity = [initial_capital]
     for trade in trades:
         log_return = trade[5]
         equity.append(equity[-1] * np.exp(log_return))
-    
+
     plt.figure(figsize=(12, 6))
     plt.plot(equity)
     plt.title(title)
@@ -37,6 +39,7 @@ def plot_equity_curve(trades, title, initial_capital=10000):
     plt.close()
 
 
+@profile
 def parse_arguments():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description='Run genetic algorithm optimization')
@@ -44,16 +47,17 @@ def parse_arguments():
     parser.add_argument('--deterministic', action='store_true', help='Use deterministic mode (default seed 42)')
     parser.add_argument('--population', type=int, default=8, help='Population size for GA')
     parser.add_argument('--generations', type=int, default=20, help='Number of generations for GA')
-    parser.add_argument('--metric', type=str, default='return', choices=['return', 'sharpe', 'win_rate', 'risk_adjusted'], 
+    parser.add_argument('--metric', type=str, default='return', choices=['return', 'sharpe', 'win_rate', 'risk_adjusted'],
                         help='Optimization metric to use')
     return parser.parse_args()
 
 
-# Main program
-if __name__ == "__main__":
+@profile
+def run_genetic_optimization():
+    """Main function to run genetic algorithm optimization."""
     # Parse command line arguments
     args = parse_arguments()
-    
+
     # Define filepath - adjust as needed
     filepath = "data/data.csv"  # Update this path to your data file location
 
@@ -90,7 +94,7 @@ if __name__ == "__main__":
         (Rule12, {'rsi_period': [10, 14]}),
         (Rule13, {'stoch_period': [10, 14], 'stoch_d_period': [3, 5]}),
         (Rule14, {'atr_period': [14, 20]}),
-        (Rule15, {'bb_period': [20, 25]}),
+        (Rule15, {'bb_period': [20, 25], 'bb_std_dev_multiplier': [1.5, 2.0, 2.5]})
     ]
 
     rule_system_start = time.time()
@@ -127,7 +131,7 @@ if __name__ == "__main__":
         seed_info = " with deterministic mode (seed 42)"
     elif args.seed is not None:
         seed_info = f" with fixed seed {args.seed}"
-    
+
     print(f"Optimizing using {args.metric.upper()} metric{seed_info}")
     print(f"Population size: {args.population}, Generations: {args.generations}")
 
@@ -206,3 +210,8 @@ if __name__ == "__main__":
 
     print("\nOptimization complete! Results and charts saved.")
     print(f"Reproducibility information saved to optimization_details.txt")
+
+
+# Main program
+if __name__ == "__main__":
+    run_genetic_optimization()
