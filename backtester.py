@@ -1,4 +1,4 @@
-# backtester.py
+ # backtester.py
 import numpy as np
 import pandas as pd
 import math
@@ -20,7 +20,7 @@ class Backtester:
         self.entry_price = None
         self.entry_time = None
 
-    @profile
+    #@profile
     def run(self, use_test_data=False):
         # === Debug: Track number of times run() has been called on this instance
         if hasattr(self, "run_count"):
@@ -62,7 +62,7 @@ class Backtester:
 
         return results_df
 
-    @profile
+    #@profile
     def _process_signal_for_trades(self, signal, timestamp, price, trades_list):
         if signal is None:
             return
@@ -101,12 +101,13 @@ class Backtester:
                 self.current_position = 0
                 #print(f"{exit_time} - Exit SHORT at {exit_price:.2f}, Profit: {profit:.2f}")
 
-    @profile
+
+    #@profile
     def calculate_returns(self, signals):
         # This method is now largely handled within _process_signal_for_trades
         return pd.DataFrame(self.trades_df)
 
-    @profile
+    #@profile
     def calculate_sharpe(self, risk_free_rate=0):
         """
         Calculates the annualized Sharpe ratio for minute data, considering only market hours
@@ -135,7 +136,7 @@ class Backtester:
 
         return sharpe_ratio
 
-    @profile
+    #@profile
     def reset(self):
         self.signals_df = pd.DataFrame(columns=['timestamp', 'signal', 'price'])
         self.trades_df = pd.DataFrame(columns=['entry_time', 'entry_price', 'exit_time', 'exit_price', 'profit', 'position'])

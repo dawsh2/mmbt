@@ -234,7 +234,7 @@ class SignalCollection:
         for signal in self.signals:
             row = {
                 'timestamp': signal.timestamp,
-                'type': signal.type.name,
+                'type': signal.signal_type.name,
                 'numeric_signal': signal.get_numeric_signal(),
                 'price': signal.price,
                 'rule_id': signal.rule_id,
@@ -313,62 +313,7 @@ class SignalRouter:
             "signals": self.signal_collection
         }
         
-    # def on_bar(self, event):
-    #     """
-    #     Process a bar event through all rules and standardize outputs.
-        
-    #     Args:
-    #         event: Bar event containing market data
-            
-    #     Returns:
-    #         dict: Standardized signal information with all rule signals
-    #     """
-    #     bar = event.bar
-    #     timestamp = bar["timestamp"]
-    #     price = bar["Close"]
-        
-    #     # Clear previous signals
-    #     self.signal_collection.clear()
-        
-    #     # Process the bar through each rule and collect signals
-    #     for i, rule in enumerate(self.rules):
-    #         # Get the raw signal from the rule
-    #         rule_output = rule.on_bar(bar)
-            
-    #         # Convert to a standard Signal object
-    #         if isinstance(rule_output, dict) and 'signal' in rule_output:
-    #             # If rule returns a dictionary with signal key
-    #             signal = Signal.from_dict(rule_output)
-    #             if signal.rule_id is None:
-    #                 signal.rule_id = self.rule_ids[i]
-    #         elif isinstance(rule_output, (int, float)):
-    #             # If rule returns a numeric signal
-    #             signal = Signal.from_numeric(
-    #                 timestamp=timestamp,
-    #                 signal_value=int(rule_output),
-    #                 price=price,
-    #                 rule_id=self.rule_ids[i]
-    #             )
-    #         else:
-    #             # Default to neutral if unexpected format
-    #             signal = Signal.from_numeric(
-    #                 timestamp=timestamp,
-    #                 signal_value=0,
-    #                 price=price,
-    #                 rule_id=self.rule_ids[i]
-    #             )
-                
-    #         # Add the signal to our collection
-    #         self.signal_collection.add(signal)
-        
-    #     # Return a dictionary format for backward compatibility
-    #     return {
-    #         "timestamp": timestamp,
-    #         "signal": 0,  # Default signal (should be overridden by strategy)
-    #         "price": price,
-    #         "signals": self.signal_collection  # Include the full collection for analysis
-    #     }
-    
+
     def reset(self):
         """Reset the router state and all rules."""
         self.signal_collection.clear()

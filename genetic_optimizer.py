@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 from backtester import Backtester
 from strategy import TopNStrategy
 import time
-from signals import SignalType
+from signals import Signal, SignalType
 
 
 class GeneticOptimizer:
@@ -377,32 +377,36 @@ class WeightedRuleStrategy:
         self.buy_threshold = buy_threshold  # Store the buy threshold
         self.sell_threshold = sell_threshold  # Store the sell threshold
 
+
     def on_bar(self, event):
         bar = event.bar  # Extract the bar dictionary from the BarEvent
         combined_signals = []
+
         for i, rule in enumerate(self.rule_objects):
-            signal_object = rule.on_bar(bar) # Now we expect a Signal object
-            #print(f"Signal Object from {rule.rule_id}: {signal_object}")
-            #print(f"Type of signal_object: {type(signal_object)}")
-            if signal_object and hasattr(signal_object, 'type'):
-                combined_signals.append(signal_object.type.value * self.weights[i])
+            signal_object = rule.on_bar(bar)  # Now we expect a Signal object
+            if signal_object and hasattr(signal_object, 'signal_type'):  # Check for signal_type
+                combined_signals.append(signal_object.signal_type.value * self.weights[i])
             else:
-                combined_signals.append(0) # Or handle missing signal appropriately
+                combined_signals.append(0)  # Or handle missing signal appropriately
 
         weighted_sum = np.sum(combined_signals)
 
         if weighted_sum > self.buy_threshold:
-            final_signal = SignalType.BUY
+            final_signal_type = SignalType.BUY
         elif weighted_sum < self.sell_threshold:
-            final_signal = SignalType.SELL
+            final_signal_type = SignalType.SELL
         else:
-            final_signal = SignalType.NEUTRAL
+            final_signal_type = SignalType.NEUTRAL
 
-        return {
-            "timestamp": bar["timestamp"], # Use the extracted bar
-            "signal": final_signal,
-            "price": bar["Close"]        # Use the extracted bar
-        }
+        return Signal(
+            timestamp=bar["timestamp"],
+            signal_type=final_signal_type,
+            price=bar["Close"],
+            rule_id="weighted_strategy"
+        )
+
+
+
 
     def reset(self):
         for rule in self.rule_objects:

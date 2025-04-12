@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Minimal backtest script to verify that the updated signal handling code works correctly.
-This version includes additional debugging to identify tuple objects in the rules list.
+Minimal backtest script to verify that the updated signal handling code works correctly
+and includes running the Genetic Algorithm for memory debugging.
 
 Usage:
     python run_minimal_backtest.py
@@ -12,6 +12,8 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 from collections import deque
+import time
+import memory_profiler
 
 # Import the components from your trading system
 from data_handler import CSVDataHandler
@@ -21,6 +23,9 @@ from signals import Signal, SignalType, SignalCollection, SignalRouter
 # Import the rules for testing
 from strategy import Rule0, Rule1, Rule2, Rule3, Rule4, Rule5, Rule6, Rule7, Rule8, Rule9, Rule10, Rule11, Rule12, Rule13, Rule14, Rule15, TopNStrategy
 
+# Import the Genetic Optimizer
+from genetic_optimizer import GeneticOptimizer, WeightedRuleStrategy
+
 def print_separator(title):
     """Print a separator with a title."""
     print("\n" + "="*50)
@@ -28,7 +33,7 @@ def print_separator(title):
     print("="*50 + "\n")
 
 def run_minimal_backtest():
-    """Run a minimal backtest to verify the signal handling code."""
+    """Run a minimal backtest and the GA optimization."""
     print_separator("MINIMAL BACKTEST")
 
     # 1. Load a small subset of data
@@ -96,8 +101,50 @@ def run_minimal_backtest():
         if isinstance(rule, tuple):
             print(f"WARNING: Rule {i} is a tuple: {rule}")
 
-    # 3. Create manual test for SignalRouter
-    print("\nTesting SignalRouter directly...")
+    # 3. Run Genetic Algorithm Optimization
+    print_separator("GENETIC ALGORITHM OPTIMIZATION")
+
+    # Instantiate the Genetic Optimizer
+    optimizer = GeneticOptimizer(
+        data_handler=data_handler,
+        rule_objects=rules,
+        population_size=10,  # Reduced for a quicker test
+        num_parents=4,
+        num_generations=5,   # Reduced for a quicker test
+        mutation_rate=0.1,
+        optimization_metric='sharpe',
+        random_seed=42,
+        deterministic=True
+    )
+
+    # Run the optimization and profile memory
+    print("\nRunning Genetic Algorithm Optimization with memory profiling...")
+    try:
+        # Use memory_profiler to track memory usage of the optimize function
+        mem_usage = memory_profiler.memory_usage((optimizer.optimize, (True, 2, 0.0001)), interval=0.1)
+
+        best_weights = optimizer.best_weights
+        best_fitness = optimizer.best_fitness
+
+        print("\nGenetic Algorithm Optimization Results:")
+        if best_weights is not None:
+            print(f"Best Weights: {best_weights}")
+            print(f"Best Fitness: {best_fitness:.4f}")
+        else:
+            print("Optimization did not complete or no best weights found.")
+
+        # Analyze memory usage
+        print("\nMemory Usage During Optimization:")
+        max_memory = max(mem_usage)
+        print(f"Maximum memory usage: {max_memory:.2f} MB")
+
+        # You can further analyze the 'mem_usage' list to see how memory changed over time
+
+    except Exception as e:
+        print(f"Error during Genetic Algorithm Optimization: {str(e)}")
+
+    # 4. Create manual test for SignalRouter (moved after GA for clarity)
+    print_separator("SIGNAL ROUTER TEST")
 
     # Create a simple test bar
     test_bar = {
@@ -181,8 +228,9 @@ def run_minimal_backtest():
                 print(f"Error creating manual signal for Rule {i}: {str(e)}")
 
     print_separator("VERIFICATION COMPLETE")
-    print("Check the output to see if signal generation is working correctly.")
-    print("If you see errors, you may need to fix your rule implementations.")
+    print("Check the output to see if signal generation and GA optimization are working correctly.")
+    print("Pay attention to the memory usage during the GA optimization.")
+    print("If you see errors, you may need to fix your rule or GA implementations.")
 
 if __name__ == "__main__":
     run_minimal_backtest()
