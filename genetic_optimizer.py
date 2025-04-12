@@ -13,25 +13,27 @@ from signals import SignalType
 class GeneticOptimizer:
     """
     Optimizes trading rule weights using a genetic algorithm approach.
-    
+
     This class implements a genetic algorithm to find optimal weights for combining
     signals from multiple trading rules. It's designed to work with the event-driven
     architecture and existing rules from the trading system.
     """
-    
-    def __init__(self, 
+
+    def __init__(self,
                  data_handler,
                  rule_objects,
-                 population_size=20, 
-                 num_parents=8, 
+                 population_size=20,
+                 num_parents=8,
                  num_generations=50,
                  mutation_rate=0.1,
                  optimization_metric='sharpe',
                  random_seed=None,
-                 deterministic=False):
+                 deterministic=False,
+                 buy_threshold=0.5,  # New parameter
+                 sell_threshold=-0.5):  # New parameter
         """
         Initialize the genetic optimizer.
-        
+
         Args:
             data_handler: The data handler object containing train/test data
             rule_objects: List of rule instances to optimize weights for
@@ -42,6 +44,8 @@ class GeneticOptimizer:
             optimization_metric: Metric to optimize ('sharpe', 'return', 'drawdown', etc.)
             random_seed: Optional seed for random number generator to ensure reproducible results
             deterministic: If True, ensures deterministic behavior across multiple runs
+            buy_threshold: Threshold for the weighted sum to trigger a BUY signal
+            sell_threshold: Threshold for the weighted sum to trigger a SELL signal
         """
         self.data_handler = data_handler
         self.rule_objects = rule_objects
@@ -56,14 +60,16 @@ class GeneticOptimizer:
         self.fitness_history = []
         self.random_seed = random_seed
         self.deterministic = deterministic
-        
+        self.buy_threshold = buy_threshold
+        self.sell_threshold = sell_threshold
+
         # Set random seed if provided or if deterministic mode is enabled
         if self.deterministic and self.random_seed is None:
             self.random_seed = 42  # Default seed for deterministic mode
-            
+
         # Initialize the random state
         self._set_random_seed()
-    
+
     def _set_random_seed(self):
         """Set the random seed if specified for reproducible results."""
         if self.random_seed is not None:
@@ -72,18 +78,18 @@ class GeneticOptimizer:
     def _initialize_population(self):
         """
         Initialize a random population of weight vectors.
-        
+
         Returns:
             numpy.ndarray: Initial population of chromosomes
         """
         # Create population with random weights between 0 and 1
-        population = np.random.uniform(low=0.0, high=1.0, 
-                                       size=(self.population_size, self.num_weights))
-        
+        population = np.random.uniform(low=0.0, high=1.0,
+                                        size=(self.population_size, self.num_weights))
+
         # Normalize each chromosome so weights sum to 1
         row_sums = population.sum(axis=1)
         normalized_population = population / row_sums[:, np.newaxis]
-        
+
         return normalized_population
 
 
@@ -100,7 +106,9 @@ class GeneticOptimizer:
         # Create a copy of WeightedRuleStrategy with the weighted combination method
         weighted_strategy = WeightedRuleStrategy(
             rule_objects=self.rule_objects,
-            weights=chromosome
+            weights=chromosome,
+            buy_threshold=self.buy_threshold,  # Pass the threshold
+            sell_threshold=self.sell_threshold  # Pass the threshold
         )
 
         # Reset the strategy and run backtest
@@ -146,14 +154,14 @@ class GeneticOptimizer:
             fitness = results['total_log_return']
 
         return fitness
-        
+
     def _calculate_population_fitness(self, population):
         """
         Calculate fitness for the entire population.
-        
+
         Args:
             population: Array of chromosomes
-            
+
         Returns:
             numpy.ndarray: Fitness scores for each chromosome
         """
@@ -165,11 +173,11 @@ class GeneticOptimizer:
     def _select_parents(self, population, fitness):
         """
         Select the best parents for producing the offspring of the next generation.
-        
+
         Args:
             population: Current population
             fitness: Fitness scores for the population
-            
+
         Returns:
             numpy.ndarray: Selected parent chromosomes
         """
@@ -183,60 +191,60 @@ class GeneticOptimizer:
     def _crossover(self, parents):
         """
         Create offspring through crossover of the parents.
-        
+
         Args:
             parents: Selected parent chromosomes
-            
+
         Returns:
             numpy.ndarray: Offspring chromosomes
         """
         # Reset random seed for reproducibility if needed
         self._set_random_seed()
-        
+
         offspring_size = self.population_size - self.num_parents
         offspring = np.empty((offspring_size, self.num_weights))
-        
+
         for k in range(offspring_size):
             # Select two parents
             parent1_idx = k % self.num_parents
             parent2_idx = (k + 1) % self.num_parents
-            
+
             # Perform crossover - weighted average of parents
             crossover_ratio = np.random.random()
-            offspring[k] = (crossover_ratio * parents[parent1_idx] + 
+            offspring[k] = (crossover_ratio * parents[parent1_idx] +
                            (1 - crossover_ratio) * parents[parent2_idx])
-            
+
             # Ensure normalization
             offspring[k] = offspring[k] / np.sum(offspring[k])
-            
+
         return offspring
 
     def _mutate(self, offspring):
         """
         Mutate the offspring by introducing random changes.
-        
+
         Args:
             offspring: Offspring chromosomes after crossover
-            
+
         Returns:
             numpy.ndarray: Mutated offspring
         """
         # Reset random seed for reproducibility if needed
         self._set_random_seed()
-        
+
         for i in range(len(offspring)):
             # Determine if this chromosome should be mutated
             if np.random.random() < self.mutation_rate:
                 # Select two random positions to modify
                 idx1, idx2 = np.random.choice(self.num_weights, 2, replace=False)
-                
+
                 # Get a random change amount (ensuring sum remains the same)
                 change = np.random.uniform(-offspring[i, idx1]/2, offspring[i, idx1]/2)
-                
+
                 # Apply mutation
                 offspring[i, idx1] -= change
                 offspring[i, idx2] += change
-                
+
                 # Ensure no negative weights
                 if offspring[i, idx1] < 0:
                     offspring[i, idx2] += offspring[i, idx1]
@@ -244,10 +252,10 @@ class GeneticOptimizer:
                 if offspring[i, idx2] < 0:
                     offspring[i, idx1] += offspring[i, idx2]
                     offspring[i, idx2] = 0
-                    
+
                 # Re-normalize to ensure weights sum to 1
                 offspring[i] = offspring[i] / np.sum(offspring[i])
-                
+
         return offspring
 
 
@@ -269,6 +277,7 @@ class GeneticOptimizer:
             print(f"Population size: {self.population_size}, Generations: {self.num_generations}")
             if self.deterministic:
                 print(f"Running in deterministic mode with seed: {self.random_seed}")
+            print(f"Buy Threshold: {self.buy_threshold}, Sell Threshold: {self.sell_threshold}")
 
         # Reset the random seed at the beginning of optimization
         self._set_random_seed()
@@ -338,13 +347,13 @@ class GeneticOptimizer:
     def set_random_seed(self, seed):
         """
         Set a new random seed for the optimizer.
-        
+
         Args:
             seed: Integer seed for the random number generator
         """
         self.random_seed = seed
         self._set_random_seed()
-    
+
     def plot_fitness_history(self):
         """
         Plot the evolution of fitness over generations.
@@ -361,10 +370,12 @@ class GeneticOptimizer:
 
 
 class WeightedRuleStrategy:
-    def __init__(self, rule_objects, weights):
+    def __init__(self, rule_objects, weights, buy_threshold=0.5, sell_threshold=-0.5):
         self.rule_objects = rule_objects
         self.weights = np.array(weights)
         self.rule_signals = [None] * len(rule_objects)
+        self.buy_threshold = buy_threshold  # Store the buy threshold
+        self.sell_threshold = sell_threshold  # Store the sell threshold
 
     def on_bar(self, event):
         bar = event.bar  # Extract the bar dictionary from the BarEvent
@@ -380,9 +391,9 @@ class WeightedRuleStrategy:
 
         weighted_sum = np.sum(combined_signals)
 
-        if weighted_sum > 0.5:
+        if weighted_sum > self.buy_threshold:
             final_signal = SignalType.BUY
-        elif weighted_sum < -0.5:
+        elif weighted_sum < self.sell_threshold:
             final_signal = SignalType.SELL
         else:
             final_signal = SignalType.NEUTRAL
@@ -398,4 +409,3 @@ class WeightedRuleStrategy:
             if hasattr(rule, 'reset'):
                 rule.reset()
         self.rule_signals = [None] * len(self.rule_objects)
-        

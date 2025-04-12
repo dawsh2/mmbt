@@ -4,6 +4,60 @@ class CSVDataHandler:
     def __init__(self, csv_filepath, train_fraction=0.8):
         self.csv_filepath = csv_filepath
         self.train_fraction = train_fraction
+        self.full_length = self._get_full_length()
+        self.train_size = int(self.train_fraction * self.full_length)
+        self.train_iterator = self._bar_generator(0, self.train_size)
+        self.test_iterator = self._bar_generator(self.train_size, self.full_length)
+        self._current_train_bar = None
+        self._current_test_bar = None
+        self.reset_train()
+        self.reset_test()
+
+    def _get_full_length(self):
+        with open(self.csv_filepath, 'r') as f:
+            return sum(1 for line in f) - 1
+
+    def _bar_generator(self, start, end):
+        with pd.read_csv(self.csv_filepath, parse_dates=['timestamp'], skiprows=range(1, start + 1), chunksize=1) as reader:
+            for i, chunk in enumerate(reader):
+                if start + i < end:
+                    yield chunk.iloc[0].to_dict()
+                else:
+                    break
+
+    def get_next_train_bar(self):
+        try:
+            self._current_train_bar = next(self.train_iterator)
+            return self._current_train_bar
+        except StopIteration:
+            return None
+
+    def get_next_test_bar(self):
+        try:
+            self._current_test_bar = next(self.test_iterator)
+            return self._current_test_bar
+        except StopIteration:
+            return None
+
+    def reset_train(self):
+        self.train_iterator = self._bar_generator(0, self.train_size)
+        self._current_train_bar = None
+
+    def reset_test(self):
+        self.test_iterator = self._bar_generator(self.train_size, self.full_length)
+        self._current_test_bar = None
+
+    def get_full_data(self):
+        return pd.read_csv(self.csv_filepath, parse_dates=['timestamp'])
+
+# data_handler.py
+
+import pandas as pd
+
+class CSVDataHandler:
+    def __init__(self, csv_filepath, train_fraction=0.8):
+        self.csv_filepath = csv_filepath
+        self.train_fraction = train_fraction
         self.full_df = self._load_and_preprocess_data()
         self.train_df = None
         self.test_df = None

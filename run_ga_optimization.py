@@ -20,7 +20,7 @@ from genetic_optimizer import GeneticOptimizer, WeightedRuleStrategy
 from memory_profiler import profile
 
 
-@profile
+#@profile
 def plot_equity_curve(trades, title, initial_capital=10000):
     """Plot equity curve from trade data."""
     equity = [initial_capital]
@@ -39,7 +39,7 @@ def plot_equity_curve(trades, title, initial_capital=10000):
     plt.close()
 
 
-@profile
+#@profile
 def parse_arguments():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description='Run genetic algorithm optimization')
@@ -52,7 +52,7 @@ def parse_arguments():
     return parser.parse_args()
 
 
-@profile
+#@profile
 def run_genetic_optimization():
     """Main function to run genetic algorithm optimization."""
     # Parse command line arguments

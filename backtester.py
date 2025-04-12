@@ -1,3 +1,4 @@
+# backtester.py
 import numpy as np
 import pandas as pd
 import math
@@ -30,6 +31,8 @@ class Backtester:
         self.strategy.reset()
         all_signals = []
         data = []
+        all_signals_data = []
+        all_trades_data = []
 
         if not use_test_data:
             self.data_handler.reset_train()
@@ -47,10 +50,12 @@ class Backtester:
             signal = self.strategy.on_bar(event)
             if signal is not None:
                 all_signals.append(signal)
-                self.signals_df = pd.concat([self.signals_df, pd.DataFrame([{'timestamp': signal.timestamp, 'signal': signal.signal_type.value, 'price': signal.price}])], ignore_index=True)
+                all_signals_data.append({'timestamp': signal.timestamp, 'signal': signal.signal_type.value, 'price': signal.price})
 
-            self._process_signal_for_trades(signal, event_data.get('timestamp'), event_data.get('Close'))
+            self._process_signal_for_trades(signal, event_data.get('timestamp'), event_data.get('Close'), all_trades_data)
 
+        self.signals_df = pd.DataFrame(all_signals_data)
+        self.trades_df = pd.DataFrame(all_trades_data)
         results_df = pd.DataFrame(data)
         results_df = pd.merge(results_df, self.signals_df, on='timestamp', how='left')
         results_df['trades'] = [self.trades_df] * len(results_df) # Store the trades DataFrame in each row for simplicity
@@ -58,7 +63,7 @@ class Backtester:
         return results_df
 
     @profile
-    def _process_signal_for_trades(self, signal, timestamp, price):
+    def _process_signal_for_trades(self, signal, timestamp, price, trades_list):
         if signal is None:
             return
 
@@ -80,9 +85,9 @@ class Backtester:
                 exit_price = price
                 exit_time = timestamp
                 profit = (exit_price - self.entry_price)
-                self.trades_df = pd.concat([self.trades_df, pd.DataFrame([{'entry_time': self.entry_time, 'entry_price': self.entry_price,
-                                                                               'exit_time': exit_time, 'exit_price': exit_price,
-                                                                               'profit': profit, 'position': 'LONG'}])], ignore_index=True)
+                trades_list.append({'entry_time': self.entry_time, 'entry_price': self.entry_price,
+                                    'exit_time': exit_time, 'exit_price': exit_price,
+                                    'profit': profit, 'position': 'LONG'})
                 self.current_position = 0
                 #print(f"{exit_time} - Exit LONG at {exit_price:.2f}, Profit: {profit:.2f}")
         elif self.current_position == -1:
@@ -90,16 +95,16 @@ class Backtester:
                 exit_price = price
                 exit_time = timestamp
                 profit = (self.entry_price - exit_price)
-                self.trades_df = pd.concat([self.trades_df, pd.DataFrame([{'entry_time': self.entry_time, 'entry_price': self.entry_price,
-                                                                               'exit_time': exit_time, 'exit_price': exit_price,
-                                                                               'profit': profit, 'position': 'SHORT'}])], ignore_index=True)
+                trades_list.append({'entry_time': self.entry_time, 'entry_price': self.entry_price,
+                                    'exit_time': exit_time, 'exit_price': exit_price,
+                                    'profit': profit, 'position': 'SHORT'})
                 self.current_position = 0
                 #print(f"{exit_time} - Exit SHORT at {exit_price:.2f}, Profit: {profit:.2f}")
 
     @profile
     def calculate_returns(self, signals):
         # This method is now largely handled within _process_signal_for_trades
-        return self.trades_df
+        return pd.DataFrame(self.trades_df)
 
     @profile
     def calculate_sharpe(self, risk_free_rate=0):
