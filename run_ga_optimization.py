@@ -21,13 +21,31 @@ from memory_profiler import profile
 
 
 #@profile
-def plot_equity_curve(trades, title, initial_capital=10000):
+#@profile
+def plot_equity_curve(trades_df, title, initial_capital=10000):
     """Plot equity curve from trade data."""
+    if isinstance(trades_df, pd.DataFrame) and len(trades_df) > 0:
+        # If trades_df is a DataFrame, extract log returns
+        if 'log_return' in trades_df.columns:
+            log_returns = trades_df['log_return'].values
+        elif 'profit' in trades_df.columns:
+            # Convert profit to log return if needed
+            log_returns = np.log(1 + trades_df['profit'] / 100)
+        else:
+            print(f"No return data found in trades for {title}")
+            return
+    elif isinstance(trades_df, list) and len(trades_df) > 0 and isinstance(trades_df[0], (list, tuple)):
+        # If trades_df is a list of tuples/lists
+        log_returns = [trade[5] for trade in trades_df]
+    else:
+        print(f"No valid trades found for {title}")
+        return
+        
+    # Create equity curve
     equity = [initial_capital]
-    for trade in trades:
-        log_return = trade[5]
+    for log_return in log_returns:
         equity.append(equity[-1] * np.exp(log_return))
-
+    
     plt.figure(figsize=(12, 6))
     plt.plot(equity)
     plt.title(title)
@@ -119,7 +137,7 @@ def run_genetic_optimization():
     sharpe_baseline = baseline_backtester.calculate_sharpe()
     print(f"Sharpe Ratio: {sharpe_baseline:.4f}")
 
-    plot_equity_curve(baseline_results["trades"], "Baseline Strategy Equity Curve")
+    plot_equity_curve(baseline_results["trades"], "Baseline Strategy Equity Curve (OOS)")
 
     # 4. Run genetic optimization
     print("\n=== Running Genetic Optimization ===")

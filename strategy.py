@@ -195,8 +195,8 @@ class Rule1:
         self.history = deque(maxlen=max(self.ma1_period, self.ma2_period))
         self.sum1 = 0  # Initialize sum1
         self.sum2 = 0  # Initialize sum2
-        self.ma1_history = deque()  # Corrected attribute name
-        self.ma2_history = deque()  # Corrected attribute name
+        self.ma1_history = deque(maxlen=200)  # Corrected attribute name
+        self.ma2_history = deque(maxlen=200)  # Corrected attribute name
         self.current_signal_type = SignalType.NEUTRAL
         self.rule_id = "Rule1"
 
@@ -270,9 +270,9 @@ class Rule2:
         self.history = deque(maxlen=max(self.ema1_period if self.ema1_period > 0 else 1, self.ma2_period if self.ma2_period > 0 else 1))
         self.alpha_ema1 = 2 / (self.ema1_period + 1) if self.ema1_period > 0 else 0
         self.ema1_value = np.nan
-        self.ema1_history = deque()
+        self.ema1_history = deque(maxlen=200)
         self.ma2_sum = 0
-        self.ma2_history = deque()
+        self.ma2_history = deque(maxlen=200)
         self.current_signal_type = SignalType.NEUTRAL
         self.rule_id = "Rule2" # Ensure rule_id is set
 
@@ -712,7 +712,7 @@ class Rule7:
         self.stoch_ma_history = deque(maxlen=200) # Assuming a maxlen
         self.current_signal_type = SignalType.NEUTRAL
         self.rule_id = "Rule7"
-        self.s1_history = deque()
+        self.s1_history = deque(maxlen=200)
         self.s2_sum = 0
         self.s2_count = 0
         self.s2_value = np.nan
@@ -796,7 +796,7 @@ class Rule7:
         self.high_history = deque(maxlen=self.stoch1_period)
         self.low_history = deque(maxlen=self.stoch1_period)
         self.close_history = deque(maxlen=self.stoch1_period)
-        self.s1_history = deque()
+        self.s1_history = deque(maxlen=200)
         self.s2_sum = 0
         self.s2_count = 0
         self.s2_value = np.nan
@@ -815,8 +815,8 @@ class Rule8:
         self.current_tr = 0
         self.current_pm = 0
         self.current_nm = 0
-        self.s1_history = deque() # For +VI history
-        self.s2_history = deque() # For -VI history
+        self.s1_history = deque(maxlen=200) # For +VI history
+        self.s2_history = deque(maxlen=200) # For -VI history
         self.current_signal_type = SignalType.NEUTRAL
         self.rule_id = "Rule8"
 

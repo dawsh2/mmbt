@@ -339,23 +339,23 @@ class OptimizerManager:
                     print(f"  Sharpe ratio: {results['sharpe']:.4f}")
                 if 'total_return' in results:
                     print(f"  Total return: {results['total_return']:.2f}%")
-    
+
     def _optimize_rule_weights(self, method, metrics, optimization_params, verbose, data_handler=None):
         """
         Optimize rule weights using the specified method.
-        
+
         Args:
             method: Optimization method
             metrics: Performance metric to optimize
             optimization_params: Additional parameters
             verbose: Whether to print progress
             data_handler: Optional specific data handler to use
-            
+
         Returns:
             numpy.ndarray: Optimized weights
         """
         data_handler = data_handler or self.data_handler
-        
+
         if method == OptimizationMethod.GENETIC:
             # Configure genetic optimizer
             genetic_params = optimization_params.get('genetic', {})
@@ -368,10 +368,11 @@ class OptimizerManager:
                 mutation_rate=genetic_params.get('mutation_rate', 0.1),
                 optimization_metric=metrics
             )
-            
+
             # Run optimization
             return optimizer.optimize(verbose=verbose)
-            
+
+ 
         elif method == OptimizationMethod.GRID_SEARCH:
             # Placeholder for grid search implementation
             if verbose:

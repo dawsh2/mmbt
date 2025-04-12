@@ -9,7 +9,7 @@ import time
 import matplotlib.pyplot as plt
 from data_handler import CSVDataHandler
 from rule_system import EventDrivenRuleSystem
-from backtester import Backtester
+from backtester import Backtester, BarEvent
 from strategy import TopNStrategy
 from strategy import (
     Rule0, Rule1, Rule2, Rule3, Rule4, Rule5, Rule6, Rule7,
@@ -129,7 +129,7 @@ while True:
     bar = data_handler.get_next_test_bar()
     if bar is None:
         break
-    event = {"bar": bar}
+    event = BarEvent(bar)  # Create a proper event object
     top_n_strategy.on_bar(event)
 
 baseline_backtester = Backtester(data_handler, top_n_strategy)
