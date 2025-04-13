@@ -76,8 +76,9 @@ class Backtester:
 
 
 
+
     def _process_signal_for_trades(self, signal, timestamp, price):
-        # Extract signal value - handle different signal formats
+        # Extract signal value
         if hasattr(signal, 'signal_type'):
             signal_value = signal.signal_type.value  # Signal object
         elif isinstance(signal, dict) and 'signal' in signal:
@@ -104,6 +105,7 @@ class Backtester:
                 self.entry_price = price
                 self.entry_time = timestamp
                 print(f"Entering short position at price: {price}")
+
         elif self.current_position == 1:  # In long position
             if signal_value == -1 or signal_value == 0:  # Sell or neutral signal
                 # Exit long position
@@ -128,6 +130,7 @@ class Backtester:
                     self.current_position = 0
                     self.entry_price = None
                     self.entry_time = None
+
         elif self.current_position == -1:  # In short position
             if signal_value == 1 or signal_value == 0:  # Buy or neutral signal
                 # Exit short position
@@ -152,7 +155,6 @@ class Backtester:
                     self.current_position = 0
                     self.entry_price = None
                     self.entry_time = None
-
 
 
 
