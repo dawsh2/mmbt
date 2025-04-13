@@ -111,6 +111,7 @@ class Backtester:
         for bar in data_iter():
             # Create bar event
             bar_event = Event(EventType.BAR, data=bar)
+            bar_event.bar = bar  # Add this line to set the bar attribute
             
             # Process bar through strategy
             signals = self.strategy.on_bar(bar_event)
