@@ -1,0 +1,45 @@
+"""
+Risk management package for algorithmic trading systems.
+
+This package provides a comprehensive framework for implementing advanced risk 
+management using MAE, MFE, and ETD analysis to derive data-driven risk parameters.
+
+Main components:
+- RiskManager: Applies risk rules to trades
+- RiskMetricsCollector: Collects risk metrics from trades
+- RiskAnalysisEngine: Analyzes collected metrics
+- RiskParameterOptimizer: Derives optimal risk parameters
+- RiskVisualization: Visualizes risk metrics and parameters
+"""
+
+# Export main classes
+from .risk_manager import RiskManager
+from .collector import RiskMetricsCollector
+from .analyzer import RiskAnalysisEngine
+from .parameter_optimizer import RiskParameterOptimizer
+from .visualization import RiskVisualization
+
+# Export type definitions
+from .types import (
+    RiskParameters, 
+    RiskToleranceLevel, 
+    ExitReason, 
+    TradeMetrics,
+    RiskAnalysisResults
+)
+
+__all__ = [
+    # Main classes
+    'RiskManager',
+    'RiskMetricsCollector',
+    'RiskAnalysisEngine',
+    'RiskParameterOptimizer',
+    'RiskVisualization',
+    
+    # Types
+    'RiskParameters',
+    'RiskToleranceLevel',
+    'ExitReason',
+    'TradeMetrics',
+    'RiskAnalysisResults',
+]
