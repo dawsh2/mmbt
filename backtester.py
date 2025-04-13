@@ -52,16 +52,21 @@ class Backtester:
             if signal is not None:
                 self._process_signal_for_trades(signal, bar_data['timestamp'], bar_data['Close'])
 
+        # Calculate metrics from trades
         metrics = calculate_metrics_from_trades(self.trades)
+
+        # Return complete results dictionary
         return {
-            'total_log_return': total_log_return,
-            'total_percent_return': total_return,
-            'average_log_return': avg_log_return,
+            'total_log_return': metrics.get('total_log_return', 0),
+            'total_percent_return': metrics.get('total_return', 0) * 100,  # Convert to percentage
+            'average_log_return': metrics.get('avg_log_return', 0),
             'num_trades': len(self.trades),
-            'win_rate': win_rate,
+            'win_rate': metrics.get('win_rate', 0),
             'trades': self.trades,
             'metrics': metrics  # Include all calculated metrics
         }
+        
+ 
 
     def _process_signal_for_trades(self, signal, timestamp, price):
         # Extract signal value with better validation
@@ -136,6 +141,37 @@ class Backtester:
                     self.entry_price = None
                     self.entry_time = None
 
+
+    def _close_position(self, timestamp, price):
+        """Close current position at the specified price."""
+        if self.current_position == 0:
+            return  # No position to close
+
+        if self.current_position == 1:  # Close long position
+            log_return = math.log(price / self.entry_price) if self.entry_price > 0 else 0
+            self.trades.append((
+                self.entry_time,
+                'long',
+                self.entry_price,
+                timestamp,
+                price,
+                log_return
+            ))
+        elif self.current_position == -1:  # Close short position
+            log_return = math.log(self.entry_price / price) if price > 0 else 0
+            self.trades.append((
+                self.entry_time,
+                'short',
+                self.entry_price,
+                timestamp,
+                price,
+                log_return
+            ))
+
+        # Reset position
+        self.current_position = 0
+        self.entry_price = None
+        self.entry_time = None
 
 
 

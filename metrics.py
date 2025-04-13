@@ -197,10 +197,37 @@ def calculate_metrics_from_trades(trades):
     Returns:
         dict: Performance metrics
     """
+    if not trades:
+        return {
+            'total_log_return': 0,
+            'total_return': 0,
+            'avg_log_return': 0,
+            'win_rate': 0,
+            'number_of_trades': 0,
+            'sharpe_ratio': 0,
+            'sortino_ratio': 0
+        }
+    
+    # Extract returns
     returns_array = convert_trades_to_returns(trades)
+    
+    # Calculate basic statistics
+    total_log_return = np.sum(returns_array)
+    total_return = np.exp(total_log_return) - 1  # Convert to simple return
+    avg_log_return = np.mean(returns_array)
+    
+    # Win rate calculation
+    win_count = np.sum(returns_array > 0)
+    win_rate = win_count / len(returns_array)
+    
+    # Calculate advanced metrics
     metrics = calculate_metrics(returns_array)
     
-    # Update number of trades
+    # Add our basic metrics
+    metrics['total_log_return'] = total_log_return
+    metrics['total_return'] = total_return  # As decimal, not percentage
+    metrics['avg_log_return'] = avg_log_return
+    metrics['win_rate'] = win_rate
     metrics['number_of_trades'] = len(trades)
     
     return metrics
@@ -406,7 +433,7 @@ def calculate_metrics(strategy_returns) -> Dict[str, float]:
         annualized_return = np.exp(np.mean(returns_array) * 252) - 1
         annualized_volatility = np.std(returns_array) * np.sqrt(252)
         sharpe_ratio = annualized_return / annualized_volatility if annualized_volatility != 0 else 0
-        sortino_ratio = calculate_sortino_ratio(returns_array)
+        sortino_ratio = calculate_sortino(returns_array)
         
         # Calculate drawdowns
         cum_returns = np.cumprod(1 + simple_returns)

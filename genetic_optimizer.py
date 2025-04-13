@@ -467,22 +467,29 @@ class GeneticOptimizer:
     def _crossover(self, parents):
         """
         Create offspring through crossover of the parents.
-        
+
         Args:
             parents: Selected parent chromosomes
-            
+
         Returns:
             numpy.ndarray: Offspring chromosomes
         """
         # Reset random seed for reproducibility if needed
         self._set_random_seed()
-        
+
         # Determine chromosome size 
         parent_size = parents.shape[1]
-        
-        offspring_size = self.population_size - self.num_parents
+
+        # Calculate offspring size (ensure it's positive)
+        offspring_size = max(1, self.population_size - self.num_parents)
+        if offspring_size <= 0:
+            # Handle edge case where num_parents >= population_size
+            # Just return a copy of the parents in this case
+            print(f"Warning: num_parents ({self.num_parents}) >= population_size ({self.population_size})")
+            return parents.copy()
+
         offspring = np.empty((offspring_size, parent_size))
-        
+    
         for k in range(offspring_size):
             # Select two parents with tournament selection (select 3, pick best 2)
             indices = np.random.choice(self.num_parents, 3, replace=False)
