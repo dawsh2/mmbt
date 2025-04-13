@@ -689,3 +689,46 @@ class PositionManager:
         # Reset allocation strategy if needed
         if hasattr(self.allocation_strategy, 'reset'):
             self.allocation_strategy.reset()
+
+
+# Add to src/engine/position_manager.py
+
+class DefaultPositionManager:
+    """
+    Default position manager that implements basic functionality.
+    Used as a fallback if no position manager is provided.
+    """
+    
+    def calculate_position_size(self, signal, portfolio):
+        """
+        Calculate position size based on signal.
+        
+        This simple implementation just returns a fixed position size
+        in the direction of the signal.
+        
+        Args:
+            signal: Trading signal
+            portfolio: Current portfolio
+            
+        Returns:
+            float: Position size (positive for buy, negative for sell)
+        """
+        # Default position size (100 units)
+        size = 100.0
+        
+        # Adjust direction based on signal
+        if hasattr(signal, 'signal_type'):
+            if signal.signal_type.value < 0:  # Sell signal
+                size = -size
+            elif signal.signal_type.value == 0:  # Neutral signal
+                size = 0
+        elif hasattr(signal, 'signal') and signal.signal < 0:
+            size = -size
+        elif hasattr(signal, 'direction') and signal.direction < 0:
+            size = -size
+            
+        return size
+    
+    def reset(self):
+        """Reset the position manager state."""
+        pass            

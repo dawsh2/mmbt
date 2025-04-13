@@ -4,8 +4,7 @@ Rule Factory Module
 This module provides factory functions for creating and configuring rule instances
 with proper parameter handling and validation.
 """
-
-from typing import Dict, List, Any, Optional, Union, Type, Tuple
+from typing import Callable, Dict, List, Any, Optional, Union, Tuple, Type
 import logging
 import itertools
 import numpy as np

@@ -987,7 +987,7 @@ class DivergenceFeature(Feature):
         
         # Both conditions must be true for hidden bearish divergence
         return price_lower_high and indicator_higher_high
-")
+
 class MACrossoverFeature(Feature):
     """
     Moving Average Crossover feature.
@@ -1406,4 +1406,4 @@ class TrendStrengthFeature(Feature):
         }
 
 
-@register_feature(category="technical
+

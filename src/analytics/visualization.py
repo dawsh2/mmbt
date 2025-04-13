@@ -13,7 +13,7 @@ import matplotlib.patches as patches
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Union, Tuple
 
-from metrics import calculate_max_drawdown, calculate_drawdown_periods, calculate_regime_performance
+from .metrics import calculate_max_drawdown, calculate_drawdown_periods, calculate_regime_performance
 
 
 class TradeVisualizer:

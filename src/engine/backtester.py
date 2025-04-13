@@ -7,8 +7,7 @@ connecting strategy, execution, and data components into a cohesive simulation e
 
 from typing import Dict, Any, List, Optional, Callable
 from . import ExecutionEngine, MarketSimulator
-from ..position_management import PositionManager, DefaultPositionManager
-
+from .position_manager import PositionManager, DefaultPositionManager
 
 class EventBus:
     """
