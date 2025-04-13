@@ -298,7 +298,9 @@ class RegimeManager:
         # First, identify bars in each regime using the full dataset
         regime_bars = self._identify_regime_bars()
 
-        optimized_params = {}
+        # Initialize the dictionary to store optimal parameters
+        optimal_params = {}
+
         for regime in regimes_to_optimize:
             if regime in regime_bars and len(regime_bars[regime]) >= 30:
                 if verbose:
@@ -333,7 +335,7 @@ class RegimeManager:
                     print(f"No bars found for {regime.name} regime. Using default strategy.")
                 self.regime_strategies.setdefault(regime, self.default_strategy) # Ensure a strategy exists
 
-        return optimized_params
+        return optimal_params
 
     def _identify_regime_bars(self):
         """Identify which bars belong to each regime."""

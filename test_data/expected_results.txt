@@ -1,0 +1,5 @@
+Total Log Return: -4.1003
+Total Return (%): -98.34%
+Average Log Return: -0.2050
+Number of Trades: 20
+Win Rate: 0.00

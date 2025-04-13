@@ -1,3 +1,5 @@
+
+
 from abc import ABC, abstractmethod
 from collections import deque
 import pandas as pd
@@ -29,15 +31,56 @@ class StrategyFactory(ABC):
         """Create a default strategy."""
         pass
 
+class WeightedRuleStrategy:
+    def __init__(self, rule_objects, weights, buy_threshold=0.5, sell_threshold=-0.5):
+        self.rule_objects = rule_objects
+        self.weights = np.array(weights)
+        self.rule_signals = [None] * len(rule_objects)
+        self.buy_threshold = buy_threshold  # Store the buy threshold
+        self.sell_threshold = sell_threshold  # Store the sell threshold
+
+    def on_bar(self, event):
+        bar = event.bar  # Extract the bar dictionary from the BarEvent
+        combined_signals = []
+        for i, rule in enumerate(self.rule_objects):
+            signal_object = rule.on_bar(bar)  # Now we expect a Signal object
+            if signal_object and hasattr(signal_object, 'signal_type'):  # Check for signal_type
+                combined_signals.append(signal_object.signal_type.value * self.weights[i])
+            else:
+                combined_signals.append(0)  # Or handle missing signal appropriately
+
+        weighted_sum = np.sum(combined_signals)
+
+        if weighted_sum > self.buy_threshold:
+            final_signal_type = SignalType.BUY
+        elif weighted_sum < self.sell_threshold:
+            final_signal_type = SignalType.SELL
+        else:
+            final_signal_type = SignalType.NEUTRAL
+
+        return Signal(
+            timestamp=bar["timestamp"],
+            signal_type=final_signal_type,
+            price=bar["Close"],
+            rule_id="weighted_strategy"
+        )
+
+    def reset(self):
+        for rule in self.rule_objects:
+            if hasattr(rule, 'reset'):
+                rule.reset()
+        self.rule_signals = [None] * len(self.rule_objects)
+
 class WeightedRuleStrategyFactory(StrategyFactory):
     """Factory for creating WeightedRuleStrategy instances."""
     def create_strategy(self, regime, rule_objects, optimization_params) -> Strategy:
         return WeightedRuleStrategy(rule_objects=rule_objects, weights=optimization_params)
 
     def create_default_strategy(self, rule_objects) -> Strategy:
-        return WeightedRuleStrategy(rule_objects=rule_objects)
+        # Create with equal weights
+        weights = np.ones(len(rule_objects)) / len(rule_objects) if rule_objects else []
+        return WeightedRuleStrategy(rule_objects=rule_objects, weights=weights)
 
-    
 
 class SMACrossoverStrategy(Strategy):
     """A simple moving average crossover trading strategy."""
@@ -120,6 +163,7 @@ class SMACrossoverStrategy(Strategy):
         self.prev_long_sma = None
         self.current_position = 0
 
+        
 
 class Rule0:
     """

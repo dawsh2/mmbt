@@ -18,10 +18,9 @@ class Backtester:
         self.entry_price = None
         self.entry_time = None
 
+
+
     def run(self, use_test_data=False):
-        """
-        Run backtest and return only the necessary results.
-        """
         # Reset state
         self.strategy.reset()
         self.signals = []
@@ -29,9 +28,6 @@ class Backtester:
         self.current_position = 0
         self.entry_price = None
         self.entry_time = None
-        
-        total_log_return = 0.0
-        win_count = 0
 
         # Select data source
         if use_test_data:
@@ -46,26 +42,20 @@ class Backtester:
             bar_data = get_next_bar()
             if bar_data is None:
                 break
-                
+
             event = BarEvent(bar_data)
             signal = self.strategy.on_bar(event)
-            
+
             if signal is not None:
-                self.signals.append({
-                    'timestamp': bar_data['timestamp'],
-                    'signal': signal.signal_type.value if hasattr(signal, 'signal_type') else signal,
-                    'price': bar_data['Close']
-                })
-                
-                # Process the signal to generate trades
                 self._process_signal_for_trades(signal, bar_data['timestamp'], bar_data['Close'])
 
-        # Calculate final metrics
+        # Calculate metrics using tuple format - assuming log_return is at index 5
         if self.trades:
-            total_log_return = sum(trade['log_return'] for trade in self.trades)
+            # Handle tuples instead of dictionaries
+            total_log_return = sum(trade[5] for trade in self.trades)  # Index 5 for log_return
             total_return = (math.exp(total_log_return) - 1) * 100  # Convert to percentage
             avg_log_return = total_log_return / len(self.trades)
-            win_count = sum(1 for trade in self.trades if trade['log_return'] > 0)
+            win_count = sum(1 for trade in self.trades if trade[5] > 0)  # Index 5 for log_return
             win_rate = win_count / len(self.trades) if self.trades else 0
         else:
             total_log_return = 0
@@ -73,74 +63,99 @@ class Backtester:
             avg_log_return = 0
             win_rate = 0
 
-        # Return only necessary results
+        # Return results
+        print(f"Debug - Actual trades generated: {len(self.trades)}, Trades list: {self.trades}")
         return {
             'total_log_return': total_log_return,
             'total_percent_return': total_return,
             'average_log_return': avg_log_return,
             'num_trades': len(self.trades),
             'win_rate': win_rate,
-            'trades': self.trades  # Now a list of dictionaries, not a DataFrame
+            'trades': self.trades
         }
 
+
+
     def _process_signal_for_trades(self, signal, timestamp, price):
-        """
-        Process a signal to generate trades, using simple lists instead of DataFrames.
-        """
-        if signal is None:
-            return
-
-        # Extract signal type
+        # Extract signal value - handle different signal formats
         if hasattr(signal, 'signal_type'):
-            signal_type = signal.signal_type
+            signal_value = signal.signal_type.value  # Signal object
         elif isinstance(signal, dict) and 'signal' in signal:
-            signal_value = signal['signal']
-            signal_type = SignalType.BUY if signal_value == 1 else \
-                         SignalType.SELL if signal_value == -1 else SignalType.NEUTRAL
-        elif isinstance(signal, int):
-            signal_type = SignalType.BUY if signal == 1 else \
-                         SignalType.SELL if signal == -1 else SignalType.NEUTRAL
+            signal_value = signal['signal']  # Dictionary format
+        elif isinstance(signal, (int, float)):
+            signal_value = signal  # Numeric signal
         else:
-            signal_type = SignalType.NEUTRAL
+            # Default to neutral if signal format is unrecognized
+            signal_value = 0
 
-        # Handle position entry/exit based on signal
-        if self.current_position == 0:
-            if signal_type == SignalType.BUY:
+        print(f"Processing signal: {signal_value}, Current position: {self.current_position}, Entry price: {self.entry_price}")
+
+        # Process signal based on current position
+        if self.current_position == 0:  # Not in a position
+            if signal_value == 1:  # Buy signal
+                # Enter long position
                 self.current_position = 1
                 self.entry_price = price
                 self.entry_time = timestamp
-            elif signal_type == SignalType.SELL:
+                print(f"Entering long position at price: {price}")
+            elif signal_value == -1:  # Sell signal
+                # Enter short position
                 self.current_position = -1
                 self.entry_price = price
                 self.entry_time = timestamp
-        elif self.current_position == 1:
-            if signal_type == SignalType.SELL or signal_type == SignalType.NEUTRAL:
+                print(f"Entering short position at price: {price}")
+        elif self.current_position == 1:  # In long position
+            if signal_value == -1 or signal_value == 0:  # Sell or neutral signal
+                # Exit long position
                 log_return = math.log(price / self.entry_price) if self.entry_price > 0 else 0
-                
-                self.trades.append({
-                    'entry_time': self.entry_time,
-                    'entry_price': self.entry_price,
-                    'exit_time': timestamp,
-                    'exit_price': price,
-                    'log_return': log_return,
-                    'position': 'LONG'
-                })
-                
-                self.current_position = 0
-        elif self.current_position == -1:
-            if signal_type == SignalType.BUY or signal_type == SignalType.NEUTRAL:
+                self.trades.append((
+                    self.entry_time,
+                    'long',
+                    self.entry_price,
+                    timestamp,
+                    price,
+                    log_return
+                ))
+                print(f"Exiting long position, adding trade: {self.entry_time} to {timestamp}, Return: {log_return:.4f}")
+
+                # If sell signal, enter short position
+                if signal_value == -1:
+                    self.current_position = -1
+                    self.entry_price = price
+                    self.entry_time = timestamp
+                    print(f"Entering short position at price: {price}")
+                else:
+                    self.current_position = 0
+                    self.entry_price = None
+                    self.entry_time = None
+        elif self.current_position == -1:  # In short position
+            if signal_value == 1 or signal_value == 0:  # Buy or neutral signal
+                # Exit short position
                 log_return = math.log(self.entry_price / price) if price > 0 else 0
-                
-                self.trades.append({
-                    'entry_time': self.entry_time,
-                    'entry_price': self.entry_price,
-                    'exit_time': timestamp,
-                    'exit_price': price,
-                    'log_return': log_return,
-                    'position': 'SHORT'
-                })
-                
-                self.current_position = 0
+                self.trades.append((
+                    self.entry_time,
+                    'short',
+                    self.entry_price,
+                    timestamp,
+                    price,
+                    log_return
+                ))
+                print(f"Exiting short position, adding trade: {self.entry_time} to {timestamp}, Return: {log_return:.4f}")
+
+                # If buy signal, enter long position
+                if signal_value == 1:
+                    self.current_position = 1
+                    self.entry_price = price
+                    self.entry_time = timestamp
+                    print(f"Entering long position at price: {price}")
+                else:
+                    self.current_position = 0
+                    self.entry_price = None
+                    self.entry_time = None
+
+
+
+
 
     def calculate_sharpe(self, risk_free_rate=0):
         """
@@ -155,8 +170,8 @@ class Backtester:
         if len(self.trades) < 2:
             return 0.0
 
-        # Extract returns from trades
-        returns = [trade['log_return'] for trade in self.trades]
+        # Extract returns from trades (using index 5 for log_return)
+        returns = [trade[5] for trade in self.trades]
         avg_return = np.mean(returns)
         std_return = np.std(returns)
 
@@ -177,11 +192,4 @@ class Backtester:
 
         return annualized_sharpe
 
-    def reset(self):
-        """Reset the backtester state."""
-        self.signals = []
-        self.trades = []
-        self.current_position = 0
-        self.entry_price = None
-        self.entry_time = None
-        self.strategy.reset()
+ 
