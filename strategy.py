@@ -1509,6 +1509,50 @@ class Rule15:
 
         
 
+class KalmanFilterRule:
+    def __init__(self, params):
+        self.measurement_noise = params.get('measurement_noise', 0.1)
+        self.process_noise = params.get('process_noise', 0.01)
+        self.state = None
+        self.covariance = None
+        self.close_history = deque(maxlen=200)
+        
+    def on_bar(self, bar):
+        close = bar['Close']
+        self.close_history.append(close)
+        
+        # Simple Kalman filter for trend estimation
+        if self.state is None:
+            self.state = close
+            self.covariance = 1.0
+        else:
+            # Prediction step
+            prediction = self.state
+            prediction_covariance = self.covariance + self.process_noise
+            
+            # Update step
+            kalman_gain = prediction_covariance / (prediction_covariance + self.measurement_noise)
+            self.state = prediction + kalman_gain * (close - prediction)
+            self.covariance = (1 - kalman_gain) * prediction_covariance
+        
+        # Generate signal based on relationship between price and filtered state
+        if close > self.state * 1.02:  # Price significantly above filtered value
+            signal_type = SignalType.SELL  # Potential mean reversion
+        elif close < self.state * 0.98:  # Price significantly below filtered value
+            signal_type = SignalType.BUY   # Potential mean reversion
+        else:
+            signal_type = SignalType.NEUTRAL
+        
+        return Signal(
+            timestamp=bar["timestamp"],
+            signal_type=signal_type,
+            price=close,
+            rule_id="KalmanFilter",
+            confidence=1.0,
+            metadata={"filtered_state": self.state}
+        )
+    
+        
 class TopNStrategy:
     """
     A strategy that combines signals from multiple rules using a simple voting mechanism.

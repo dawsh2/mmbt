@@ -196,7 +196,7 @@ class DebugBacktester(Backtester):
 # Function to run the debug backtester
 def run_debug_backtest():
     # Load test data
-    data_path = 'test_data/test_ohlc_data.csv'
+    data_path = 'data/test_data/test_ohlc_data.csv'
     data_handler = CSVDataHandler(data_path, train_fraction=0.7)
     
     # Create rule and strategy

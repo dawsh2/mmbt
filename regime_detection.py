@@ -13,7 +13,8 @@ from abc import ABC, abstractmethod
 from backtester import Backtester
 from genetic_optimizer import GeneticOptimizer, WeightedRuleStrategy  # Keep WeightedRuleStrategy for now
 from signals import Signal, SignalType
-from strategy import Strategy, StrategyFactory 
+from strategy import Strategy, StrategyFactory
+
 # from src.strategy.indicators.indicators import kaufman_adaptive_ma
 # from src.utils.config.config_utils import get_regime_detection_params  # Assuming this exists
 # from strategy import Strategy, StrategyFactory
@@ -189,6 +190,33 @@ class VolatilityRegimeDetector(RegimeDetector):
         self.close_history.clear()
         self.returns_history.clear()
         self.current_regime = RegimeType.UNKNOWN
+
+class WaveletRegimeDetector(RegimeDetector):
+    def __init__(self, lookback_period=100, threshold=0.5):
+        self.lookback_period = lookback_period
+        self.threshold = threshold
+        self.price_history = deque(maxlen=lookback_period)
+        
+    def detect_regime(self, bar):
+        self.price_history.append(bar['Close'])
+        
+        if len(self.price_history) >= self.lookback_period:
+            # Perform wavelet decomposition
+            import pywt
+            coeffs = pywt.wavedec(list(self.price_history), 'db1', level=3)
+            
+            # Calculate energy in different frequency bands
+            energy_high = np.sum(coeffs[1] ** 2)  # High frequency (noise)
+            energy_low = np.sum(coeffs[3] ** 2)   # Low frequency (trend)
+            
+            # Determine regime based on energy distribution
+            if energy_high > self.threshold * energy_low:
+                return RegimeType.VOLATILE
+            elif np.abs(coeffs[3][-1] - coeffs[3][0]) > self.threshold:
+                return RegimeType.TRENDING_UP if coeffs[3][-1] > coeffs[3][0] else RegimeType.TRENDING_DOWN
+            else:
+                return RegimeType.RANGE_BOUND
+        
 
 class KaufmanRegimeDetector(RegimeDetector):
     # ... (rest of KaufmanRegimeDetector implementation - no changes needed) ...
@@ -382,6 +410,22 @@ class RegimeManager:
         """Get the optimized strategy for a specific regime."""
         return self.regime_strategies.get(regime, self.default_strategy)
 
+    def on_bar(self, event):
+        """Process a bar and generate trading signals using the appropriate strategy."""
+        bar = event.bar
+        
+        # Handle end-of-day closing if present
+        if bar.get('is_eod', False):
+            # We don't need to do anything special here since the backtester
+            # already handles EOD position closing
+            pass
+            
+        self.current_regime = self.regime_detector.detect_regime(bar)
+        strategy = self.get_strategy_for_regime(self.current_regime)
+        if hasattr(strategy, 'on_bar'):
+            return strategy.on_bar(event)
+        return None
+    
     def on_bar(self, event):
         """Process a bar and generate trading signals using the appropriate strategy."""
         bar = event.bar

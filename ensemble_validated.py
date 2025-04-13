@@ -1126,7 +1126,7 @@ if __name__ == "__main__":
         (Rule12, {'rsi_period': [10, 14]}),
         (Rule13, {'stoch_period': [10, 14], 'stoch_d_period': [3, 5]}),
         (Rule14, {'atr_period': [14, 20]}),
-        (Rule15, {'bb_period': [20, 25]}),
+        (Rule15, {'bb_period': [20, 25]})
     ]
     
     # Alternative rule configuration with expanded parameters

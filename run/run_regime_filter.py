@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from data_handler import CSVDataHandler
 from rule_system import EventDrivenRuleSystem
 from backtester import Backtester
-from strategy import TopNStrategy
+from strategy import TopNStrategy, WeightedRuleStrategyFactory
 from strategy import (
     Rule0, Rule1, Rule2, Rule3, Rule4, Rule5, Rule6, Rule7, 
     Rule8, Rule9, Rule10, Rule11, Rule12, Rule13, Rule14, Rule15
@@ -141,8 +141,13 @@ regime_start = time.time()
 trend_detector = TrendStrengthRegimeDetector(adx_period=14, adx_threshold=25)
 
 # Create regime manager
+# Create strategy factory
+strategy_factory = WeightedRuleStrategyFactory()
+
+# Create regime manager
 regime_manager = RegimeManager(
     regime_detector=trend_detector,
+    strategy_factory=strategy_factory,  # Add this line
     rule_objects=top_rule_objects,
     data_handler=data_handler
 )

@@ -72,89 +72,92 @@ class WalkForwardValidator:
         self.full_df = temp_handler.full_df
         return self.full_df
     
+    @staticmethod
     def run_nested_cross_validation(data_filepath, rules_config, outer_folds=5, inner_folds=3):
-    """
-    Run nested cross-validation on a trading strategy.
-    
-    Args:
-        data_filepath: Path to CSV data file
-        rules_config: Configuration of rules and parameters
-        outer_folds: Number of outer folds for evaluation
-        inner_folds: Number of inner folds for optimization
+        """
+        Run nested cross-validation on a trading strategy.
+
+        Args:
+            data_filepath: Path to CSV data file
+            rules_config: Configuration of rules and parameters
+            outer_folds: Number of outer folds for evaluation
+            inner_folds: Number of inner folds for optimization
+            
+        Returns:
+            dict: Validation results
+        """
+        validator = NestedCrossValidator(
+            data_filepath=data_filepath,
+            rules_config=rules_config,
+            outer_folds=outer_folds,
+            inner_folds=inner_folds,
+            top_n=5,
+            optimization_methods=['genetic', 'equal'],
+            optimization_metric='sharpe'
+        )
         
-    Returns:
-        dict: Validation results
-    """
-    validator = NestedCrossValidator(
-        data_filepath=data_filepath,
-        rules_config=rules_config,
-        outer_folds=outer_folds,
-        inner_folds=inner_folds,
-        top_n=5,
-        optimization_methods=['genetic', 'equal'],
-        optimization_metric='sharpe'
-    )
+        results = validator.run_validation(verbose=True, plot_results=True)
+        return results
     
-    results = validator.run_validation(verbose=True, plot_results=True)
-    return results_validation(self, verbose=True, plot_results=True):
+    def run_validation(self, verbose=True, plot_results=True):
         """
         Run walk-forward validation.
-        
+
         Args:
             verbose: Whether to print progress information
             plot_results: Whether to plot validation results
-            
+
         Returns:
             dict: Summary of validation results
         """
         if self.full_df is None:
             self.load_data()
-            
+
         if verbose:
             print(f"Running walk-forward validation with {self.window_size} day windows "
                   f"and {self.step_size} day steps")
             print(f"Total data size: {len(self.full_df)} bars")
-        
+
         # Create windows
         self._create_windows()
-        
+
         if verbose:
             print(f"Created {len(self.windows)} validation windows")
-        
+
         # Run validation for each window
         all_trades = []
         window_results = []
-        
+
         for i, (train_window, test_window) in enumerate(self.windows):
             if verbose:
                 train_start = train_window[0]['timestamp'] if len(train_window) > 0 else "N/A"
                 train_end = train_window[-1]['timestamp'] if len(train_window) > 0 else "N/A"
                 test_start = test_window[0]['timestamp'] if len(test_window) > 0 else "N/A"
                 test_end = test_window[-1]['timestamp'] if len(test_window) > 0 else "N/A"
-                
+
                 print(f"\nWindow {i+1}/{len(self.windows)}:")
                 print(f"  Train: {train_start} to {train_end} ({len(train_window)} bars)")
                 print(f"  Test:  {test_start} to {test_end} ({len(test_window)} bars)")
-            
+
             # Skip windows with insufficient data
             if len(train_window) < 30 or len(test_window) < 5:
                 if verbose:
                     print("  Insufficient data in window, skipping...")
                 continue
-            
+
             # Create data handler for this window
             window_data_handler = self._create_window_data_handler(train_window, test_window)
-            
+
             # Train strategy on window
             if verbose:
                 print("  Training strategy on window...")
-                
+
             try:
                 # Train rules and get top performers
                 rule_system = EventDrivenRuleSystem(rules_config=self.rules_config, top_n=self.top_n)
                 rule_system.train_rules(window_data_handler)
                 top_rule_objects = list(rule_system.trained_rule_objects.values())
-                
+
                 if self.optimization_method == 'genetic':
                     # Optimize weights using genetic algorithm
                     optimizer = GeneticOptimizer(
@@ -163,7 +166,7 @@ class WalkForwardValidator:
                         optimization_metric=self.optimization_metric
                     )
                     best_weights = optimizer.optimize(verbose=False)
-                    
+
                     # Create strategy with optimized weights
                     strategy = WeightedRuleStrategy(
                         rule_objects=top_rule_objects,
@@ -172,23 +175,23 @@ class WalkForwardValidator:
                 else:
                     # Use equal-weighted strategy if no optimization
                     strategy = rule_system.get_top_n_strategy()
-                
+
                 # Backtest on test window
                 if verbose:
                     print("  Testing strategy on out-of-sample window...")
-                    
+
                 backtester = Backtester(window_data_handler, strategy)
                 results = backtester.run(use_test_data=True)
-                
+
                 # Calculate performance metrics
                 total_return = results['total_percent_return']
                 num_trades = results['num_trades']
                 sharpe = backtester.calculate_sharpe() if num_trades > 1 else 0
-                
+
                 if verbose:
                     print(f"  Results: Return: {total_return:.2f}%, "
                           f"Trades: {num_trades}, Sharpe: {sharpe:.4f}")
-                
+
                 # Store results
                 window_results.append({
                     'window': i + 1,
@@ -203,7 +206,7 @@ class WalkForwardValidator:
                     'train_size': len(train_window),
                     'test_size': len(test_window)
                 })
-                
+
                 # Collect trades for equity curve
                 for trade in results['trades']:
                     all_trades.append({
@@ -215,7 +218,7 @@ class WalkForwardValidator:
                         'log_return': trade[5],
                         'type': trade[1]
                     })
-                    
+
             except Exception as e:
                 if verbose:
                     print(f"  Error in window {i+1}: {str(e)}")
@@ -233,21 +236,21 @@ class WalkForwardValidator:
                     'test_size': len(test_window),
                     'error': str(e)
                 })
-        
+
         # Compile results
         self.results = {
             'window_results': window_results,
             'all_trades': all_trades,
             'summary': self._calculate_summary(window_results)
         }
-        
+
         if verbose:
             self._print_summary(self.results['summary'])
-            
+
         if plot_results:
             self._plot_results(window_results, all_trades)
-            
-        return self.results
+
+        return self.results        
     
     def _create_windows(self):
         """
