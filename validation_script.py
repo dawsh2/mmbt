@@ -68,13 +68,18 @@ def plot_backtest_results(df, trades, title="Backtest Results"):
     plt.savefig('backtest_validation_results.png')
     plt.close()
 
+
 def calculate_expected_results(df):
-    """Calculate expected signals and returns based on our threshold rule logic."""
-    expected_signals = []
-    current_position = 0
+    """Calculate expected signals and returns based on threshold logic without using Signal objects."""
+    current_position = 0  # 0 = flat, 1 = long, -1 = short
     entry_price = None
     entry_time = None
     trades = []
+    
+    # Constants for signal values (to avoid using SignalType enum)
+    BUY = 1
+    SELL = -1
+    NEUTRAL = 0
     
     # Identify signals and calculate expected trades
     for i, row in df.iterrows():
@@ -83,33 +88,26 @@ def calculate_expected_results(df):
         
         # Determine signal based on price thresholds
         if close > UPPER_THRESHOLD:
-            signal_type = SignalType.BUY  
+            signal_value = BUY
         elif close < LOWER_THRESHOLD:
-            signal_type = SignalType.SELL
+            signal_value = SELL
         else:
-            signal_type = SignalType.NEUTRAL
-            
-        # Record the signal
-        expected_signals.append({
-            'timestamp': timestamp,
-            'signal_type': signal_type,
-            'price': close
-        })
+            signal_value = NEUTRAL
         
         # Process the signal to generate trades
         if current_position == 0:  # Not in a position
-            if signal_type == SignalType.BUY:
+            if signal_value == BUY:
                 # Enter long position
                 current_position = 1
                 entry_price = close
                 entry_time = timestamp
-            elif signal_type == SignalType.SELL:
+            elif signal_value == SELL:
                 # Enter short position
                 current_position = -1
                 entry_price = close
                 entry_time = timestamp
         elif current_position == 1:  # In long position
-            if signal_type == SignalType.SELL or signal_type == SignalType.NEUTRAL:
+            if signal_value == SELL or signal_value == NEUTRAL:
                 # Exit long position
                 log_return = np.log(close / entry_price)
                 trades.append((
@@ -121,8 +119,16 @@ def calculate_expected_results(df):
                     log_return
                 ))
                 current_position = 0
+                entry_price = None
+                entry_time = None
+                
+                # If sell signal, enter short position
+                if signal_value == SELL:
+                    current_position = -1
+                    entry_price = close
+                    entry_time = timestamp
         elif current_position == -1:  # In short position
-            if signal_type == SignalType.BUY or signal_type == SignalType.NEUTRAL:
+            if signal_value == BUY or signal_value == NEUTRAL:
                 # Exit short position
                 log_return = np.log(entry_price / close)
                 trades.append((
@@ -134,6 +140,14 @@ def calculate_expected_results(df):
                     log_return
                 ))
                 current_position = 0
+                entry_price = None
+                entry_time = None
+                
+                # If buy signal, enter long position
+                if signal_value == BUY:
+                    current_position = 1
+                    entry_price = close
+                    entry_time = timestamp
     
     # Calculate expected performance metrics
     if trades:
@@ -157,7 +171,7 @@ def calculate_expected_results(df):
         'trades': trades
     }
     
-    return expected_results
+    return expected_results    
 
 class SimpleStrategy:
     """Simple strategy that uses a single rule"""

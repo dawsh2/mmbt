@@ -1,14 +1,14 @@
-Optimization Date: 2025-04-11 22:01:40
+Optimization Date: 2025-04-12 21:39:22
 Optimization Metric: return
 Population Size: 8
 Number of Generations: 20
 Deterministic Mode: False
 Random Seed: None
-Best Fitness: 0.042622
-Optimal Weights: [0.0953958  0.0573058  0.1068939  0.06841481 0.07574316 0.10591783
- 0.0522639  0.08711121 0.10118622 0.02905212 0.07092471 0.0585111
- 0.03650705 0.01444953 0.03961746 0.00070539]
+Best Fitness: 0.027547
+Optimal Weights: [0.08395407 0.08663792 0.05689741 0.05404231 0.06310175 0.09881708
+ 0.0269088  0.05290562 0.03065576 0.09492259 0.01500044 0.10456914
+ 0.08256049 0.0546975  0.02604899 0.06828012]
 Final Performance:
-  Total Return: 7.72%
-  Number of Trades: 1939
-  Sharpe Ratio: 0.6648
+  Total Return: 5.65%
+  Number of Trades: 2589
+  Sharpe Ratio: 8.6018

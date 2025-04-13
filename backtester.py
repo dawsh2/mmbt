@@ -64,7 +64,7 @@ class Backtester:
             win_rate = 0
 
         # Return results
-        print(f"Debug - Actual trades generated: {len(self.trades)}, Trades list: {self.trades}")
+        # print(f"Debug - Actual trades generated: {len(self.trades)}, Trades list: {self.trades}")
         return {
             'total_log_return': total_log_return,
             'total_percent_return': total_return,
@@ -89,7 +89,7 @@ class Backtester:
             # Default to neutral if signal format is unrecognized
             signal_value = 0
 
-        print(f"Processing signal: {signal_value}, Current position: {self.current_position}, Entry price: {self.entry_price}")
+        # print(f"Processing signal: {signal_value}, Current position: {self.current_position}, Entry price: {self.entry_price}")
 
         # Process signal based on current position
         if self.current_position == 0:  # Not in a position
@@ -98,13 +98,13 @@ class Backtester:
                 self.current_position = 1
                 self.entry_price = price
                 self.entry_time = timestamp
-                print(f"Entering long position at price: {price}")
+                # print(f"Entering long position at price: {price}")
             elif signal_value == -1:  # Sell signal
                 # Enter short position
                 self.current_position = -1
                 self.entry_price = price
                 self.entry_time = timestamp
-                print(f"Entering short position at price: {price}")
+                # print(f"Entering short position at price: {price}")
 
         elif self.current_position == 1:  # In long position
             if signal_value == -1 or signal_value == 0:  # Sell or neutral signal
@@ -118,14 +118,14 @@ class Backtester:
                     price,
                     log_return
                 ))
-                print(f"Exiting long position, adding trade: {self.entry_time} to {timestamp}, Return: {log_return:.4f}")
+                # print(f"Exiting long position, adding trade: {self.entry_time} to {timestamp}, Return: {log_return:.4f}")
 
                 # If sell signal, enter short position
                 if signal_value == -1:
                     self.current_position = -1
                     self.entry_price = price
                     self.entry_time = timestamp
-                    print(f"Entering short position at price: {price}")
+                   # print(f"Entering short position at price: {price}")
                 else:
                     self.current_position = 0
                     self.entry_price = None
@@ -143,44 +143,109 @@ class Backtester:
                     price,
                     log_return
                 ))
-                print(f"Exiting short position, adding trade: {self.entry_time} to {timestamp}, Return: {log_return:.4f}")
+                # print(f"Exiting short position, adding trade: {self.entry_time} to {timestamp}, Return: {log_return:.4f}")
 
                 # If buy signal, enter long position
                 if signal_value == 1:
                     self.current_position = 1
                     self.entry_price = price
                     self.entry_time = timestamp
-                    print(f"Entering long position at price: {price}")
+                    # print(f"Entering long position at price: {price}")
                 else:
                     self.current_position = 0
                     self.entry_price = None
                     self.entry_time = None
 
 
-
-
     def calculate_sharpe(self, risk_free_rate=0):
         """
-        Calculate the annualized Sharpe ratio for minute data.
+        Calculate Sharpe ratio using minute-by-minute returns.
+
+        This method creates a series of returns for every minute in the backtest
+        period, properly accounting for periods with no trades.
 
         Args:
-            risk_free_rate: Annual risk-free rate (not adjusted for minutes)
+            risk_free_rate: Annual risk-free rate
 
         Returns:
             float: Annualized Sharpe ratio
         """
-        if len(self.trades) < 2:
+        if not self.trades:
             return 0.0
 
-        # Extract returns from trades (using index 5 for log_return)
-        returns = [trade[5] for trade in self.trades]
-        avg_return = np.mean(returns)
-        std_return = np.std(returns)
+        # First, determine the start and end times of your backtest
+        start_time = self.trades[0][0]  # First trade entry time
+        end_time = self.trades[-1][3]   # Last trade exit time
 
-        if std_return == 0:
+        # Create a dictionary to store minute-by-minute equity values
+        # You'll need to adjust this based on how your timestamps are formatted
+        from datetime import datetime, timedelta
+
+        # Convert timestamps to datetime objects if they're strings
+        if isinstance(start_time, str):
+            start_time = datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S")
+        if isinstance(end_time, str):
+            end_time = datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S")
+
+        # Generate a list of all minute timestamps in the backtest period
+        current_time = start_time
+        all_minutes = []
+        while current_time <= end_time:
+            # Only include timestamps during trading hours (e.g., 9:30 AM to 4:00 PM)
+            hour = current_time.hour
+            minute = current_time.minute
+            if (9 <= hour < 16) or (hour == 16 and minute == 0):
+                # Skip weekends
+                if current_time.weekday() < 5:  # Monday=0, Sunday=6
+                    all_minutes.append(current_time)
+            current_time += timedelta(minutes=1)
+
+        # Initialize equity curve with starting value (e.g., $10,000)
+        initial_equity = 10000
+        equity_curve = {minute: initial_equity for minute in all_minutes}
+
+        # Update equity curve at trade entry/exit points
+        current_equity = initial_equity
+        for trade in self.trades:
+            entry_time = trade[0]
+            exit_time = trade[3]
+            log_return = trade[5]
+
+            # Convert timestamps if needed
+            if isinstance(entry_time, str):
+                entry_time = datetime.strptime(entry_time, "%Y-%m-%d %H:%M:%S")
+            if isinstance(exit_time, str):
+                exit_time = datetime.strptime(exit_time, "%Y-%m-%d %H:%M:%S")
+
+            # Calculate new equity after this trade
+            current_equity *= np.exp(log_return)
+
+            # Update equity value at exit time and all subsequent minutes
+            for minute in all_minutes:
+                if minute >= exit_time:
+                    equity_curve[minute] = current_equity
+
+        # Calculate minute-by-minute returns
+        minute_returns = []
+        prev_equity = None
+
+        for minute, equity in sorted(equity_curve.items()):
+            if prev_equity is not None:
+                minute_return = np.log(equity / prev_equity)
+                minute_returns.append(minute_return)
+            prev_equity = equity
+
+        # Calculate Sharpe ratio using minute returns
+        if len(minute_returns) < 2:
             return 0.0
 
-        # Calculate minutes per year (assuming 6.5 trading hours per day)
+        avg_minute_return = np.mean(minute_returns)
+        std_minute_return = np.std(minute_returns)
+
+        if std_minute_return == 0:
+            return 0.0
+
+        # Annualization factor for minutes (assuming 6.5 trading hours per day)
         minutes_per_day = 6.5 * 60  # 390 minutes in a typical trading day
         trading_days_per_year = 252  # Standard trading days per year
         minutes_per_year = minutes_per_day * trading_days_per_year
@@ -188,10 +253,54 @@ class Backtester:
         # Convert annual risk-free rate to per-minute rate
         minute_risk_free_rate = risk_free_rate / minutes_per_year
 
-        # Calculate Sharpe and annualize by multiplying by sqrt(minutes_per_year)
-        sharpe = (avg_return - minute_risk_free_rate) / std_return
+        # Calculate Sharpe and annualize
+        sharpe = (avg_minute_return - minute_risk_free_rate) / std_minute_return
         annualized_sharpe = sharpe * np.sqrt(minutes_per_year)
 
         return annualized_sharpe
+                    
 
- 
+
+    # def calculate_sharpe(self, risk_free_rate=0):
+    #     """
+    #     Calculate the annualized Sharpe ratio for minute data.
+
+    #     Args:
+    #         risk_free_rate: Annual risk-free rate (not adjusted for minutes)
+
+    #     Returns:
+    #         float: Annualized Sharpe ratio
+    #     """
+    #     if len(self.trades) < 2:
+    #         return 0.0
+
+    #     # Extract returns from trades (using index 5 for log_return)
+    #     returns = [trade[5] for trade in self.trades]
+    #     avg_return = np.mean(returns)
+    #     std_return = np.std(returns)
+
+    #     if std_return == 0:
+    #         return 0.0
+
+    #     # Calculate minutes per year (assuming 6.5 trading hours per day)
+    #     minutes_per_day = 6.5 * 60  # 390 minutes in a typical trading day
+    #     trading_days_per_year = 252  # Standard trading days per year
+    #     minutes_per_year = minutes_per_day * trading_days_per_year
+
+    #     # Convert annual risk-free rate to per-minute rate
+    #     minute_risk_free_rate = risk_free_rate / minutes_per_year
+
+    #     # Calculate Sharpe and annualize by multiplying by sqrt(minutes_per_year)
+    #     sharpe = (avg_return - minute_risk_free_rate) / std_return
+    #     annualized_sharpe = sharpe * np.sqrt(minutes_per_year)
+
+    #     return annualized_sharpe
+
+
+    def reset(self):
+        """Reset the backtester state."""
+        self.signals = []
+        self.trades = []
+        self.current_position = 0
+        self.entry_price = None
+        self.entry_time = None
