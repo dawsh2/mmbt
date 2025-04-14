@@ -42,7 +42,29 @@ Example usage:
 
 from enum import Enum, auto
 
-# Import main components for easier access
+# Define the enums first to avoid circular imports
+class OptimizationMethod(Enum):
+    """Enumeration of supported optimization methods."""
+    GENETIC = auto()
+    GRID_SEARCH = auto()
+    BAYESIAN = auto()
+    RANDOM_SEARCH = auto()
+    JOINT = auto()
+
+class OptimizationSequence(Enum):
+    """Enumeration of optimization sequencing strategies."""
+    RULES_FIRST = auto()  # First optimize rules, then regimes
+    REGIMES_FIRST = auto()  # First identify regimes, then optimize rules per regime
+    JOINT = auto()         # Optimize rules and regime detection jointly
+    ITERATIVE = auto()     # Alternate between rule and regime optimization
+
+class ValidationMethod(Enum):
+    """Enumeration of validation methods."""
+    WALK_FORWARD = auto()  # Walk-forward validation
+    CROSS_VALIDATION = auto()  # K-fold cross-validation
+    NESTED_CV = auto()  # Nested cross-validation
+
+# Now import the main components
 from src.optimization.components import (
     OptimizableComponent, ComponentFactory,
     RuleFactory, RegimeDetectorFactory, StrategyFactory,
@@ -57,8 +79,8 @@ from src.optimization.grid_search import GridOptimizer
 from src.optimization.genetic_search import GeneticOptimizer
 from src.optimization.strategies import WeightedComponentStrategy
 
-# Import from optimizer_manager
-from src.optimization.optimizer_manager import OptimizationMethod, OptimizerManager
+# Import optimization manager after the enums are defined
+from src.optimization.optimizer_manager import OptimizerManager
 
 # Import validation components
 from src.optimization.validation import (
@@ -68,18 +90,25 @@ from src.optimization.validation import (
     NestedCrossValidator
 )
 
-# Create OptimizationSequence enum if not already defined
-class OptimizationSequence(Enum):
-    """Enumeration of optimization sequencing strategies."""
-    RULES_FIRST = auto()  # First optimize rules, then regimes
-    REGIMES_FIRST = auto()  # First identify regimes, then optimize rules per regime
-    JOINT = auto()         # Optimize rules and regime detection jointly
-    ITERATIVE = auto()     # Alternate between rule and regime optimization
-
-# Define validation methods enum
-class ValidationMethod(Enum):
-    """Enumeration of validation methods."""
-    WALK_FORWARD = auto()  # Walk-forward validation
-    CROSS_VALIDATION = auto()  # K-fold cross-validation
-    NESTED_CV = auto()  # Nested cross-validation
-
+# Exports
+__all__ = [
+    'OptimizationMethod',
+    'OptimizationSequence',
+    'ValidationMethod',
+    'OptimizerManager',
+    'GridOptimizer',
+    'GeneticOptimizer',
+    'ComponentFactory',
+    'RuleFactory',
+    'RegimeDetectorFactory',
+    'StrategyFactory',
+    'WeightedStrategyFactory',
+    'RuleEvaluator',
+    'RegimeDetectorEvaluator',
+    'StrategyEvaluator',
+    'WeightedComponentStrategy',
+    'Validator',
+    'WalkForwardValidator',
+    'CrossValidator',
+    'NestedCrossValidator'
+]

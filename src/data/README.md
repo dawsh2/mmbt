@@ -116,36 +116,161 @@ for bar in handler.iter_test():
 apple_data = handler.get_symbol_data("AAPL")
 ```
 
-### Data Connectors
+## Important Notes on File Naming and Data Loading
 
-The `DataConnector` classes provide interfaces to external data services and APIs:
+### File Naming Conventions
 
-- **APIConnector** - Base class for API connectors
-- **AlphaVantageConnector** - For accessing Alpha Vantage API
-- **YahooFinanceConnector** - For accessing Yahoo Finance data
-- **WebSocketClient** - Base class for real-time data streams
-- **MarketDataWebSocketClient** - For streaming market data
-- **DatabaseConnector** - Base class for database connections
-- **SQLiteConnector** - For SQLite database connections
+The CSVDataSource expects files to follow a specific naming convention by default:
+
+```
+{symbol}_{timeframe}.csv
+```
+
+For example:
+- `AAPL_1d.csv` - Daily AAPL data
+- `MSFT_1h.csv` - Hourly MSFT data
+- `BTC_1m.csv` - Minute BTC data
+
+You can customize this pattern using the `filename_pattern` parameter when initializing the CSVDataSource:
 
 ```python
-# Example: Using an API connector
-from data.data_connectors import AlphaVantageConnector
+csv_source = CSVDataSource("data/csv", filename_pattern="{symbol}-{timeframe}.csv")
+```
 
-# Create connector with API key
-connector = AlphaVantageConnector(api_key="YOUR_API_KEY")
+If your files don't follow a specific pattern, you might need to rename them or create a custom DataSource.
 
-# Get historical data
-data = connector.get_historical_data(
-    symbol="AAPL",
-    start_date=datetime(2022, 1, 1),
-    end_date=datetime(2022, 12, 31),
+### Symbol Parameter Format
+
+When using the `load_data` method in the DataHandler, always pass the symbols as a list, even if you only have one symbol:
+
+```python
+# CORRECT - symbols as a list
+handler.load_data(symbols=["AAPL"], start_date=start_date, end_date=end_date)
+
+# INCORRECT - will cause errors
+handler.load_data(symbols="AAPL", start_date=start_date, end_date=end_date)
+```
+
+### Timezone Handling
+
+#### Timezone-Aware vs Timezone-Naive Datetimes
+
+A common source of errors is mismatched timezone information between your data and filtering parameters. 
+
+If your data contains timezone-aware datetimes, your filter dates must also be timezone-aware:
+
+```python
+# For timezone-aware data
+import pandas as pd
+
+# Create timezone-aware timestamps
+start_date = pd.Timestamp('2020-01-01').tz_localize('UTC')
+end_date = pd.Timestamp('2022-12-31').tz_localize('UTC')
+
+data_handler.load_data(
+    symbols=["AAPL"],
+    start_date=start_date,
+    end_date=end_date,
     timeframe="1d"
 )
-
-# Get latest price
-price = connector.get_latest_price("AAPL")
 ```
+
+You can check if your data has timezone information:
+
+```python
+# Load a small sample first
+data = data_handler.data_source.get_data(symbol, None, None, timeframe)
+first_date = data['Date'].iloc[0]
+
+# Check if it has timezone info
+if hasattr(first_date, 'tzinfo') and first_date.tzinfo is not None:
+    print("Data has timezone information")
+    # Make your filter dates timezone-aware too
+    import pytz
+    start_date = start_date.tz_localize('UTC')
+    end_date = end_date.tz_localize('UTC')
+```
+
+#### Recommended Approach
+
+To avoid timezone issues, consider:
+
+1. Standardizing to UTC timezone consistently throughout your system
+2. Explicitly converting all datetimes to timezone-aware or timezone-naive format
+3. Using pandas Timestamp objects for consistency rather than Python datetime
+
+```python
+# Standardizing approach
+import pandas as pd
+import pytz
+
+# Convert string to timezone-aware timestamp
+def to_utc_timestamp(date_string):
+    if isinstance(date_string, str):
+        timestamp = pd.to_datetime(date_string)
+        if timestamp.tzinfo is None:
+            return timestamp.tz_localize('UTC')
+        return timestamp.tz_convert('UTC')
+    return date_string
+
+# Use in data filtering
+start_date = to_utc_timestamp('2020-01-01')
+end_date = to_utc_timestamp('2022-12-31')
+```
+
+### CSV Format Requirements
+
+CSVs should have the following columns:
+- **Date** or **Timestamp**: The datetime column (required)
+- **Open**: Opening price (required)
+- **High**: High price (required)
+- **Low**: Low price (required)
+- **Close**: Closing price (required)
+- **Volume**: Volume (optional)
+
+The date/timestamp column name can be customized with the `date_column` parameter in CSVDataSource.
+
+### Troubleshooting Data Loading
+
+If you encounter data loading issues:
+
+1. **Verify the file exists and follows the expected naming convention**:
+   ```python
+   import os
+   expected_file = f"data/{symbol}_{timeframe}.csv"
+   print(f"Looking for file: {expected_file}")
+   print(f"File exists: {os.path.exists(expected_file)}")
+   ```
+
+2. **Check the data format by reading directly with pandas**:
+   ```python
+   import pandas as pd
+   df = pd.read_csv(f"data/{symbol}_{timeframe}.csv")
+   print(f"Columns: {df.columns.tolist()}")
+   print(f"Date format: {type(df['Date'].iloc[0])}")
+   ```
+
+3. **Test timezone compatibility**:
+   ```python
+   # If you have timezone-aware dates in your CSV
+   dates = pd.to_datetime(df['Date'])
+   if any(d.tzinfo is not None for d in dates):
+       print("CSV contains timezone-aware dates")
+       # Make your filtering dates timezone-aware too
+       start_date = pd.Timestamp('2020-01-01').tz_localize('UTC')
+       end_date = pd.Timestamp('2022-12-31').tz_localize('UTC')
+   ```
+
+4. **Try loading without date filtering first**:
+   ```python
+   # Load without date filtering
+   data_handler.load_data(
+       symbols=[symbol],
+       start_date=None,
+       end_date=None,
+       timeframe=timeframe
+   )
+   ```
 
 ## Event Integration
 
@@ -202,94 +327,6 @@ DataCache.clear()
 3. **Implement caching** - Use caching for better performance with large datasets
 4. **Handle missing values** - Always handle missing values properly to avoid issues in analysis
 5. **Emit events efficiently** - When integrating with the event system, be mindful of event volume
-
-## Examples
-
-### Creating a Custom Data Source
-
-```python
-from data.data_sources import DataSource
-import pandas as pd
-from datetime import datetime
-
-class MyCustomDataSource(DataSource):
-    def __init__(self, api_key):
-        self.api_key = api_key
-        
-    def get_data(self, symbol, start_date=None, end_date=None, timeframe="1d"):
-        # Custom logic to fetch data from your source
-        # ...
-        
-        # Return as pandas DataFrame with standardized format
-        return df
-        
-    def is_available(self, symbol, start_date, end_date, timeframe):
-        # Check if data is available
-        # ...
-        return True
-```
-
-### Building a Data Pipeline
-
-```python
-from data.data_sources import CSVDataSource
-from data.data_transformers import MissingValueHandler, FeatureEngineeringTransformer, TransformerPipeline
-from data.data_handler import DataHandler
-
-# Create data source
-source = CSVDataSource("data/csv")
-
-# Create transformer pipeline
-transformer = TransformerPipeline([
-    MissingValueHandler(method="ffill"),
-    FeatureEngineeringTransformer(
-        features=["ma", "rsi", "bbands", "macd"],
-        params={
-            "ma_periods": [10, 20, 50, 200],
-            "rsi_period": 14,
-            "bb_period": 20
-        }
-    )
-])
-
-# Create data handler
-handler = DataHandler(source)
-
-# Load and transform data
-handler.load_data(symbols=["AAPL"], start_date=start_date, end_date=end_date)
-transformed_data = transformer.transform(handler.get_symbol_data("AAPL"))
-```
-
-### Implementing Real-time Data Streaming
-
-```python
-from data.data_connectors import MarketDataWebSocketClient
-from events.event_bus import EventBus
-from events.event_types import EventType
-
-# Create event bus
-event_bus = EventBus()
-
-# Define event handlers
-def on_quote(quote_data):
-    # Process quote data
-    event_bus.emit(EventType.TICK, quote_data)
-
-def on_bar(bar_data):
-    # Process bar data
-    event_bus.emit(EventType.BAR, bar_data)
-
-# Create WebSocket client
-client = MarketDataWebSocketClient(
-    url="wss://example.com/market-data",
-    api_key="YOUR_API_KEY",
-    on_quote=on_quote,
-    on_bar=on_bar
-)
-
-# Start client in background
-client.start()
-
-# Subscribe to symbols
-client.subscribe(["AAPL", "MSFT", "GOOG"])
-```
+6. **Be consistent with timezones** - Either use timezone-aware timestamps throughout or timezone-naive throughout
+7. **Validate data format** - Check that your CSV files have the expected columns and formats
+8. **Pass symbols as lists** - Always pass symbols as a list to the data_handler, even for a single symbol

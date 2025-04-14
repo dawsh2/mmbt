@@ -44,38 +44,79 @@ def main():
     print(f"\nUsing data file: {data_file}")
     
     try:
-        # Create a data source that points to your CSV file
-        # Use your actual CSVDataSource class with the right parameters
-        data_source = CSVDataSource(
-            base_path=os.path.dirname(data_file),
-            filename_pattern="{symbol}.csv"  # This will use the file name as the symbol
-        )
+        # Get the directory containing the data file
+        data_folder = os.path.dirname(data_file)
+        
+        # Get the symbol name from the file name (without extension)
+        symbol = os.path.splitext(os.path.basename(data_file))[0]
+        print(f"Using symbol: {symbol}")
+        
+        # Instead of using filename_pattern that expects multiple files,
+        # we'll directly load this single file using a custom-tailored approach
+        
+        # Create a custom CSVDataSource class that works specifically with our single file
+        class SingleFileCSVDataSource(CSVDataSource):
+            def __init__(self, file_path, symbol_name):
+                super().__init__(data_dir=os.path.dirname(file_path))
+                self.file_path = file_path
+                self.symbol_name = symbol_name
+                
+            def get_data(self, symbols, start_date, end_date, timeframe):
+                # Directly read the file regardless of symbols and timeframe
+                df = pd.read_csv(self.file_path)
+                
+                # Ensure the dataframe has the expected timestamp column
+                if 'timestamp' not in df.columns and 'date' in df.columns:
+                    df = df.rename(columns={'date': 'timestamp'})
+                
+                # Ensure timestamp is in datetime format
+                if 'timestamp' in df.columns:
+                    df['timestamp'] = pd.to_datetime(df['timestamp'])
+                
+                # Make sure column names match expectations
+                column_mapping = {
+                    'open': 'Open', 'Open': 'Open',
+                    'high': 'High', 'High': 'High',
+                    'low': 'Low', 'Low': 'Low',
+                    'close': 'Close', 'Close': 'Close',
+                    'volume': 'Volume', 'Volume': 'Volume',
+                    'adj close': 'Adj_Close', 'Adj Close': 'Adj_Close'
+                }
+                
+                df = df.rename(columns={c: column_mapping.get(c.lower(), c) for c in df.columns})
+                
+                # Add symbol column if not present
+                if 'symbol' not in df.columns:
+                    df['symbol'] = self.symbol_name
+                
+                # Filter by date range if provided
+                if start_date is not None:
+                    df = df[df['timestamp'] >= start_date]
+                if end_date is not None:
+                    df = df[df['timestamp'] <= end_date]
+                
+                return df
+            
+            def get_symbols(self):
+                # Return just our symbol
+                return [self.symbol_name]
+        
+        # Create our custom data source
+        data_source = SingleFileCSVDataSource(data_file, symbol)
         
         # Create the data handler
         data_handler = DataHandler(data_source, train_fraction=0.8)
         
-        # Get symbol from filename
-        symbol = os.path.splitext(os.path.basename(data_file))[0]
-        print(f"Using symbol: {symbol}")
-        
-        # Load the data
+        # Define date range
         end_date = datetime.now()
-        start_date = end_date - timedelta(days=365*2)  # Use 2 years of data to keep it manageable
+        start_date = end_date - timedelta(days=365*2)  # Use 2 years of data
         
-        # Set proper time format and timezone handling for timestamps
-        # This addresses the timezone issue by making timestamps timezone-aware
-        import pytz
-        if start_date.tzinfo is None:
-            start_date = pytz.UTC.localize(start_date)
-        if end_date.tzinfo is None:
-            end_date = pytz.UTC.localize(end_date)
-        
-        # Load data with proper timeframe
+        # Load data with proper timeframe (1m instead of 1d since you mentioned it's 1m data)
         data_handler.load_data(
             symbols=[symbol],
             start_date=start_date,
             end_date=end_date,
-            timeframe="1d"  # Start with daily data for simplicity
+            timeframe="1m"  # 1-minute data
         )
         
         # Create optimizer

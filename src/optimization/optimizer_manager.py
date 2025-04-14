@@ -1,17 +1,17 @@
 """
 Enhanced OptimizerManager with integrated grid search capabilities.
 """
-
 import numpy as np
-from enum import Enum, auto
 import time
 import gc
-
+from enum import Enum, auto
+from src.optimization import OptimizationMethod  # Import from the package
 from src.optimization.evaluators import RuleEvaluator, RegimeDetectorEvaluator
-from optimization.grid_search import GridOptimizer
-from optimization.components import RuleFactory, RegimeDetectorFactory
-from genetic_optimizer import GeneticOptimizer, WeightedRuleStrategy
-from regime_detection import RegimeManager
+from src.optimization.grid_search import GridOptimizer
+from src.optimization.components import RuleFactory, RegimeDetectorFactory
+from src.optimization.genetic_optimizer import GeneticOptimizer
+from src.strategies.weighted_strategy import WeightedStrategy as WeightedRuleStrategy
+from src.regime_detection import RegimeManager
 
 class OptimizationMethod(Enum):
     """Enumeration of supported optimization methods."""

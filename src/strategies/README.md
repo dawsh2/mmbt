@@ -5,7 +5,7 @@ The Strategies module provides a modular, extensible framework for creating and 
 ## Core Concepts
 
 **Strategy**: Abstract base class that defines the common interface for all strategies, processing bar data to generate trading signals.  
-**WeightedStrategy**: Combines multiple rules using configurable weights to generate a trading signal.  
+**WeightedStrategy**: Combines multiple components using configurable weights to generate a trading signal.  
 **EnsembleStrategy**: Combines signals from multiple strategies using various methods such as voting or weighted averaging.  
 **RegimeStrategy**: Adapts to different market regimes by selecting appropriate sub-strategies based on market conditions.  
 **StrategyRegistry**: Central registry for strategy types that supports dynamic registration and discovery.  
@@ -19,7 +19,7 @@ from strategies import StrategyRegistry
 
 # Create a weighted strategy with custom weights
 strategy = WeightedStrategy(
-    rules=rule_objects,  # List of rule objects (from the rules module)
+    components=rule_objects,  # List of signal-generating components (rules, etc.)
     weights=[0.5, 0.3, 0.2],
     buy_threshold=0.3,
     sell_threshold=-0.3,
@@ -100,11 +100,11 @@ class MyCustomStrategy(Strategy):
 
 #### WeightedStrategy
 
-Strategy that combines signals from multiple rules using weights.
+Strategy that combines signals from multiple components using weights.
 
 **Constructor Parameters:**
-- `rules` (list): List of rule objects
-- `weights` (numpy.ndarray, optional): List of weights for each rule (default: equal weights)
+- `components` (list): List of signal-generating components (rules, strategies, etc.)
+- `weights` (numpy.ndarray, optional): List of weights for each component (default: equal weights)
 - `buy_threshold` (float, optional): Threshold above which to generate a buy signal (default: 0.5)
 - `sell_threshold` (float, optional): Threshold below which to generate a sell signal (default: -0.5)
 - `name` (str, optional): Strategy name
@@ -116,7 +116,7 @@ import numpy as np
 
 # Create a weighted strategy
 strategy = WeightedStrategy(
-    rules=rule_objects,
+    components=signal_components,  # Any objects with on_bar() method
     weights=np.array([0.4, 0.3, 0.3]),
     buy_threshold=0.4,
     sell_threshold=-0.4,
@@ -142,8 +142,8 @@ Strategy that combines signals from multiple strategies using various methods.
 from strategies import EnsembleStrategy, WeightedStrategy
 
 # Create individual strategies
-strategy1 = WeightedStrategy(rules=rule_objects[:3], weights=[0.5, 0.3, 0.2])
-strategy2 = WeightedStrategy(rules=rule_objects[3:], weights=[0.6, 0.4])
+strategy1 = WeightedStrategy(components=rule_objects[:3], weights=[0.5, 0.3, 0.2])
+strategy2 = WeightedStrategy(components=rule_objects[3:], weights=[0.6, 0.4])
 
 # Create ensemble strategy
 ensemble = EnsembleStrategy(
@@ -177,21 +177,21 @@ from regime_detection import TrendStrengthRegimeDetector, RegimeType
 
 # Create regime-specific strategies
 trend_up_strategy = WeightedStrategy(
-    rules=rule_objects[:3],
+    components=rule_objects[:3],
     weights=[0.5, 0.3, 0.2],
     buy_threshold=0.2,  # More aggressive in uptrend
     sell_threshold=-0.5
 )
 
 trend_down_strategy = WeightedStrategy(
-    rules=rule_objects[3:],
+    components=rule_objects[3:],
     weights=[0.5, 0.3, 0.2],
     buy_threshold=0.5,  # More conservative in downtrend
     sell_threshold=-0.2
 )
 
 # Create default strategy
-default_strategy = WeightedStrategy(rules=rule_objects)
+default_strategy = WeightedStrategy(components=rule_objects)
 
 # Create regime detector
 regime_detector = TrendStrengthRegimeDetector(adx_period=14, adx_threshold=25)
@@ -268,7 +268,7 @@ Factory for creating strategy instances with various helper methods.
 
 **Methods:**
 - `create_strategy(strategy_type, params=None)`: Create a strategy instance
-- `create_weighted_strategy(rules, weights=None, buy_threshold=0.5, sell_threshold=-0.5, name=None)`: Create a weighted strategy
+- `create_weighted_strategy(components, weights=None, buy_threshold=0.5, sell_threshold=-0.5, name=None)`: Create a weighted strategy
 - `create_ensemble_strategy(strategies, combination_method='voting', weights=None, name=None)`: Create an ensemble strategy
 - `create_regime_strategy(regime_detector, regime_strategies, default_strategy=None, name=None)`: Create a regime strategy
 - `create_topn_strategy(rule_objects, name=None)`: Create a TopN strategy
@@ -282,7 +282,7 @@ factory = StrategyFactory()
 
 # Create a weighted strategy
 weighted_strategy = factory.create_weighted_strategy(
-    rules=rule_objects,
+    components=rule_objects,
     weights=[0.5, 0.3, 0.2],
     buy_threshold=0.4,
     sell_threshold=-0.4
@@ -293,8 +293,8 @@ config = {
     'type': 'EnsembleStrategy',
     'params': {
         'strategies': {
-            'strategy1': {'type': 'WeightedStrategy', 'params': {'rules': rule_objects[:3]}},
-            'strategy2': {'type': 'WeightedStrategy', 'params': {'rules': rule_objects[3:]}}
+            'strategy1': {'type': 'WeightedStrategy', 'params': {'components': rule_objects[:3]}},
+            'strategy2': {'type': 'WeightedStrategy', 'params': {'components': rule_objects[3:]}}
         },
         'combination_method': 'voting'
     }
@@ -363,14 +363,14 @@ regime_detector = VolatilityRegimeDetector(
 
 # Create specific strategies for different volatility regimes
 low_vol_strategy = WeightedStrategy(
-    rules=trend_following_rules,
+    components=trend_following_rules,
     weights=[0.4, 0.3, 0.3],
     buy_threshold=0.3,
     sell_threshold=-0.3
 )
 
 high_vol_strategy = WeightedStrategy(
-    rules=mean_reversion_rules,
+    components=mean_reversion_rules,
     weights=[0.5, 0.5],
     buy_threshold=0.6,  # Higher threshold in volatile markets
     sell_threshold=-0.6
@@ -401,17 +401,17 @@ from strategies import EnsembleStrategy, WeightedStrategy, TopNStrategy
 
 # Create multiple strategies with different approaches
 ma_strategy = WeightedStrategy(
-    rules=moving_average_rules,
+    components=moving_average_rules,
     weights=[0.5, 0.5]
 )
 
 oscillator_strategy = WeightedStrategy(
-    rules=oscillator_rules,
+    components=oscillator_rules,
     weights=[0.4, 0.3, 0.3]
 )
 
 volatility_strategy = WeightedStrategy(
-    rules=volatility_rules,
+    components=volatility_rules,
     weights=[0.6, 0.4]
 )
 
@@ -459,8 +459,8 @@ config = {
                 'type': 'EnsembleStrategy',
                 'params': {
                     'strategies': {
-                        'trend_follow': {'type': 'WeightedStrategy', 'params': {'rules': trend_rules}},
-                        'breakout': {'type': 'WeightedStrategy', 'params': {'rules': breakout_rules}}
+                        'trend_follow': {'type': 'WeightedStrategy', 'params': {'components': trend_rules}},
+                        'breakout': {'type': 'WeightedStrategy', 'params': {'components': breakout_rules}}
                     },
                     'combination_method': 'weighted',
                     'weights': {'trend_follow': 0.7, 'breakout': 0.3}
@@ -469,7 +469,7 @@ config = {
             RegimeType.TRENDING_DOWN: {
                 'type': 'WeightedStrategy',
                 'params': {
-                    'rules': defensive_rules,
+                    'components': defensive_rules,
                     'buy_threshold': 0.7,  # More conservative in downtrends
                     'sell_threshold': -0.3  # More eager to sell in downtrends
                 }
@@ -477,7 +477,7 @@ config = {
         },
         'default_strategy': {
             'type': 'WeightedStrategy',
-            'params': {'rules': balanced_rules}
+            'params': {'components': balanced_rules}
         }
     }
 }
@@ -673,3 +673,34 @@ class MultiTimeframeStrategy(Strategy):
         self.last_signal = None
 ```
 
+## Rule Aggregation Methods
+
+When creating composite rules, the following aggregation methods are available:
+
+- **majority**: Signal type with the most votes wins
+- **unanimous**: Signals only when all rules agree
+- **weighted**: Weight each rule's signal (requires weights parameter)
+- **any**: Signal when any rule gives a non-neutral signal
+- **sequence**: Signal when rules trigger in sequence
+
+## Best Practices
+
+1. **Start with simple strategies**: Begin with simple strategies like WeightedStrategy before moving to more complex ones.
+
+2. **Use the StrategyFactory**: Leverage the factory pattern for creating strategies, especially when working with configurations.
+
+3. **Maintain proper state**: Always implement the `reset()` method to properly clear internal state when needed.
+
+4. **Apply proper thresholds**: Tune buy/sell thresholds based on the expected signal range of your components.
+
+5. **Use appropriate weights**: Assign higher weights to more reliable components based on historical performance.
+
+6. **Balance complexity**: More complex strategies aren't always better. Aim for the minimum complexity needed.
+
+7. **Leverage regime detection**: For adaptive strategies, make use of market regime detection to select appropriate sub-strategies.
+
+8. **Normalize inputs**: Ensure all components produce signals in a consistent range (usually -1 to 1).
+
+9. **Handle edge cases**: Implement proper handling for missing data or edge-case market conditions.
+
+10. **Document strategy logic**: Always clearly document the strategy's logic, especially for complex composite strategies.

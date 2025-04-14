@@ -2,7 +2,7 @@
 Weighted Strategy Module
 
 This module provides the WeightedStrategy class that combines signals from multiple
-rules using configurable weights.
+components using configurable weights.
 """
 
 import numpy as np
@@ -13,14 +13,15 @@ from signals import Signal, SignalType
 
 @StrategyRegistry.register(category="core")
 class WeightedStrategy(Strategy):
-    """Strategy that combines signals from multiple rules using weights.
+    """Strategy that combines signals from multiple components using weights.
     
-    This strategy takes a list of rule objects and combines their signals
-    using configurable weights to generate a final trading signal.
+    This strategy takes a list of components (rules or other signal generators)
+    and combines their signals using configurable weights to generate a final 
+    trading signal.
     """
     
     def __init__(self, 
-                 rules: List[Any], 
+                 components: List[Any],  # Renamed from 'rules' to 'components'
                  weights: Optional[np.ndarray] = None, 
                  buy_threshold: float = 0.5, 
                  sell_threshold: float = -0.5, 
@@ -28,18 +29,18 @@ class WeightedStrategy(Strategy):
         """Initialize the weighted strategy.
         
         Args:
-            rules: List of rule objects
-            weights: List of weights for each rule (default: equal weights)
+            components: List of components that generate signals
+            weights: List of weights for each component (default: equal weights)
             buy_threshold: Threshold above which to generate a buy signal
             sell_threshold: Threshold below which to generate a sell signal
             name: Strategy name
         """
         super().__init__(name or "WeightedStrategy")
-        self.rules = rules
+        self.components = components  # Renamed from 'rules' to 'components'
         
         # Initialize weights (equal by default)
         if weights is None:
-            self.weights = np.ones(len(rules)) / len(rules)
+            self.weights = np.ones(len(components)) / len(components)
         else:
             # Normalize weights to sum to 1
             weights_sum = np.sum(weights)
@@ -47,7 +48,7 @@ class WeightedStrategy(Strategy):
                 self.weights = np.array(weights) / weights_sum
             else:
                 # Fallback to equal weights if sum is 0 or negative
-                self.weights = np.ones(len(rules)) / len(rules)
+                self.weights = np.ones(len(components)) / len(components)
         
         self.buy_threshold = buy_threshold
         self.sell_threshold = sell_threshold
@@ -58,26 +59,26 @@ class WeightedStrategy(Strategy):
         
         Args:
             event: Bar event containing market data
-            
+                
         Returns:
-            Signal: Combined signal based on weighted rules
+            Signal: Combined signal based on weighted components
         """
         bar = event.bar
         
-        # Get signals from all rules
+        # Get signals from all components
         combined_signals = []
-        rule_signals = {}  # For metadata
+        component_signals = {}  # For metadata
         
-        for i, rule in enumerate(self.rules):
-            signal_object = rule.on_bar(bar)
+        for i, component in enumerate(self.components):
+            signal_object = component.on_bar(bar)
             
             if signal_object and hasattr(signal_object, 'signal_type'):
                 signal_value = signal_object.signal_type.value
                 combined_signals.append(signal_value * self.weights[i])
-                rule_signals[getattr(rule, 'name', f'rule_{i}')] = signal_value
+                component_signals[getattr(component, 'name', f'component_{i}')] = signal_value
             else:
                 combined_signals.append(0)
-                rule_signals[getattr(rule, 'name', f'rule_{i}')] = 0
+                component_signals[getattr(component, 'name', f'component_{i}')] = 0
         
         # Calculate weighted sum
         weighted_sum = np.sum(combined_signals)
@@ -99,15 +100,15 @@ class WeightedStrategy(Strategy):
             confidence=min(1.0, abs(weighted_sum)),  # Scale confidence
             metadata={
                 "weighted_sum": weighted_sum,
-                "rule_signals": rule_signals
+                "component_signals": component_signals  # Renamed from rule_signals
             }
         )
         
         return self.last_signal
     
     def reset(self):
-        """Reset all rules in the strategy."""
-        for rule in self.rules:
-            if hasattr(rule, 'reset'):
-                rule.reset()
+        """Reset all components in the strategy."""
+        for component in self.components:
+            if hasattr(component, 'reset'):
+                component.reset()
         self.last_signal = None
