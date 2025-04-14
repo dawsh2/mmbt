@@ -5,9 +5,9 @@ Trend-based regime detectors.
 from collections import deque
 import numpy as np
 
-from ..detector_base import DetectorBase
-from ..regime_type import RegimeType
-from ..detector_registry import registry
+from src.regime_detection.detector_base import DetectorBase
+from src.regime_detection.regime_type import RegimeType
+from src.regime_detection.detector_registry import registry
 
 @registry.register(category="trend")
 class TrendStrengthRegimeDetector(DetectorBase):

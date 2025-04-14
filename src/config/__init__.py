@@ -7,6 +7,6 @@ This module provides a centralized way to manage configuration for all component
 of the trading system, with validation and defaults.
 """
 
-from .config_manager import ConfigManager
+from src.config.config_manager import ConfigManager
 
 __all__ = ['ConfigManager']

@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from typing import Dict, List, Any, Optional, Union, Tuple
 
-from .types import RiskAnalysisResults
+from src.risk_management.types import RiskAnalysisResults
 
 
 class RiskAnalysisEngine:

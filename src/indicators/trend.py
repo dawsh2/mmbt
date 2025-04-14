@@ -8,7 +8,7 @@ These functions are pure, stateless computations on price data.
 
 import numpy as np
 import pandas as pd
-from .moving_averages import exponential_moving_average
+from src.indicators.moving_averages import exponential_moving_average
 
 def average_directional_index(high_prices, low_prices, close_prices, period=14):
     """
@@ -431,7 +431,7 @@ def supertrend(high_prices, low_prices, close_prices, period=10, multiplier=3.0)
     Returns:
         tuple: (SuperTrend, Direction)
     """
-    from .volatility import average_true_range
+    from src.indicators.volatility import average_true_range
     
     if not isinstance(high_prices, np.ndarray):
         high_prices = np.array(high_prices)

@@ -1,3 +1,3 @@
-from .signal_processing import Signal, SignalType
+from src.signals.signal_processing import Signal, SignalType
 
 __all__ = ['Signal', 'SignalType']

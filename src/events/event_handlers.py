@@ -12,8 +12,8 @@ from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Union, Any, Callable, Set, Type, TypeVar
 from functools import wraps
 
-from .event_types import EventType
-from .event_bus import Event
+from src.events.event_types import EventType
+from src.events.event_bus import Event
 
 # Set up logging
 logger = logging.getLogger(__name__)

@@ -10,8 +10,8 @@ import pandas as pd
 from typing import Dict, Any, List, Optional, Union, Tuple
 from collections import deque
 
-from .feature_base import Feature, StatefulFeature
-from .feature_registry import register_feature
+from src.features.feature_base import Feature, StatefulFeature
+from src.features.feature_registry import register_feature
 
 
 @register_feature(category="price")

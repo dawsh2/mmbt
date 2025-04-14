@@ -7,8 +7,9 @@ registered, discovered, and instantiated by name throughout the trading system.
 
 from typing import Dict, Type, Optional, List, Any, Callable, Union
 import logging
+import log_system
 import inspect
-from .feature_base import Feature
+from src.features.feature_base import Feature
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -188,3 +189,49 @@ def get_registry() -> FeatureRegistry:
         The FeatureRegistry singleton instance
     """
     return FeatureRegistry()
+
+
+# features/technical_features.py
+from .feature_base import Feature
+from .feature_registry import FeatureRegistry
+import numpy as np
+
+@FeatureRegistry.register
+class SMA_Crossover(Feature):
+    """Feature that detects crossovers between two SMAs."""
+    def __init__(self, fast_window=10, slow_window=30, name=None):
+        super().__init__(name or f"SMA_Crossover_{fast_window}_{slow_window}")
+        self.fast_window = fast_window
+        self.slow_window = slow_window
+        self.prev_fast_sma = None
+        self.prev_slow_sma = None
+        self.prev_value = 0
+        
+    def calculate(self, bar_data, history=None):
+        if history is None or len(history) < self.slow_window:
+            self.value = 0
+            return self.value
+            
+        # Calculate current SMAs
+        prices = [bar['Close'] for bar in history[-self.slow_window:]] + [bar_data['Close']]
+        fast_sma = sum(prices[-self.fast_window:]) / self.fast_window
+        slow_sma = sum(prices[-self.slow_window:]) / self.slow_window
+        
+        # Calculate crossover value (positive for bullish, negative for bearish)
+        if self.prev_fast_sma is not None and self.prev_slow_sma is not None:
+            if self.prev_fast_sma <= self.prev_slow_sma and fast_sma > slow_sma:
+                self.value = 1  # Bullish crossover
+            elif self.prev_fast_sma >= self.prev_slow_sma and fast_sma < slow_sma:
+                self.value = -1  # Bearish crossover
+            else:
+                # No crossover, but return relationship between SMAs
+                self.value = 0.5 if fast_sma > slow_sma else -0.5
+        else:
+            self.value = 0.5 if fast_sma > slow_sma else -0.5
+            
+        # Update previous values
+        self.prev_fast_sma = fast_sma
+        self.prev_slow_sma = slow_sma
+        self.prev_value = self.value
+        
+        return self.value

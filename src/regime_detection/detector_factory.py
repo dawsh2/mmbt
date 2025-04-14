@@ -2,7 +2,7 @@
 Factory for creating market regime detectors.
 """
 
-from .detector_registry import DetectorRegistry
+from src.regime_detection.detector_registry import DetectorRegistry
 
 class DetectorFactory:
     """
@@ -76,7 +76,7 @@ class DetectorFactory:
         Returns:
             CompositeDetector: Composite detector instance
         """
-        from .detectors.composite_detectors import CompositeDetector
+        from src.regime_detection.detectors.composite_detectors import CompositeDetector
         
         detectors = [self.create_from_config(cfg) for cfg in configs]
         return CompositeDetector(detectors=detectors, combination_method=combination_method)

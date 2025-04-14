@@ -5,14 +5,14 @@ This module provides tools for identifying market regimes and adapting
 trading strategies accordingly.
 """
 
-from .regime_type import RegimeType
-from .detector_base import DetectorBase
-from .detector_registry import DetectorRegistry
-from .detector_factory import DetectorFactory
-from .regime_manager import RegimeManager
+from src.regime_detection.regime_type import RegimeType
+from src.regime_detection.detector_base import DetectorBase
+from src.regime_detection.detector_registry import DetectorRegistry
+from src.regime_detection.detector_factory import DetectorFactory
+from src.regime_detection.regime_manager import RegimeManager
 
 # Import and register all detector implementations
-from .detectors import *
+from src.regime_detection.detectors import *
 
 # Create a global registry instance for convenience
 registry = DetectorRegistry()

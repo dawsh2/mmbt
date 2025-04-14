@@ -7,8 +7,8 @@ by selecting appropriate sub-strategies.
 
 from typing import Dict, Optional, Any, Union
 from enum import Enum
-from .strategy_base import Strategy
-from .strategy_registry import StrategyRegistry
+from src.strategies.strategy_base import Strategy
+from src.strategies.strategy_registry import StrategyRegistry
 from signals import Signal, SignalType
 
 @StrategyRegistry.register(category="advanced")

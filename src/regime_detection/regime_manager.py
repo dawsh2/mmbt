@@ -2,7 +2,7 @@
 Regime manager for adapting trading strategies based on market regimes.
 """
 
-from .regime_type import RegimeType
+from src.regime_detection.regime_type import RegimeType
 
 class RegimeManager:
     """

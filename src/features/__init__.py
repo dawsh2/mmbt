@@ -6,18 +6,18 @@ raw price data and technical indicators into meaningful trading signals.
 """
 
 # Import base classes and registry
-from .feature_base import Feature, FeatureSet, CompositeFeature, StatefulFeature
-from .feature_registry import (
+from src.features.feature_base import Feature, FeatureSet, CompositeFeature, StatefulFeature
+from src.features.feature_registry import (
     FeatureRegistry, register_feature, register_features_in_module, get_registry
 )
 
 # Import feature modules so they register themselves
-from . import price_features
-from . import technical_features
-from . import time_features
+from src.features import price_features
+from src.features import technical_features
+from src.features import time_features
 
 # Import utilities
-from .feature_utils import (
+from src.features.feature_utils import (
     combine_features,
     weighted_average_combiner,
     logical_combiner,
@@ -27,7 +27,7 @@ from .feature_utils import (
 )
 
 # Import specific features for direct access
-from .price_features import (
+from src.features.price_features import (
     ReturnFeature,
     NormalizedPriceFeature,
     PricePatternFeature,
@@ -35,7 +35,7 @@ from .price_features import (
     PriceDistanceFeature
 )
 
-from .technical_features import (
+from src.features.technical_features import (
     MACrossoverFeature,
     OscillatorStateFeature,
     TrendStrengthFeature,
@@ -45,7 +45,7 @@ from .technical_features import (
     DivergenceFeature
 )
 
-from .time_features import (
+from src.features.time_features import (
     TimeOfDayFeature,
     DayOfWeekFeature,
     MonthFeature,

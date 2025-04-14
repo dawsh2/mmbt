@@ -1,131 +1,85 @@
 """
 Rules Module
 
-This module provides rule classes that generate trading signals based on technical indicators,
-price patterns, and other market conditions. Rules are the building blocks of trading strategies
-and encapsulate specific trading logic.
+This module provides a framework for creating trading rules that generate signals
+based on technical indicators.
 """
 
-# Import base classes and registry
+# Import base classes
 from .rule_base import Rule
-from .rule_registry import RuleRegistry
-from .rule_factory import RuleFactory
+from .rule_registry import RuleRegistry, register_rule
+from .rule_factory import RuleFactory, create_rule, create_composite_rule
 
-# Create a global registry instance for convenience
-registry = RuleRegistry()
-
-# Import rule implementations
-from .ma_rules import (
-    SMARule,
-    EMARule,
-    MACrossoverRule,
-    PriceToMARule
+# Import Crossover Rules
+from .crossover_rules import (
+    SMAcrossoverRule,
+    ExponentialMACrossoverRule,
+    MACDCrossoverRule, 
+    PriceMACrossoverRule,
+    BollingerBandsCrossoverRule,
+    StochasticCrossoverRule
 )
 
+# Import Oscillator Rules
 from .oscillator_rules import (
     RSIRule,
     StochasticRule,
-    MACDRule,
-    CCIRule
+    CCIRule,
+    MACDHistogramRule
 )
 
+# Import Trend Rules
+from .trend_rules import (
+    ADXRule,
+    IchimokuRule,
+    VortexRule
+)
+
+# Import Volatility Rules
 from .volatility_rules import (
     BollingerBandRule,
-    ATRRule,
-    DonchianChannelRule,
+    ATRTrailingStopRule,
+    VolatilityBreakoutRule,
     KeltnerChannelRule
 )
 
-from .trend_rules import (
-    ADXRule,
-    AroonRule,
-    ParabolicSARRule,
-    IchimokuRule
-)
+# Create aliases for common rules
+SMARule = SMAcrossoverRule
+RSIRule = RSIRule
 
-from .volume_rules import (
-    VolumeBreakoutRule,
-    OBVRule,
-    VolumeProfileRule,
-    ChaikinOscillatorRule
-)
+# Register all rules in the registry
+rule_registry = RuleRegistry()
 
-from .pattern_rules import (
-    DoubleTopsBottomsRule,
-    HeadAndShouldersRule,
-    SupportResistanceRule,
-    TrendlineRule
-)
-
-from .multi_timeframe_rules import (
-    MultiTimeframeRule,
-    TimeFrameAlignmentRule
-)
-
-# Helper function to create a default set of rules
-def create_default_rule_set():
-    """
-    Create a default set of common rules.
-    
-    Returns:
-        list: List of rule instances with default parameters
-    """
-    factory = RuleFactory()
-    
-    return [
-        factory.create_rule('SMARule', {'periods': [10, 30], 'price_key': 'Close'}),
-        factory.create_rule('MACrossoverRule', {'fast_period': 10, 'slow_period': 30, 'price_key': 'Close'}),
-        factory.create_rule('RSIRule', {'period': 14, 'overbought': 70, 'oversold': 30}),
-        factory.create_rule('BollingerBandRule', {'period': 20, 'std_dev': 2}),
-        factory.create_rule('ADXRule', {'period': 14, 'threshold': 25}),
-        factory.create_rule('VolumeBreakoutRule', {'volume_factor': 2.0, 'price_change': 0.01})
-    ]
-
-# Export key components
 __all__ = [
-    'Rule',
-    'RuleRegistry',
-    'RuleFactory',
-    'registry',
-    'create_default_rule_set',
+    # Base classes
+    'Rule', 'RuleRegistry', 'register_rule', 'RuleFactory',
+    'create_rule', 'create_composite_rule',
     
-    # MA Rules
-    'SMARule',
-    'EMARule',
-    'MACrossoverRule',
-    'PriceToMARule',
+    # Crossover Rules
+    'SMAcrossoverRule', 'SMARule',
+    'ExponentialMACrossoverRule',
+    'MACDCrossoverRule',
+    'PriceMACrossoverRule',
+    'BollingerBandsCrossoverRule',
+    'StochasticCrossoverRule',
     
     # Oscillator Rules
     'RSIRule',
     'StochasticRule',
-    'MACDRule',
     'CCIRule',
-    
-    # Volatility Rules
-    'BollingerBandRule',
-    'ATRRule',
-    'DonchianChannelRule',
-    'KeltnerChannelRule',
+    'MACDHistogramRule',
     
     # Trend Rules
     'ADXRule',
-    'AroonRule',
-    'ParabolicSARRule',
     'IchimokuRule',
+    'VortexRule',
     
-    # Volume Rules
-    'VolumeBreakoutRule',
-    'OBVRule',
-    'VolumeProfileRule',
-    'ChaikinOscillatorRule',
+    # Volatility Rules
+    'BollingerBandRule',
+    'ATRTrailingStopRule',
+    'VolatilityBreakoutRule',
+    'KeltnerChannelRule',
     
-    # Pattern Rules
-    'DoubleTopsBottomsRule',
-    'HeadAndShouldersRule',
-    'SupportResistanceRule',
-    'TrendlineRule',
-    
-    # Multi-Timeframe Rules
-    'MultiTimeframeRule',
-    'TimeFrameAlignmentRule'
+    # Registry
+    'rule_registry'
 ]

@@ -7,7 +7,7 @@ features in various ways to create complex feature compositions.
 
 import numpy as np
 from typing import Dict, Any, List, Callable, Optional, Union, Tuple
-from .feature_base import Feature, CompositeFeature
+from src.features.feature_base import Feature, CompositeFeature
 
 
 def combine_features(features: List[Feature], 

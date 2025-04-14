@@ -43,25 +43,25 @@ Example usage:
 from enum import Enum, auto
 
 # Import main components for easier access
-from .components import (
+from src.optimization.components import (
     OptimizableComponent, ComponentFactory,
     RuleFactory, RegimeDetectorFactory, StrategyFactory,
     WeightedStrategyFactory
 )
 
-from .evaluators import (
+from src.optimization.evaluators import (
     RuleEvaluator, RegimeDetectorEvaluator, StrategyEvaluator
 )
 
-from .grid_search import GridOptimizer
-from .genetic_search import GeneticOptimizer
-from .strategies import WeightedComponentStrategy
+from src.optimization.grid_search import GridOptimizer
+from src.optimization.genetic_search import GeneticOptimizer
+from src.optimization.strategies import WeightedComponentStrategy
 
 # Import from optimizer_manager
-from .optimizer_manager import OptimizationMethod
+from src.optimization.optimizer_manager import OptimizationMethod
 
 # Import validation components
-from .validation import (
+from src.optimization.validation import (
     Validator,
     WalkForwardValidator,
     CrossValidator,

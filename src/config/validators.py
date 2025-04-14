@@ -14,7 +14,7 @@ def validate_config(config):
     Raises:
         ValueError: If validation fails
     """
-    from .schema import CONFIG_SCHEMA
+    from src.config.schema import CONFIG_SCHEMA
     
     try:
         validate_section(config, CONFIG_SCHEMA)

@@ -3,7 +3,7 @@ Base class for market regime detectors.
 """
 
 from abc import ABC, abstractmethod
-from .regime_type import RegimeType
+from src.regime_detection.regime_type import RegimeType
 
 class DetectorBase(ABC):
     """

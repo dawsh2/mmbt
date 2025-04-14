@@ -11,8 +11,8 @@ import numpy as np
 import pandas as pd
 from collections import defaultdict
 
-from .rule_base import Rule, CompositeRule
-from .rule_registry import get_registry, RuleRegistry
+from src.rules.rule_base import Rule, CompositeRule
+from src.rules.rule_registry import get_registry, RuleRegistry
 
 # Set up logging
 logger = logging.getLogger(__name__)

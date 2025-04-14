@@ -11,8 +11,8 @@ import pandas as pd
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Union, Tuple, Callable
 
-from .types import RiskParameters, ExitReason, TradeMetrics
-from .collector import RiskMetricsCollector
+from src.risk_management.types import RiskParameters, ExitReason, TradeMetrics
+from src.risk_management.collector import RiskMetricsCollector
 
 
 class RiskManager:

@@ -9,9 +9,9 @@ from typing import Dict, Any, List, Optional
 import numpy as np
 from collections import deque
 
-from ..signals import Signal, SignalType
-from .rule_base import Rule
-from .rule_registry import register_rule
+from src.signals import Signal, SignalType
+from src.rules.rule_base import Rule
+from src.rules.rule_registry import register_rule
 
 
 @register_rule(category="trend")

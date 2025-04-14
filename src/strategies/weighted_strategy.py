@@ -7,8 +7,8 @@ rules using configurable weights.
 
 import numpy as np
 from typing import List, Optional, Dict, Any, Union
-from .strategy_base import Strategy
-from .strategy_registry import StrategyRegistry
+from src.strategies.strategy_base import Strategy
+from src.strategies.strategy_registry import StrategyRegistry
 from signals import Signal, SignalType
 
 @StrategyRegistry.register(category="core")

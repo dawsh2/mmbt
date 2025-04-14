@@ -3,9 +3,9 @@ Composite regime detectors.
 """
 
 from collections import Counter
-from ..detector_base import DetectorBase
-from ..regime_type import RegimeType
-from ..detector_registry import registry
+from src.regime_detection.detector_base import DetectorBase
+from src.regime_detection.regime_type import RegimeType
+from src.regime_detection.detector_registry import registry
 
 @registry.register(category="composite")
 class CompositeDetector(DetectorBase):

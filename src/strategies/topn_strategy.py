@@ -7,8 +7,8 @@ new architecture.
 """
 
 from typing import List, Optional, Any
-from .strategy_base import Strategy
-from .strategy_registry import StrategyRegistry
+from src.strategies.strategy_base import Strategy
+from src.strategies.strategy_registry import StrategyRegistry
 from signals import Signal, SignalRouter
 
 @StrategyRegistry.register(category="legacy")

@@ -8,9 +8,9 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 
-from .log_config import load_config_from_file, apply_config
-from .log_formatters import JsonFormatter
-from .log_handlers import (
+from src.log_system.log_config import load_config_from_file, apply_config
+from src.log_system.log_formatters import JsonFormatter
+from src.log_system.log_handlers import (
     LogHandler, 
     ContextFilter, 
     LogContext, 

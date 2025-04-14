@@ -13,14 +13,14 @@ Main components:
 """
 
 # Export main classes
-from .risk_manager import RiskManager
-from .collector import RiskMetricsCollector
-from .analyzer import RiskAnalysisEngine
-from .parameter_optimizer import RiskParameterOptimizer
-from .visualization import RiskVisualization
+from src.risk_management.risk_manager import RiskManager
+from src.risk_management.collector import RiskMetricsCollector
+from src.risk_management.analyzer import RiskAnalysisEngine
+from src.risk_management.parameter_optimizer import RiskParameterOptimizer
+from src.risk_management.visualization import RiskVisualization
 
 # Export type definitions
-from .types import (
+from src.risk_management.types import (
     RiskParameters, 
     RiskToleranceLevel, 
     ExitReason, 

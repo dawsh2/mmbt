@@ -8,8 +8,8 @@ hyperparameter optimization and an outer loop for performance evaluation.
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from .base import Validator
-from .utils import WindowDataHandler
+from src.optimization.validation.base import Validator
+from src.optimization.validation.utils import WindowDataHandler
 
 class NestedCrossValidator(Validator):
     """

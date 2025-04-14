@@ -8,8 +8,8 @@ by dividing the dataset into k folds and using each fold as a test set.
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from .base import Validator
-from .utils import WindowDataHandler
+from src.optimization.validation.base import Validator
+from src.optimization.validation.utils import WindowDataHandler
 
 class CrossValidator(Validator):
     """

@@ -8,8 +8,8 @@ strategies using configurable combination methods.
 from collections import defaultdict
 from typing import Dict, List, Optional, Any, Union
 import numpy as np
-from .strategy_base import Strategy
-from .strategy_registry import StrategyRegistry
+from src.strategies.strategy_base import Strategy
+from src.strategies.strategy_registry import StrategyRegistry
 from signals import Signal, SignalType
 
 @StrategyRegistry.register(category="advanced")

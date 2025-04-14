@@ -8,7 +8,7 @@ including stop-loss levels, take-profit targets, trailing stops, and time exits.
 import numpy as np
 from typing import Dict, List, Any, Optional, Union, Tuple
 
-from .types import RiskAnalysisResults, RiskToleranceLevel, RiskParameters
+from src.risk_management.types import RiskAnalysisResults, RiskToleranceLevel, RiskParameters
 
 
 class RiskParameterOptimizer:

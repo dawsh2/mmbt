@@ -9,8 +9,8 @@ import uuid
 import datetime
 from typing import Dict, List, Optional, Union, Any, Set
 
-from .event_types import EventType
-from .event_bus import Event, EventBus
+from src.events.event_types import EventType
+from src.events.event_bus import Event, EventBus
 
 
 class EventEmitter:

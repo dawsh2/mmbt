@@ -8,7 +8,7 @@ registered, discovered, and instantiated by name throughout the trading system.
 from typing import Dict, Type, Optional, List, Any, Callable, Union
 import logging
 import inspect
-from .rule_base import Rule
+from src.rules.rule_base import Rule
 
 # Set up logging
 logger = logging.getLogger(__name__)

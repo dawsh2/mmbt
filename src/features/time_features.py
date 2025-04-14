@@ -11,8 +11,8 @@ from typing import Dict, Any, List, Optional, Union, Tuple
 from datetime import datetime, timedelta
 import calendar
 
-from .feature_base import Feature
-from .feature_registry import register_feature
+from src.features.feature_base import Feature
+from src.features.feature_registry import register_feature
 
 
 @register_feature(category="time")

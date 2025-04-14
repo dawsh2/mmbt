@@ -34,7 +34,7 @@ class ConfigManager:
             
     def _load_defaults(self):
         """Load default configuration values."""
-        from .defaults import DEFAULT_CONFIG
+        from src.config.defaults import DEFAULT_CONFIG
         self.config = DEFAULT_CONFIG.copy()
     
     def _load_from_file(self, config_file):
@@ -92,7 +92,7 @@ class ConfigManager:
     
     def validate(self):
         """Validate the configuration."""
-        from .validators import validate_config
+        from src.config.validators import validate_config
         
         try:
             validate_config(self.config)
