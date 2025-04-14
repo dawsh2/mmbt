@@ -2,6 +2,16 @@
 
 The Logging module provides a structured logging framework for different components of the trading system with configurable log levels, formatting, and output destinations.
 
+## Directory Structure
+
+```
+logging/
+├── __init__.py             # Package exports and TradeLogger interface
+├── log_config.py           # Configuration management for logging
+├── log_formatters.py       # Custom log formatters (JSON, etc.)
+└── log_handlers.py         # Specialized log handlers
+```
+
 ## Core Concepts
 
 **TradeLogger**: Main logger interface that provides unified logging across system components.  
@@ -94,7 +104,7 @@ Custom formatter that outputs log records as JSON for structured logging.
 **Example:**
 ```python
 import logging
-from logging_system import JsonFormatter
+from logging_system.log_formatters import JsonFormatter
 
 # Create a formatter
 formatter = JsonFormatter()
@@ -178,7 +188,7 @@ Base class for custom log handlers with specialized processing.
 
 **Example:**
 ```python
-from logging_system import LogHandler
+from logging_system.log_handlers import LogHandler
 
 class CustomHandler(LogHandler):
     def __init__(self, logger_name="trading"):
@@ -211,7 +221,7 @@ Handler for generating alerts based on log messages.
 
 **Example:**
 ```python
-from logging_system import AlertHandler
+from logging_system.log_handlers import AlertHandler
 
 def send_alert(alert_info):
     # Send alert via email, SMS, etc.
@@ -246,7 +256,7 @@ Handler for storing log records in a database.
 **Example:**
 ```python
 import sqlite3
-from logging_system import DatabaseHandler
+from logging_system.log_handlers import DatabaseHandler
 
 # Create database connection
 conn = sqlite3.connect('trading_logs.db')
@@ -371,7 +381,7 @@ TradeLogger.configure(config)
 ### Creating Custom Log Handlers
 
 ```python
-from logging_system import LogHandler
+from logging_system.log_handlers import LogHandler
 import logging
 import json
 import requests
@@ -426,7 +436,8 @@ webhook_handler.attach()
 ### Structured Logging with Context
 
 ```python
-from logging_system import TradeLogger, LogContext, JsonFormatter
+from logging_system import TradeLogger, LogContext
+from logging_system.log_formatters import JsonFormatter
 import logging
 
 # Configure logging for JSON output
@@ -481,7 +492,8 @@ def execute_order(order):
 ### Real-time Monitoring with AlertHandler
 
 ```python
-from logging_system import TradeLogger, AlertHandler
+from logging_system import TradeLogger
+from logging_system.log_handlers import AlertHandler
 import logging
 import smtplib
 from email.message import EmailMessage
