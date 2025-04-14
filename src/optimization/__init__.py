@@ -58,7 +58,7 @@ from src.optimization.genetic_search import GeneticOptimizer
 from src.optimization.strategies import WeightedComponentStrategy
 
 # Import from optimizer_manager
-from src.optimization.optimizer_manager import OptimizationMethod
+from src.optimization.optimizer_manager import OptimizationMethod, OptimizerManager
 
 # Import validation components
 from src.optimization.validation import (

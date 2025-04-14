@@ -33,6 +33,8 @@ class RuleFactory(ComponentFactory):
         """Create a rule instance with the given parameters."""
         return rule_class(params)
 
+
+
 # Regime detector-specific implementations
 class RegimeDetectorFactory(ComponentFactory):
     """Factory for creating regime detector instances."""

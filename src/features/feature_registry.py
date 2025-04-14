@@ -7,9 +7,7 @@ registered, discovered, and instantiated by name throughout the trading system.
 
 from typing import Dict, Type, Optional, List, Any, Callable, Union
 import logging
-import log_system
 import inspect
-from src.features.feature_base import Feature
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -32,9 +30,9 @@ class FeatureRegistry:
             cls._instance._features = {}
             cls._instance._categories = {}
         return cls._instance
-    
+
     def register(self, 
-                 feature_class: Type[Feature], 
+                 feature_class, 
                  name: Optional[str] = None,
                  category: str = "general") -> None:
         """
@@ -65,7 +63,7 @@ class FeatureRegistry:
         
         logger.debug(f"Registered feature '{name}' in category '{category}'")
     
-    def get_feature_class(self, name: str) -> Type[Feature]:
+    def get_feature_class(self, name: str):
         """
         Get a feature class by name.
         
@@ -85,7 +83,7 @@ class FeatureRegistry:
     def create_feature(self, 
                        name: str, 
                        params: Optional[Dict[str, Any]] = None,
-                       feature_name: Optional[str] = None) -> Feature:
+                       feature_name: Optional[str] = None):
         """
         Create an instance of a feature by name.
         
@@ -140,35 +138,46 @@ class FeatureRegistry:
         logger.debug("Cleared feature registry")
 
 
-# Create decorator for easy feature registration
-def register_feature(name: Optional[str] = None, category: str = "general"):
+# Module-level functions
+def get_registry() -> FeatureRegistry:
     """
-    Decorator for registering feature classes with the registry.
-    
-    Args:
-        name: Optional name for the feature (defaults to class name)
-        category: Category to group the feature under
-        
+    Get the global feature registry instance.
+
     Returns:
-        Decorator function that registers the feature class
+        The FeatureRegistry singleton instance
+    """
+    return FeatureRegistry()
+
+
+def register_feature(category="general"):
+    """
+    Decorator to register a feature class in the registry.
+
+    Args:
+        category (str): Category for the feature
+
+    Returns:
+        decorator function
     """
     def decorator(cls):
-        registry = FeatureRegistry()
-        registry.register(cls, name, category)
+        registry = get_registry()
+        registry.register(cls, name=None, category=category)
         return cls
     return decorator
 
 
-# Function to get all registered features in a module
 def register_features_in_module(module, category: str = "general") -> None:
     """
     Register all Feature classes in a module with the registry.
-    
+
     Args:
         module: The module object containing feature classes
         category: Category to group the features under
     """
-    registry = FeatureRegistry()
+    registry = get_registry()
+
+    # Import Feature inside the function to avoid circular imports
+    from src.features.feature_base import Feature
     
     # Find all classes in module that are Feature subclasses
     for name, obj in inspect.getmembers(module):
@@ -178,60 +187,3 @@ def register_features_in_module(module, category: str = "general") -> None:
             obj.__module__ == module.__name__):
             registry.register(obj, name, category)
             logger.debug(f"Auto-registered feature '{name}' from module {module.__name__}")
-
-
-# Global function to get registry instance
-def get_registry() -> FeatureRegistry:
-    """
-    Get the global feature registry instance.
-    
-    Returns:
-        The FeatureRegistry singleton instance
-    """
-    return FeatureRegistry()
-
-
-# features/technical_features.py
-from .feature_base import Feature
-from .feature_registry import FeatureRegistry
-import numpy as np
-
-@FeatureRegistry.register
-class SMA_Crossover(Feature):
-    """Feature that detects crossovers between two SMAs."""
-    def __init__(self, fast_window=10, slow_window=30, name=None):
-        super().__init__(name or f"SMA_Crossover_{fast_window}_{slow_window}")
-        self.fast_window = fast_window
-        self.slow_window = slow_window
-        self.prev_fast_sma = None
-        self.prev_slow_sma = None
-        self.prev_value = 0
-        
-    def calculate(self, bar_data, history=None):
-        if history is None or len(history) < self.slow_window:
-            self.value = 0
-            return self.value
-            
-        # Calculate current SMAs
-        prices = [bar['Close'] for bar in history[-self.slow_window:]] + [bar_data['Close']]
-        fast_sma = sum(prices[-self.fast_window:]) / self.fast_window
-        slow_sma = sum(prices[-self.slow_window:]) / self.slow_window
-        
-        # Calculate crossover value (positive for bullish, negative for bearish)
-        if self.prev_fast_sma is not None and self.prev_slow_sma is not None:
-            if self.prev_fast_sma <= self.prev_slow_sma and fast_sma > slow_sma:
-                self.value = 1  # Bullish crossover
-            elif self.prev_fast_sma >= self.prev_slow_sma and fast_sma < slow_sma:
-                self.value = -1  # Bearish crossover
-            else:
-                # No crossover, but return relationship between SMAs
-                self.value = 0.5 if fast_sma > slow_sma else -0.5
-        else:
-            self.value = 0.5 if fast_sma > slow_sma else -0.5
-            
-        # Update previous values
-        self.prev_fast_sma = fast_sma
-        self.prev_slow_sma = slow_sma
-        self.prev_value = self.value
-        
-        return self.value

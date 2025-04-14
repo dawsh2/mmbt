@@ -14,6 +14,7 @@ from src.features.feature_base import Feature, StatefulFeature
 from src.features.feature_registry import register_feature
 
 
+
 @register_feature(category="technical")
 class VolatilityFeature(Feature):
     """
@@ -1407,7 +1408,7 @@ class TrendStrengthFeature(Feature):
 
 
 
-@FeatureRegistry.register
+@register_feature()
 class SMA_Crossover(Feature):
     """Feature that detects crossovers between two SMAs."""
     def __init__(self, fast_window=10, slow_window=30, name=None):

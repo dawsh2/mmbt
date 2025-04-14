@@ -5,11 +5,10 @@ This module provides the TopNStrategy class that combines signals from top N rul
 using a voting mechanism. This is a migration of the original TopNStrategy to the
 new architecture.
 """
-
+from src.signals import Signal, SignalRouter
 from typing import List, Optional, Any
 from src.strategies.strategy_base import Strategy
 from src.strategies.strategy_registry import StrategyRegistry
-from signals import Signal, SignalRouter
 
 @StrategyRegistry.register(category="legacy")
 class TopNStrategy(Strategy):

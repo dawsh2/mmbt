@@ -7,11 +7,9 @@ from enum import Enum, auto
 import time
 import gc
 
+from src.optimization.evaluators import RuleEvaluator, RegimeDetectorEvaluator
 from optimization.grid_search import GridOptimizer
-from optimization.components import (
-    RuleFactory, RuleEvaluator,
-    RegimeDetectorFactory, RegimeDetectorEvaluator
-)
+from optimization.components import RuleFactory, RegimeDetectorFactory
 from genetic_optimizer import GeneticOptimizer, WeightedRuleStrategy
 from regime_detection import RegimeManager
 

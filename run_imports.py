@@ -110,11 +110,11 @@ def main():
         # Load the data
         end_date = datetime.now()
         start_date = end_date - timedelta(days=365*5)  # Use up to 5 years of data
-        
         data_handler.load_data(
             symbols=symbols,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
+            timeframe="1m"  # One-minute data
         )
         
         # Create optimizer
