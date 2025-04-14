@@ -10,27 +10,17 @@ from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 
-import sys
-import os
-
-# Remove any path that might include the custom logging module
-custom_logging_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src', 'logging')
-sys.path = [p for p in sys.path if custom_logging_path not in p]
-
-# Then add src to the path
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src'))
-
 # Add src to Python path
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src'))
 
 # Import your actual modules
-from data.data_sources import CSVDataSource
-from data.data_handler import DataHandler
-from rules import SMARule, RSIRule, create_composite_rule
-from optimization import OptimizerManager, OptimizationMethod
-from strategies import WeightedStrategy
-from engine import Backtester
-from config import ConfigManager
+from src.data.data_sources import CSVDataSource
+from src.data.data_handler import DataHandler
+from src.rules import SMARule, RSIRule, create_composite_rule
+from src.optimization import OptimizerManager, OptimizationMethod
+from src.strategies import WeightedStrategy
+from src.engine import Backtester
+from src.config import ConfigManager
 
 def main():
     print("Trading System Optimization Using Actual Modules")
@@ -54,67 +44,38 @@ def main():
     print(f"\nUsing data file: {data_file}")
     
     try:
-        # Setup a custom data source for your CSV
-        class SingleFileCSVSource(CSVDataSource):
-            """Custom data source that loads a single CSV file."""
-            
-            def __init__(self, filepath):
-                self.filepath = filepath
-                self.data = None
-                self._load_data()
-                
-            def _load_data(self):
-                """Load data from CSV."""
-                self.data = pd.read_csv(self.filepath)
-                
-                # Ensure timestamp column is properly formatted
-                if 'timestamp' in self.data.columns:
-                    self.data['timestamp'] = pd.to_datetime(self.data['timestamp'])
-                
-                print(f"Loaded {len(self.data)} rows from {self.filepath}")
-                
-            def get_data(self, symbol, start_date=None, end_date=None, timeframe=None):
-                """Get data for the specified symbol and date range."""
-                # Filter by date if requested
-                if start_date or end_date:
-                    df = self.data.copy()
-                    
-                    if start_date:
-                        df = df[df['timestamp'] >= start_date]
-                    
-                    if end_date:
-                        df = df[df['timestamp'] <= end_date]
-                    
-                    return df
-                
-                return self.data
-                
-            def get_symbols(self):
-                """Get available symbols."""
-                # Use filename as symbol
-                return [os.path.splitext(os.path.basename(self.filepath))[0]]
-        
-        # Create the data source
-        data_source = SingleFileCSVSource(data_file)
+        # Create a data source that points to your CSV file
+        # Use your actual CSVDataSource class with the right parameters
+        data_source = CSVDataSource(
+            base_path=os.path.dirname(data_file),
+            filename_pattern="{symbol}.csv"  # This will use the file name as the symbol
+        )
         
         # Create the data handler
         data_handler = DataHandler(data_source, train_fraction=0.8)
         
-        # Get the symbol
-        symbols = data_source.get_symbols()
-        if not symbols:
-            symbols = ['data']  # Default if can't determine from filename
-        
-        print(f"Using symbol: {symbols[0]}")
+        # Get symbol from filename
+        symbol = os.path.splitext(os.path.basename(data_file))[0]
+        print(f"Using symbol: {symbol}")
         
         # Load the data
         end_date = datetime.now()
-        start_date = end_date - timedelta(days=365*5)  # Use up to 5 years of data
+        start_date = end_date - timedelta(days=365*2)  # Use 2 years of data to keep it manageable
+        
+        # Set proper time format and timezone handling for timestamps
+        # This addresses the timezone issue by making timestamps timezone-aware
+        import pytz
+        if start_date.tzinfo is None:
+            start_date = pytz.UTC.localize(start_date)
+        if end_date.tzinfo is None:
+            end_date = pytz.UTC.localize(end_date)
+        
+        # Load data with proper timeframe
         data_handler.load_data(
-            symbols=symbols,
+            symbols=[symbol],
             start_date=start_date,
             end_date=end_date,
-            timeframe="1m"  # One-minute data
+            timeframe="1d"  # Start with daily data for simplicity
         )
         
         # Create optimizer
