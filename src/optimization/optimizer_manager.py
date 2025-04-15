@@ -7,11 +7,10 @@ import gc
 from enum import Enum, auto
 from src.optimization.evaluators import RuleEvaluator, RegimeDetectorEvaluator
 from src.optimization.grid_search import GridOptimizer
-from src.optimization.components import RuleFactory, RegimeDetectorFactory
+from src.optimization.components import RegimeDetectorFactory, RuleFactory
 from src.optimization.genetic_optimizer import GeneticOptimizer
 from src.strategies.weighted_strategy import WeightedStrategy as WeightedRuleStrategy
 from src.regime_detection import RegimeManager
-
 from src.optimization import OptimizationMethod, OptimizationSequence
 
 

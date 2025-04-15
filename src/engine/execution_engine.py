@@ -286,7 +286,7 @@ class ExecutionEngine:
         self.last_known_prices = {}  # Cache for last known prices by symbol
         
         logger.info("Execution engine initialized")
-    
+
     def on_order(self, event):
         """
         Handle incoming order events.
@@ -364,6 +364,7 @@ class ExecutionEngine:
         Returns:
             Order object if order was created, None otherwise
         """
+        logger.debug(f"ExecutionEngine received signal: {signal.signal_type}")
         # Skip neutral signals
         if hasattr(signal, 'signal_type') and signal.signal_type == SignalType.NEUTRAL:
             logger.debug(f"Skipping neutral signal: {signal}")
@@ -447,7 +448,7 @@ class ExecutionEngine:
         fills = []
 
         # Process each pending order
-        for order in list(self.pending_orders):
+        for order in list(self.pending_orders):  # Create a copy to safely modify during iteration
             logger.info(f"Attempting to execute order: {order}")
 
             # Skip orders for other symbols if bar data is symbol-specific

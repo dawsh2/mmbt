@@ -12,7 +12,11 @@ from collections import deque
 from src.signals import Signal, SignalType
 from src.rules.rule_base import Rule
 from src.rules.rule_registry import register_rule
+# At the top of the file with other imports
+import logging
 
+# Create a logger for this module
+logger = logging.getLogger(__name__)
 
 @register_rule(category="oscillator")
 class RSIRule(Rule):
@@ -84,7 +88,9 @@ class RSIRule(Rule):
             Signal object representing the trading decision
         """
         # Check for required data
+        logger.debug(f"Rule {self.name} received data: {data}")
         if 'Close' not in data:
+            logger.warning(f"Rule {self.name} missing Close price data")
             return Signal(
                 timestamp=data.get('timestamp', None),
                 signal_type=SignalType.NEUTRAL,

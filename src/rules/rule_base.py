@@ -13,6 +13,12 @@ from collections import deque
 
 from src.signals import Signal, SignalType
 
+# At the top of the file with other imports
+import logging
+
+# Create a logger for this module
+logger = logging.getLogger(__name__)
+
 
 class Rule(ABC):
     """
@@ -21,25 +27,15 @@ class Rule(ABC):
     Rules transform features into trading signals by applying decision logic.
     Each rule encapsulates a specific trading strategy or signal generation logic.
     """
-    
-    def __init__(self, 
-                 name: str, 
-                 params: Optional[Dict[str, Any]] = None,
-                 description: str = ""):
-        """
-        Initialize a rule with parameters.
-        
-        Args:
-            name: Unique identifier for the rule
-            params: Dictionary of parameters for rule calculation
-            description: Human-readable description of rule logic
-        """
+    def __init__(self, name: str, params: Optional[Dict[str, Any]] = None, description: str = ""):
         self.name = name
         self.params = params or self.default_params()
         self.description = description
-        self.state = {}  # Internal state dictionary
-        self.signals = []  # History of generated signals
+        self.state = {}
+        self.signals = []
         self._validate_params()
+        # Add parameter application validation
+        # self._validate_param_application()
         
     def _validate_params(self) -> None:
         """
@@ -80,29 +76,51 @@ class Rule(ABC):
     def on_bar(self, event_or_data):
         """
         Process a bar event and generate a trading signal.
-
-        This method can accept either an Event object containing
-        bar data or the bar data directly.
-
-        Args:
-            event_or_data: Event object or dictionary containing bar data
-
-        Returns:
-            Signal object with the trading decision
         """
-        # Extract data from event if it's an Event object
+        # Extract data from different potential sources
+        bar_data = None
+
+        # Case 1: Standard Event object with data attribute
         if hasattr(event_or_data, 'data'):
             bar_data = event_or_data.data
-        else:
-            # If direct data is passed (backward compatibility)
-            bar_data = event_or_data
+            logger.debug(f"Extracted data from Event object")
 
-        # Generate signal and store in history
+        # Case 2: Already a dict (backward compatibility)
+        elif isinstance(event_or_data, dict):
+            bar_data = event_or_data
+            logger.debug(f"Using dict data directly")
+
+        # Case 3: Custom BarEvent with bar attribute
+        elif hasattr(event_or_data, 'bar'):
+            bar_data = event_or_data.bar
+            logger.debug(f"Extracted data from BarEvent.bar")
+
+        # Case 4: Try to handle other formats
+        else:
+            logger.warning(f"Unknown data format in on_bar: {type(event_or_data)}")
+            try:
+                bar_data = dict(event_or_data)
+            except Exception as e:
+                logger.error(f"Failed to convert to dict: {e}")
+                # Create minimal dict with timestamp
+                bar_data = {'timestamp': datetime.now()}
+
+        # Log the resulting data 
+        logger.debug(f"Final bar_data for processing: {bar_data}")
+
+        # Generate signal
         signal = self.generate_signal(bar_data)
-        self.signals.append(signal)
+
+        # Store in history
+        if signal is not None:
+            self.signals.append(signal)
+            if signal.signal_type != SignalType.NEUTRAL:
+                logger.info(f"Generated {signal.signal_type} signal")
+
         return signal
 
-    
+
+
     def update_state(self, key: str, value: Any) -> None:
         """
         Update the rule's internal state.
@@ -517,3 +535,19 @@ class FeatureBasedRule(Rule):
             Signal object representing the trading decision
         """
         pass
+
+
+    def _validate_param_application(self):
+        """
+        Validate that parameters were correctly applied to this instance.
+        Called after initialization.
+        """
+        if self.params is None:
+            raise ValueError(f"Parameters were not properly applied to {self.name}")
+
+        # Check if any parameter is None when it shouldn't be
+        for param_name, param_value in self.params.items():
+            if param_value is None:
+                default_params = self.default_params()
+                if param_name in default_params and default_params[param_name] is not None:
+                    raise ValueError(f"Parameter {param_name} is None but should have a value")

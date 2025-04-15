@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-# opt_test.py - Script for rule testing with optimization
+"""
+Optimization test script that works with the fixed Rule base class.
+"""
 
 import datetime
 import os
@@ -17,9 +19,14 @@ from src.data.data_sources import CSVDataSource
 from src.rules import create_rule, Rule
 from src.rules.rule_factory import RuleFactory
 from src.optimization import OptimizerManager, OptimizationMethod
-from src.optimization.optimizer_manager import OptimizationMethod
 from src.signals import Signal, SignalType
 from src.position_management.portfolio import Portfolio
+
+
+# Import backtester components
+from src.engine import Backtester
+from src.engine.market_simulator import MarketSimulator
+from src.strategies import WeightedStrategy, TopNStrategy
 
 # Set up logging
 logging.basicConfig(
@@ -29,49 +36,32 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 def create_synthetic_data(symbol="SYNTHETIC", timeframe="1d", filename=None, days=365):
-    """Create synthetic price data for testing with trends suitable for rules testing."""
+    """Create synthetic price data for testing."""
     # Create a synthetic dataset
-    dates = pd.date_range(start='2022-01-01', end=pd.Timestamp('2022-01-01') + pd.Timedelta(days=days-1), freq='D')
+    dates = pd.date_range(start='2022-01-01', periods=days, freq='D')
     
-    # Create a price series with a clearer trend pattern
+    # Create a price series with some randomness and a trend
     base_price = 100
-    prices = []
+    prices = [base_price]
     
-    # Generate price data with alternating trends
-    segment_size = days // 6  # Six different trend segments
-    
-    for i in range(len(dates)):
-        # Create different trend segments
-        if i < segment_size:
-            trend = 0.5  # Strong uptrend
-        elif i < segment_size * 2:
-            trend = -0.3  # Downtrend
-        elif i < segment_size * 3:
-            trend = 0.4  # Uptrend
-        elif i < segment_size * 4:
-            trend = -0.1  # Slight downtrend
-        elif i < segment_size * 5:
-            trend = 0.0  # Sideways
-        else:
-            trend = 0.6  # Strong uptrend
-            
-        # Add some randomness
-        random_component = np.random.normal(0, 0.5)
+    # Add a trend with noise
+    for i in range(1, len(dates)):
+        # Random daily change between -1% and +1% with a slight upward bias
+        daily_change = np.random.normal(0.0005, 0.01) 
         
-        # Calculate daily change
-        if i == 0:
-            prices.append(base_price)
-        else:
-            daily_change = trend + random_component
-            new_price = prices[-1] * (1 + daily_change/100)  # Smaller percentage changes
-            prices.append(new_price)
+        # Add some regime changes to test rules
+        if i % 60 == 0:  # Every ~2 months, change trend
+            daily_change = -0.02 if prices[-1] > base_price * 1.1 else 0.02
+            
+        new_price = prices[-1] * (1 + daily_change)
+        prices.append(new_price)
     
     # Create DataFrame with OHLCV data
     df = pd.DataFrame({
         'timestamp': dates,
         'Open': prices,
-        'High': [p * (1 + abs(np.random.normal(0, 0.001))) for p in prices],
-        'Low': [p * (1 - abs(np.random.normal(0, 0.001))) for p in prices],
+        'High': [p * (1 + abs(np.random.normal(0, 0.003))) for p in prices],
+        'Low': [p * (1 - abs(np.random.normal(0, 0.003))) for p in prices],
         'Close': prices,
         'Volume': [int(np.random.normal(100000, 20000)) for _ in prices],
         'symbol': symbol
@@ -80,263 +70,170 @@ def create_synthetic_data(symbol="SYNTHETIC", timeframe="1d", filename=None, day
     # Save to CSV if filename provided
     if filename:
         df.to_csv(filename, index=False)
-        logger.info(f"Created synthetic data with {len(df)} bars of data")
+        logger.info(f"Created synthetic data with {len(df)} bars, saved to {filename}")
     
     return df
 
-def update_portfolio_prices(portfolio, prices_dict):
-    """
-    Update portfolio with current prices.
-    
-    Args:
-        portfolio: Portfolio object
-        prices_dict: Dictionary mapping symbols to prices
-    """
-    # Log portfolio before update
-    logger.debug(f"Portfolio before update: Cash=${portfolio.cash:.2f}, Positions={len(portfolio.positions)}")
-    
-    # Calculate total position value before update
-    total_position_value_before = 0
-    for _, position in portfolio.positions.items():
-        if hasattr(position, 'last_price') and position.last_price:
-            position_value = position.quantity * position.last_price
-        else:
-            position_value = position.quantity * position.entry_price
-        total_position_value_before += position_value
-    
-    # Update prices for open positions
-    total_unrealized_pnl = 0
-    for pos_id, position in list(portfolio.positions.items()):
-        if position.symbol in prices_dict:
-            current_price = prices_dict[position.symbol]
-            
-            # Update position's last known price
-            position.last_price = current_price
-            
-            # Calculate P&L
-            if position.direction > 0:  # Long
-                pnl = (current_price - position.entry_price) * position.quantity
-            else:  # Short
-                pnl = (position.entry_price - current_price) * position.quantity
-                
-            # Update position's unrealized P&L
-            position.unrealized_pnl = pnl
-            position.unrealized_pnl_pct = pnl / (position.entry_price * position.quantity) * 100
-            
-            # Add to total
-            total_unrealized_pnl += pnl
-    
-    # Manually update portfolio's equity to include unrealized P&L
-    current_equity = portfolio.cash + total_position_value_before + total_unrealized_pnl
-    
-    logger.debug(f"Cash: ${portfolio.cash:.2f}")
-    logger.debug(f"Unrealized P&L: ${total_unrealized_pnl:.2f}")
-    logger.debug(f"Current equity: ${current_equity:.2f}")
-    
-    # Patch the portfolio's get_performance_metrics method to include unrealized P&L
-    original_get_performance_metrics = portfolio.get_performance_metrics
-    
-    def patched_get_performance_metrics():
-        metrics = original_get_performance_metrics()
-        metrics['unrealized_pnl'] = total_unrealized_pnl
-        metrics['current_equity'] = portfolio.cash + total_position_value_before + total_unrealized_pnl
-        return metrics
-    
-    portfolio.get_performance_metrics = patched_get_performance_metrics
-
-def backtest_rule(rule, data_handler, initial_capital=100000, position_size=100):
-    """
-    Run a backtest for a single rule.
-    
-    Args:
-        rule: Rule instance to test
-        data_handler: DataHandler with loaded data
-        initial_capital: Starting capital
-        position_size: Fixed position size
-    
-    Returns:
-        dict: Results dictionary with performance metrics
-    """
-    # Create portfolio
-    portfolio = Portfolio(initial_capital=initial_capital)
-    logger.info(f"Backtesting rule: {rule.name}")
-    
-    # Reset rule state to ensure clean start
-    rule.reset()
-    
-    # Statistics tracking
-    count = 0
-    signals_generated = 0
-    positions_opened = 0
-    equity_curve = []
-    
-    # Process all bars
-    for bar in data_handler.iter_train():
-        # Create a bar event and process with rule
-        bar_event = Event(EventType.BAR, bar)
-        signal = rule.on_bar(bar_event)
-        
-        # If signal was generated, process it
-        if signal is not None and signal.signal_type != SignalType.NEUTRAL:
-            signals_generated += 1
-            logger.debug(f"Signal generated at bar {count}: {signal.signal_type} at price {signal.price}")
-            
-            # Create position directly in portfolio
-            if signal.signal_type == SignalType.BUY:
-                # Check if we have the symbol in the bar data
-                bar_symbol = bar.get('symbol', 'SYNTHETIC')
-                
-                # Calculate position size
-                available_cash = portfolio.cash
-                required_cash = bar['Close'] * position_size
-                
-                # Only open position if we have enough cash
-                if available_cash >= required_cash:
-                    try:
-                        # Use direction=1 for long positions
-                        position = portfolio.open_position(
-                            symbol=bar_symbol,
-                            direction=1,  # Long position for BUY signal
-                            quantity=position_size,
-                            entry_price=bar['Close'],
-                            entry_time=bar['timestamp']
-                        )
-                        positions_opened += 1
-                        logger.debug(f"Opened LONG position: {position_size} shares of {bar_symbol} at ${bar['Close']:.2f}")
-                    except Exception as e:
-                        logger.error(f"Error opening position: {e}")
-                
-            elif signal.signal_type == SignalType.SELL:
-                # For simplicity, we'll open short positions
-                bar_symbol = bar.get('symbol', 'SYNTHETIC')
-                
-                # Calculate position size
-                available_cash = portfolio.cash
-                required_cash = bar['Close'] * position_size
-                
-                # Only open position if we have enough cash
-                if available_cash >= required_cash:
-                    try:
-                        # Use direction=-1 for short positions
-                        position = portfolio.open_position(
-                            symbol=bar_symbol,
-                            direction=-1,  # Short position for SELL signal
-                            quantity=position_size,
-                            entry_price=bar['Close'],
-                            entry_time=bar['timestamp']
-                        )
-                        positions_opened += 1
-                        logger.debug(f"Opened SHORT position: {position_size} shares of {bar_symbol} at ${bar['Close']:.2f}")
-                    except Exception as e:
-                        logger.error(f"Error opening position: {e}")
-        
-        # Update portfolio with current prices
-        update_portfolio_prices(portfolio, {bar.get('symbol', 'SYNTHETIC'): bar['Close']})
-        
-        # Record equity curve
-        metrics = portfolio.get_performance_metrics()
-        equity_curve.append(metrics['current_equity'])
-        
-        # Update count
-        count += 1
-        
-        # Log status periodically
-        if count % 50 == 0:
-            logger.info(f"Processed {count} bars, current equity: ${metrics['current_equity']:.2f}")
-    
-    # Get final metrics
-    final_metrics = portfolio.get_performance_metrics()
-    final_equity = final_metrics['current_equity']
-    
-    # Calculate returns and other metrics
-    total_return = (final_equity / initial_capital - 1) * 100
-    
-    # Calculate Sharpe ratio (simplified)
-    equity_returns = [0]
-    for i in range(1, len(equity_curve)):
-        ret = (equity_curve[i] / equity_curve[i-1]) - 1
-        equity_returns.append(ret)
-    
-    sharpe_ratio = 0
-    if len(equity_returns) > 1:
-        sharpe_ratio = np.mean(equity_returns) / np.std(equity_returns) * np.sqrt(252)  # Annualized
-    
-    # Calculate drawdown
-    max_drawdown = 0
-    peak = equity_curve[0]
-    for equity in equity_curve:
-        if equity > peak:
-            peak = equity
-        drawdown = (peak - equity) / peak * 100
-        if drawdown > max_drawdown:
-            max_drawdown = drawdown
-    
-    # Create and return results
-    results = {
-        "rule_name": rule.name,
-        "rule_params": rule.params,
-        "bars_processed": count,
-        "signals_generated": signals_generated,
-        "positions_opened": positions_opened,
-        "initial_capital": initial_capital,
-        "final_equity": final_equity,
-        "total_return": total_return,
-        "sharpe_ratio": sharpe_ratio,
-        "max_drawdown": max_drawdown,
-        "equity_curve": equity_curve
-    }
-    
-    logger.info(f"Backtest results for {rule.name}:")
-    logger.info(f"Total return: {total_return:.2f}%")
-    logger.info(f"Sharpe ratio: {sharpe_ratio:.2f}")
-    logger.info(f"Max drawdown: {max_drawdown:.2f}%")
-    logger.info(f"Signals generated: {signals_generated}")
-    logger.info(f"Positions opened: {positions_opened}")
-    
-    return results
-
-def evaluate_rule_performance(rule, data_handler):
-    """
-    Evaluation function for the optimizer.
-    
-    Args:
-        rule: Rule to evaluate
-        data_handler: DataHandler with loaded data
-        
-    Returns:
-        float: Performance score (Sharpe ratio)
-    """
-    # Run backtest
-    results = backtest_rule(rule, data_handler)
-    
-    # Use Sharpe ratio as performance metric
-    return results['sharpe_ratio']
-
-def plot_equity_curves(results_list, title="Equity Curves Comparison"):
+def plot_equity_curves(results, title):
     """
     Plot equity curves for multiple backtest results.
     
     Args:
-        results_list: List of backtest result dictionaries
+        results: List of (name, results_dict, params) tuples
         title: Plot title
     """
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(12, 6))
     
-    for results in results_list:
-        label = f"{results['rule_name']} (Return: {results['total_return']:.2f}%, Sharpe: {results['sharpe_ratio']:.2f})"
-        plt.plot(results['equity_curve'], label=label)
+    for name, result, params in results:
+        # Extract equity curve if available
+        if 'equity_curve' in result:
+            equity = result['equity_curve']
+            plt.plot(equity, label=f"{name} ({result['total_percent_return']:.2f}%)")
+        else:
+            # If no equity curve, create a simple line from initial to final equity
+            initial_equity = 100000  # Default from most configs
+            final_equity = initial_equity * (1 + result.get('total_percent_return', 0) / 100)
+            plt.plot([0, 1], [initial_equity, final_equity], label=f"{name} ({result.get('total_percent_return', 0):.2f}%)")
     
     plt.title(title)
-    plt.xlabel("Trading Days")
+    plt.xlabel("Time")
     plt.ylabel("Equity ($)")
     plt.legend()
     plt.grid(True)
+    plt.tight_layout()
     
-    # Save plot
+    # Save the plot
     plt.savefig("equity_curves.png")
-    logger.info("Saved equity curves plot to 'equity_curves.png'")
+    logger.info("Saved equity curves plot to equity_curves.png")
+
+def debug_rsi_rule_behavior(data_handler, param_sets=None):
+    """
+    Debug RSI rule behavior with different parameter sets.
     
-    return plt.gcf()
+    Args:
+        data_handler: DataHandler with loaded data
+        param_sets: List of parameter dictionaries to test
+    """
+    if param_sets is None:
+        # Test a few diverse parameter sets
+        param_sets = [
+            {'rsi_period': 7, 'overbought': 70, 'oversold': 30, 'signal_type': 'levels'},
+            {'rsi_period': 14, 'overbought': 70, 'oversold': 30, 'signal_type': 'levels'},
+            {'rsi_period': 21, 'overbought': 80, 'oversold': 20, 'signal_type': 'levels'}
+        ]
+    
+    # Create a dictionary to store results for each parameter set
+    results = {}
+    
+    # Test each parameter set
+    for params in param_sets:
+        param_key = f"RSI-{params['rsi_period']}-{params['overbought']}-{params['oversold']}"
+        
+        # Create the rule with these parameters
+        rule = create_rule('RSIRule', params)
+        
+        # Create a strategy with just this rule
+        strategy = TopNStrategy(rule_objects=[rule])
+        
+        # Create market simulator
+        market_simulator = MarketSimulator({
+            'slippage_model': 'fixed',
+            'slippage_bps': 5
+        })
+        
+        # Create config for the backtester
+        config = ConfigManager()
+        config.set('backtester.initial_capital', 100000)
+        
+        # Create backtester with all required parameters
+        backtester = Backtester(config, data_handler, strategy)
+        backtester.market_simulator = market_simulator
+        
+        # Run backtest
+        backtest_results = backtester.run()
+        
+        # Calculate metrics
+        sharpe = backtester.calculate_sharpe()
+        
+        # Store in results
+        results[param_key] = {
+            'params': params,
+            'backtest_results': backtest_results,
+            'sharpe': sharpe,
+            'total_return': backtest_results['total_log_return'] * 100
+        }
+    
+    # Print summary
+    print("\n=== RSI RULE BEHAVIOR DEBUG ===")
+    print(f"Tested {len(param_sets)} parameter sets")
+    
+    for key, result in results.items():
+        params = result['params']
+        print(f"\nParameters: period={params['rsi_period']}, overbought={params['overbought']}, oversold={params['oversold']}")
+        print(f"  - Total Return: {result['total_return']:.2f}%")
+        print(f"  - Sharpe Ratio: {result['sharpe']:.2f}")
+        print(f"  - Number of Trades: {result['backtest_results']['num_trades']}")
+    
+    return results
+
+def run_backtest(rule, data_handler, test_data=False):
+    """
+    Run a backtest for a single rule using the system's Backtester.
+    
+    Args:
+        rule: Rule instance to test
+        data_handler: DataHandler with loaded data
+        test_data: Whether to use test data (True) or training data (False)
+        
+    Returns:
+        dict: Results dictionary with performance metrics
+    """
+    # Print rule information for debugging
+    print(f"\nBacktesting rule: {rule.name} with params: {rule.params}")
+    
+    # Create a strategy with just this rule
+    strategy = TopNStrategy(rule_objects=[rule])
+    
+    # Create market simulator with standard settings
+    market_simulator = MarketSimulator({
+        'slippage_model': 'fixed',
+        'slippage_bps': 5
+    })
+    
+    # Create config for backtester
+    config = ConfigManager()
+    config.set('backtester.initial_capital', 100000)
+    
+    # Create backtester with all required parameters
+    backtester = Backtester(config, data_handler, strategy)
+    backtester.market_simulator = market_simulator
+    
+    # Run backtest
+    results = backtester.run(use_test_data=test_data)
+    
+    # Calculate additional metrics
+    sharpe = backtester.calculate_sharpe()
+    
+    # Convert log returns to percentage returns for easier reading
+    total_percent_return = (np.exp(results['total_log_return']) - 1) * 100
+    
+    # Add additional metrics to results
+    results['sharpe_ratio'] = sharpe
+    results['total_percent_return'] = total_percent_return
+    
+    # Print summary
+    print(f"Backtest results for {rule.name}:")
+    print(f"  - Total Return: {total_percent_return:.2f}%")
+    print(f"  - Sharpe Ratio: {sharpe:.2f}")
+    print(f"  - Number of Trades: {results['num_trades']}")
+    
+    # Get trade statistics
+    if results['num_trades'] > 0:
+        win_count = sum(1 for trade in results['trades'] if trade[5] > 0)
+        win_rate = win_count / results['num_trades'] * 100
+        print(f"  - Win Rate: {win_rate:.2f}%")
+    
+    return results
 
 def main():
     """Main function to demonstrate rule usage and parameter optimization."""
@@ -356,6 +253,8 @@ def main():
     # 2. Create configuration
     config = ConfigManager()
     config.set('backtester.initial_capital', 100000)
+    config.set('backtester.market_simulation.slippage_model', 'fixed')
+    config.set('backtester.market_simulation.slippage_bps', 5)
     
     # 3. Set up data sources and handler
     data_source = CSVDataSource(".")  # Look for CSV files in current directory
@@ -376,7 +275,17 @@ def main():
     
     logger.info(f"Successfully loaded {len(data_handler.train_data)} bars of data")
     
-    # 5. Create rules to test
+    # 5. Split data into training and testing sets (80/20 split)
+    train_size = int(len(data_handler.train_data) * 0.8)
+    
+    # Modify data_handler to split the data
+    test_data = data_handler.train_data.iloc[train_size:].copy()
+    data_handler.train_data = data_handler.train_data.iloc[:train_size].copy()
+    data_handler.test_data = test_data
+    
+    logger.info(f"Split data into {len(data_handler.train_data)} training bars and {len(data_handler.test_data)} testing bars")
+    
+    # 6. Create rules to test
     logger.info("Creating test rules")
     
     # A. SMA Crossover rule with default parameters
@@ -388,56 +297,56 @@ def main():
     
     # B. RSI rule with default parameters
     rsi_rule = create_rule('RSIRule', {
-    'rsi_period': 14,
+        'rsi_period': 14,
         'overbought': 70,
         'oversold': 30,
-        'signal_type': 'levels'  # Add this parameter
+        'signal_type': 'levels'  # Make sure to include this
     })
-
     
-    # 6. Run backtests for default parameters
+    # 7. Debug RSI rule behavior with different parameters
+    logger.info("Debugging RSI rule behavior with different parameters...")
+    rsi_debug_results = debug_rsi_rule_behavior(data_handler)
+    
+    # 8. Run backtests for default parameters using proper Backtester
     logger.info("Running backtests with default parameters")
     
-    sma_results = backtest_rule(sma_rule, data_handler)
-    rsi_results = backtest_rule(rsi_rule, data_handler)
+    # SMA backtest
+    sma_results = run_backtest(sma_rule, data_handler)
     
-    # 7. Plot equity curves for default parameters
-    plot_equity_curves([sma_results, rsi_results], "Default Parameters Comparison")
+    # RSI backtest
+    rsi_results = run_backtest(rsi_rule, data_handler)
     
-    # 8. Set up optimizer
+    # 9. Set up optimizer
     logger.info("Setting up optimizer")
     optimizer = OptimizerManager(data_handler)
     
-    # Define evaluation function
-    def evaluate_rule(rule):
-        return evaluate_rule_performance(rule, data_handler)
-    
-    # 9. Register SMA rule for optimization
+    # 10. Register SMA rule for optimization
     optimizer.register_rule(
         "sma_rule",
         sma_rule.__class__,  # Use the class of the rule
         {
-            'fast_window': [5, 10, 15, 20],
-            'slow_window': [20, 30, 40, 50],
+            'fast_window': [5, 10, 15],
+            'slow_window': [20, 30, 50],
             'smooth_signals': [True, False]
         }
     )
     
-    # 10. Register RSI rule for optimization
+    # 11. Register RSI rule for optimization
     optimizer.register_rule(
         "rsi_rule",
         rsi_rule.__class__,  # Use the class of the rule
         {
             'rsi_period': [7, 14, 21],
             'overbought': [65, 70, 75, 80],
-            'oversold': [20, 25, 30, 35]
+            'oversold': [20, 25, 30, 35],
+            'signal_type': ['levels']
         }
     )
     
-    # 11. Run optimization for both rules
+    # 12. Run optimization for both rules
     logger.info("Optimizing rules")
     
-    # Note: This uses grid search by default
+    # Run grid search
     optimized_rules = optimizer.optimize(
         component_type='rule',
         method=OptimizationMethod.GRID_SEARCH,
@@ -445,7 +354,7 @@ def main():
         verbose=True
     )
     
-    # 12. Get the optimized rules and their parameters
+    # 13. Get the optimized rules and their parameters
     optimized_sma = None
     optimized_rsi = None
     
@@ -456,57 +365,97 @@ def main():
         elif isinstance(rule, rsi_rule.__class__):
             optimized_rsi = rule
     
-    if not optimized_sma or not optimized_rsi:
-        logger.warning("Optimization did not return expected rules")
-        return
+    # 14. Debug optimized RSI rule behavior if found
+    if optimized_rsi:
+        logger.info("Debugging optimized RSI rule behavior...")
+        optimized_params = optimized_rsi.params
+        debug_rsi_rule_behavior(data_handler, [optimized_params])
+    else:
+        logger.warning("Optimization did not return an RSI rule")
     
-    # 13. Run backtests with optimized parameters
-    logger.info("Running backtests with optimized parameters")
+    # Check if optimization returned both rules
+    if not optimized_sma:
+        logger.warning("Optimization did not return an SMA rule")
+        # Fall back to default parameters
+        optimized_sma = sma_rule
     
-    optimized_sma_results = backtest_rule(optimized_sma, data_handler)
-    optimized_rsi_results = backtest_rule(optimized_rsi, data_handler)
+    if not optimized_rsi:
+        logger.warning("Optimization did not return an RSI rule")
+        # Fall back to default parameters
+        optimized_rsi = rsi_rule
     
-    # 14. Plot final comparison
-    all_results = [
-        sma_results, 
-        rsi_results, 
-        optimized_sma_results, 
-        optimized_rsi_results
+    # 15. Run backtests on train data with optimized parameters
+    logger.info("Running backtests with optimized parameters on training data")
+    
+    # SMA backtest on train data
+    optimized_sma_train_results = run_backtest(optimized_sma, data_handler, test_data=False)
+    
+    # RSI backtest on train data
+    optimized_rsi_train_results = run_backtest(optimized_rsi, data_handler, test_data=False)
+    
+    # 16. Run backtests on test data with optimized parameters
+    logger.info("Running backtests with optimized parameters on test data")
+    
+    # SMA backtest on test data
+    optimized_sma_test_results = run_backtest(optimized_sma, data_handler, test_data=True)
+    
+    # RSI backtest on test data
+    optimized_rsi_test_results = run_backtest(optimized_rsi, data_handler, test_data=True)
+    
+    # 17. Plot equity curves for comparison
+    train_results = [
+        (f"SMA Default (Train)", sma_results, sma_rule.params),
+        (f"RSI Default (Train)", rsi_results, rsi_rule.params),
+        (f"SMA Optimized (Train)", optimized_sma_train_results, optimized_sma.params),
+        (f"RSI Optimized (Train)", optimized_rsi_train_results, optimized_rsi.params)
     ]
     
-    plot_equity_curves(all_results, "Default vs Optimized Parameters")
+    test_results = [
+        (f"SMA Optimized (Test)", optimized_sma_test_results, optimized_sma.params),
+        (f"RSI Optimized (Test)", optimized_rsi_test_results, optimized_rsi.params)
+    ]
     
-    # 15. Print summary
+    # Plot training results
+    plot_equity_curves(train_results, "Training Data Comparison")
+    
+    # Plot test results
+    plot_equity_curves(test_results, "Test Data Performance")
+    
+    # 18. Print summary
     logger.info("\nParameter Optimization Summary:")
     logger.info("-" * 50)
     
     logger.info("SMA Crossover Rule:")
     logger.info(f"  Default parameters: {sma_rule.params}")
-    logger.info(f"  Default performance: Return={sma_results['total_return']:.2f}%, Sharpe={sma_results['sharpe_ratio']:.2f}")
+    logger.info(f"  Default performance (Train): Return={sma_results['total_percent_return']:.2f}%, Sharpe={sma_results['sharpe_ratio']:.2f}")
     logger.info(f"  Optimized parameters: {optimized_sma.params}")
-    logger.info(f"  Optimized performance: Return={optimized_sma_results['total_return']:.2f}%, Sharpe={optimized_sma_results['sharpe_ratio']:.2f}")
-    logger.info(f"  Improvement: Return +{optimized_sma_results['total_return'] - sma_results['total_return']:.2f}%, Sharpe +{optimized_sma_results['sharpe_ratio'] - sma_results['sharpe_ratio']:.2f}")
+    logger.info(f"  Optimized performance (Train): Return={optimized_sma_train_results['total_percent_return']:.2f}%, Sharpe={optimized_sma_train_results['sharpe_ratio']:.2f}")
+    logger.info(f"  Improvement (Train): Return +{optimized_sma_train_results['total_percent_return'] - sma_results['total_percent_return']:.2f}%, Sharpe +{optimized_sma_train_results['sharpe_ratio'] - sma_results['sharpe_ratio']:.2f}")
+    logger.info(f"  Out-of-sample performance (Test): Return={optimized_sma_test_results['total_percent_return']:.2f}%, Sharpe={optimized_sma_test_results['sharpe_ratio']:.2f}")
     
     logger.info("\nRSI Rule:")
     logger.info(f"  Default parameters: {rsi_rule.params}")
-    logger.info(f"  Default performance: Return={rsi_results['total_return']:.2f}%, Sharpe={rsi_results['sharpe_ratio']:.2f}")
+    logger.info(f"  Default performance (Train): Return={rsi_results['total_percent_return']:.2f}%, Sharpe={rsi_results['sharpe_ratio']:.2f}")
     logger.info(f"  Optimized parameters: {optimized_rsi.params}")
-    logger.info(f"  Optimized performance: Return={optimized_rsi_results['total_return']:.2f}%, Sharpe={optimized_rsi_results['sharpe_ratio']:.2f}")
-    logger.info(f"  Improvement: Return +{optimized_rsi_results['total_return'] - rsi_results['total_return']:.2f}%, Sharpe +{optimized_rsi_results['sharpe_ratio'] - rsi_results['sharpe_ratio']:.2f}")
+    logger.info(f"  Optimized performance (Train): Return={optimized_rsi_train_results['total_percent_return']:.2f}%, Sharpe={optimized_rsi_train_results['sharpe_ratio']:.2f}")
+    logger.info(f"  Improvement (Train): Return +{optimized_rsi_train_results['total_percent_return'] - rsi_results['total_percent_return']:.2f}%, Sharpe +{optimized_rsi_train_results['sharpe_ratio'] - rsi_results['sharpe_ratio']:.2f}")
+    logger.info(f"  Out-of-sample performance (Test): Return={optimized_rsi_test_results['total_percent_return']:.2f}%, Sharpe={optimized_rsi_test_results['sharpe_ratio']:.2f}")
     
     return {
         "default_results": {
-            "sma": sma_results,
-            "rsi": rsi_results
+            "sma": {"params": sma_rule.params, "results": sma_results},
+            "rsi": {"params": rsi_rule.params, "results": rsi_results}
         },
         "optimized_results": {
             "sma": {
                 "params": optimized_sma.params,
-                "results": optimized_sma_results
+                "train_results": optimized_sma_train_results,
+                "test_results": optimized_sma_test_results
             },
             "rsi": {
                 "params": optimized_rsi.params,
-                "results": optimized_rsi_results
+                "train_results": optimized_rsi_train_results,
+                "test_results": optimized_rsi_test_results
             }
         }
     }

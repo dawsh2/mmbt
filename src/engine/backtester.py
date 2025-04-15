@@ -17,6 +17,7 @@ from src.signals import Signal, SignalType
 from src.engine.execution_engine import ExecutionEngine
 from src.engine.market_simulator import MarketSimulator
 
+
 # Try to import comprehensive position management
 try:
     from src.position_management.position_manager import PositionManager as ComprehensivePositionManager
@@ -232,8 +233,8 @@ class Backtester:
                     bar_event = BarEvent(bar)  # Wrap it
 
                 # Log some bars for debugging
-                if isinstance(bar, dict) and 'timestamp' in bar:
-                    logger.info(f"Processing bar for {bar['timestamp']} - Close: {bar.get('Close')}")
+                # if isinstance(bar, dict) and 'timestamp' in bar:
+                    # logger.info(f"Processing bar for {bar['timestamp']} - Close: {bar.get('Close')}")
 
                 # Process bar through strategy to get signals
                 signal_or_signals = self.strategy.on_bar(bar_event)
@@ -342,21 +343,25 @@ class Backtester:
         self.event_bus.emit(order_event)
         
         logger.debug(f"Generated order from signal: {order}")
-    
+
     def _on_order(self, event):
         """
         Handle order events.
-        
+
         Args:
             event: Order event
         """
         order = event.data
-        
+        logger.info(f"Backtester handling order: {order}")
+
         # Forward to execution engine
         if hasattr(self.execution_engine, 'on_order'):
             self.execution_engine.on_order(event)
+            logger.info(f"Forwarded order to execution engine")
         else:
             logger.warning("Execution engine does not have on_order method")
+        
+
     
     def _on_fill(self, event):
         """
@@ -588,11 +593,19 @@ class Backtester:
                 logger.debug("Skipping neutral signal")
                 continue
 
-            # Calculate position size
-            position_size = self.position_manager.calculate_position_size(
-                signal, 
-                self.execution_engine.portfolio if hasattr(self.execution_engine, 'portfolio') else {'equity': self.initial_capital}
-            )
+            # Calculate position size - FIXED PART
+            # Instead of calling calculate_position_size on the position_manager,
+            # we need to use the position_sizer if available
+            if hasattr(self.position_manager, 'position_sizer') and self.position_manager.position_sizer is not None:
+                # Use the position_sizer from the position_manager
+                position_size = self.position_manager.position_sizer.calculate_position_size(
+                    signal, 
+                    self.position_manager.portfolio, 
+                    bar.get('Close', 0)
+                )
+            else:
+                # Fallback to a default size
+                position_size = 100  # Default to 100 shares/contracts
 
             # Skip if position size is zero
             if position_size == 0:
@@ -619,6 +632,8 @@ class Backtester:
             # Extract symbol
             symbol = getattr(signal, 'symbol', 'default')
 
+            logger.info(f"Creating order from signal: direction={direction}, size={abs(position_size)}")
+
             # Create order
             order = Order(
                 symbol=symbol,
@@ -631,14 +646,14 @@ class Backtester:
 
             # Store order for debugging
             self.orders.append(order)
-            logger.info(f"Created order from signal: {order}")
 
             # Create order event
             order_event = Event(EventType.ORDER, order)
 
             # Emit order event
             self.event_bus.emit(order_event)
-    
+
+ 
     def _calculate_performance_metrics(self, processed_trades):
         """
         Calculate performance metrics from processed trades.

@@ -1,34 +1,481 @@
-2025-04-15 12:39:34 [INFO] [__main__] Starting the trading system
-2025-04-15 12:39:34 [INFO] [__main__] Initializing event system
-2025-04-15 12:39:34 [INFO] [__main__] Loading configuration
-2025-04-15 12:39:34 [INFO] [__main__] Setting up data handler
-2025-04-15 12:39:34 [INFO] [__main__] Setting up trading strategy
-2025-04-15 12:39:34 [INFO] [__main__] Setting up portfolio and position management
-2025-04-15 12:39:34 [INFO] [src.position_management.portfolio] Portfolio initialized: Portfolio_f1a7d1bd with 100000 USD
-2025-04-15 12:39:34 [INFO] [__main__] Setting up execution engine
-2025-04-15 12:39:34 [INFO] [src.engine.execution_engine] Portfolio initialized with 100000.00 cash
-2025-04-15 12:39:34 [INFO] [src.engine.execution_engine] Execution engine initialized
-2025-04-15 12:39:34 [INFO] [__main__] Creating events manager
-2025-04-15 12:39:34 [INFO] [src.events.event_manager] Event handlers registered
-2025-04-15 12:39:34 [INFO] [src.events.event_manager] Events manager initialized
-2025-04-15 12:39:34 [INFO] [__main__] Loading market data
-Loaded 365 bars from 2022-01-01 00:00:00 to 2022-12-31 00:00:00
+2025-04-15 16:30:03 [INFO] [__main__] Starting rule testing and optimization
+2025-04-15 16:30:03 [INFO] [__main__] Loading market data
+Loaded 365 bars from 2022-01-01 00:00:00 to 2023-12-31 00:00:00
 Training data: 293 bars
 Testing data: 72 bars
-2025-04-15 12:39:34 [INFO] [__main__] Successfully loaded 293 bars of data
-2025-04-15 12:39:34 [INFO] [__main__] Processing market data
-2025-04-15 12:39:34 [ERROR] [__main__] Error during backtest: EventBus.emit() takes 2 positional arguments but 3 were given
-Traceback (most recent call last):
-  File "/Users/daws/mmbt/main.py", line 217, in main
-    event_bus.emit(EventType.MARKET_OPEN, {'timestamp': start_date})
-    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-TypeError: EventBus.emit() takes 2 positional arguments but 3 were given
+2025-04-15 16:30:03 [INFO] [__main__] Successfully loaded 293 bars of data
+2025-04-15 16:30:03 [INFO] [__main__] Split data into 234 training bars and 59 testing bars
+2025-04-15 16:30:03 [INFO] [__main__] Creating test rules
+2025-04-15 16:30:03 [INFO] [__main__] Debugging RSI rule behavior with different parameters...
+2025-04-15 16:30:03 [INFO] [src.position_management.portfolio] Portfolio initialized: Portfolio_9170ba80 with 100000 USD
+2025-04-15 16:30:03 [INFO] [src.engine.execution_engine] Portfolio initialized with 100000.00 cash
+2025-04-15 16:30:03 [INFO] [src.engine.execution_engine] Execution engine initialized
+2025-04-15 16:30:03 [INFO] [src.engine.backtester] Backtester initialized with initial capital: 100000
+2025-04-15 16:30:03 [INFO] [src.engine.execution_engine] Portfolio initialized with 100000.00 cash
+2025-04-15 16:30:03 [INFO] [src.engine.execution_engine] Execution engine reset with 100000.00 capital
+2025-04-15 16:30:03 [INFO] [src.engine.backtester] Starting backtest...
+2025-04-15 16:30:03 [INFO] [src.engine.backtester] Backtest completed. Collecting results...
+2025-04-15 16:30:03 [INFO] [src.engine.backtester] Backtest results: 0 trades, 0.00% return, Sharpe: 0.00
+2025-04-15 16:30:03 [INFO] [src.position_management.portfolio] Portfolio initialized: Portfolio_90e0d82b with 100000 USD
+2025-04-15 16:30:03 [INFO] [src.engine.execution_engine] Portfolio initialized with 100000.00 cash
+2025-04-15 16:30:03 [INFO] [src.engine.execution_engine] Execution engine initialized
+2025-04-15 16:30:03 [INFO] [src.engine.backtester] Backtester initialized with initial capital: 100000
+2025-04-15 16:30:03 [INFO] [src.engine.execution_engine] Portfolio initialized with 100000.00 cash
+2025-04-15 16:30:03 [INFO] [src.engine.execution_engine] Execution engine reset with 100000.00 capital
+2025-04-15 16:30:03 [INFO] [src.engine.backtester] Starting backtest...
+2025-04-15 16:30:03 [INFO] [src.engine.backtester] Backtest completed. Collecting results...
+2025-04-15 16:30:03 [INFO] [src.engine.backtester] Backtest results: 0 trades, 0.00% return, Sharpe: 0.00
+2025-04-15 16:30:03 [INFO] [src.position_management.portfolio] Portfolio initialized: Portfolio_01bc3a10 with 100000 USD
+2025-04-15 16:30:03 [INFO] [src.engine.execution_engine] Portfolio initialized with 100000.00 cash
+2025-04-15 16:30:03 [INFO] [src.engine.execution_engine] Execution engine initialized
+2025-04-15 16:30:03 [INFO] [src.engine.backtester] Backtester initialized with initial capital: 100000
+2025-04-15 16:30:03 [INFO] [src.engine.execution_engine] Portfolio initialized with 100000.00 cash
+2025-04-15 16:30:03 [INFO] [src.engine.execution_engine] Execution engine reset with 100000.00 capital
+2025-04-15 16:30:03 [INFO] [src.engine.backtester] Starting backtest...
+2025-04-15 16:30:03 [INFO] [src.engine.backtester] Backtest completed. Collecting results...
+2025-04-15 16:30:03 [INFO] [src.engine.backtester] Backtest results: 0 trades, 0.00% return, Sharpe: 0.00
+
+=== RSI RULE BEHAVIOR DEBUG ===
+Tested 3 parameter sets
+
+Parameters: period=7, overbought=70, oversold=30
+  - Total Return: 0.00%
+  - Sharpe Ratio: 0.00
+  - Number of Trades: 0
+
+Parameters: period=14, overbought=70, oversold=30
+  - Total Return: 0.00%
+  - Sharpe Ratio: 0.00
+  - Number of Trades: 0
+
+Parameters: period=21, overbought=80, oversold=20
+  - Total Return: 0.00%
+  - Sharpe Ratio: 0.00
+  - Number of Trades: 0
+2025-04-15 16:30:03 [INFO] [__main__] Running backtests with default parameters
+
+Backtesting rule: SMAcrossoverRule with params: {'fast_window': 10, 'slow_window': 30, 'smooth_signals': True}
+2025-04-15 16:30:03 [INFO] [src.position_management.portfolio] Portfolio initialized: Portfolio_231c3644 with 100000 USD
+2025-04-15 16:30:03 [INFO] [src.engine.execution_engine] Portfolio initialized with 100000.00 cash
+2025-04-15 16:30:03 [INFO] [src.engine.execution_engine] Execution engine initialized
+2025-04-15 16:30:03 [INFO] [src.engine.backtester] Backtester initialized with initial capital: 100000
+2025-04-15 16:30:03 [INFO] [src.engine.execution_engine] Portfolio initialized with 100000.00 cash
+2025-04-15 16:30:03 [INFO] [src.engine.execution_engine] Execution engine reset with 100000.00 capital
+2025-04-15 16:30:03 [INFO] [src.engine.backtester] Starting backtest...
+2025-04-15 16:30:03 [INFO] [src.engine.backtester] Backtest completed. Collecting results...
+2025-04-15 16:30:03 [INFO] [src.engine.backtester] Backtest results: 0 trades, 0.00% return, Sharpe: 0.00
+Backtest results for SMAcrossoverRule:
+  - Total Return: 0.00%
+  - Sharpe Ratio: 0.00
+  - Number of Trades: 0
+
+Backtesting rule: RSIRule with params: {'rsi_period': 14, 'overbought': 70, 'oversold': 30, 'signal_type': 'levels'}
+2025-04-15 16:30:03 [INFO] [src.position_management.portfolio] Portfolio initialized: Portfolio_bbaf5294 with 100000 USD
+2025-04-15 16:30:03 [INFO] [src.engine.execution_engine] Portfolio initialized with 100000.00 cash
+2025-04-15 16:30:03 [INFO] [src.engine.execution_engine] Execution engine initialized
+2025-04-15 16:30:03 [INFO] [src.engine.backtester] Backtester initialized with initial capital: 100000
+2025-04-15 16:30:03 [INFO] [src.engine.execution_engine] Portfolio initialized with 100000.00 cash
+2025-04-15 16:30:03 [INFO] [src.engine.execution_engine] Execution engine reset with 100000.00 capital
+2025-04-15 16:30:03 [INFO] [src.engine.backtester] Starting backtest...
+2025-04-15 16:30:03 [INFO] [src.engine.backtester] Backtest completed. Collecting results...
+2025-04-15 16:30:03 [INFO] [src.engine.backtester] Backtest results: 0 trades, 0.00% return, Sharpe: 0.00
+Backtest results for RSIRule:
+  - Total Return: 0.00%
+  - Sharpe Ratio: 0.00
+  - Number of Trades: 0
+2025-04-15 16:30:03 [INFO] [__main__] Setting up optimizer
+2025-04-15 16:30:03 [INFO] [__main__] Optimizing rules
+Running grid search for 2 rule components
+Expanding parameters for SMAcrossoverRule:
+  Original param ranges: {'fast_window': [5, 10, 15], 'slow_window': [20, 30, 50], 'smooth_signals': [True, False]}
+  Generated 18 parameter sets
+  First few sets: [{'fast_window': 5, 'slow_window': 20, 'smooth_signals': True}, {'fast_window': 5, 'slow_window': 20, 'smooth_signals': False}, {'fast_window': 5, 'slow_window': 30, 'smooth_signals': True}]
+Expanding parameters for RSIRule:
+  Original param ranges: {'rsi_period': [7, 14, 21], 'overbought': [65, 70, 75, 80], 'oversold': [20, 25, 30, 35], 'signal_type': ['levels']}
+  Generated 48 parameter sets
+  First few sets: [{'rsi_period': 7, 'overbought': 65, 'oversold': 20, 'signal_type': 'levels'}, {'rsi_period': 7, 'overbought': 65, 'oversold': 25, 'signal_type': 'levels'}, {'rsi_period': 7, 'overbought': 65, 'oversold': 30, 'signal_type': 'levels'}]
+Optimizing SMAcrossoverRule with 18 parameter sets...
+  Testing params: {'fast_window': 5, 'slow_window': 20, 'smooth_signals': True}
+DEBUG - Returns statistics: count=213, mean=0.002251, sum=0.479465
+DEBUG - Calculated metrics: TR=0.615211, AR=0.763419, Sharpe=8.6185, MaxDD=-0.040033
+  Score: 6.2904
+  Testing params: {'fast_window': 5, 'slow_window': 20, 'smooth_signals': False}
+DEBUG - Returns statistics: count=7, mean=0.001214, sum=0.008496
+DEBUG - Calculated metrics: TR=0.008532, AR=0.357794, Sharpe=2.6904, MaxDD=-0.013924
+  Score: 0.9945
+  Testing params: {'fast_window': 5, 'slow_window': 30, 'smooth_signals': True}
+DEBUG - Returns statistics: count=203, mean=0.002096, sum=0.425461
+DEBUG - Calculated metrics: TR=0.530296, AR=0.695806, Sharpe=7.8002, MaxDD=-0.051465
+  Score: 5.8264
+  Testing params: {'fast_window': 5, 'slow_window': 30, 'smooth_signals': False}
+DEBUG - Returns statistics: count=3, mean=0.004745, sum=0.014234
+DEBUG - Calculated metrics: TR=0.014336, AR=2.305727, Sharpe=26.5848, MaxDD=0.000000
+  Score: 1.5676
+  Testing params: {'fast_window': 5, 'slow_window': 50, 'smooth_signals': True}
+DEBUG - Returns statistics: count=183, mean=0.001367, sum=0.250086
+DEBUG - Calculated metrics: TR=0.284136, AR=0.411116, Sharpe=4.4371, MaxDD=-0.074867
+  Score: 3.8578
+  Testing params: {'fast_window': 5, 'slow_window': 50, 'smooth_signals': False}
+DEBUG - Returns statistics: count=3, mean=0.005936, sum=0.017808
+DEBUG - Calculated metrics: TR=0.017967, AR=3.463176, Sharpe=119.6395, MaxDD=0.000000
+  Score: 1.5676
+  Testing params: {'fast_window': 10, 'slow_window': 20, 'smooth_signals': True}
+DEBUG - Returns statistics: count=213, mean=0.002007, sum=0.427459
+DEBUG - Calculated metrics: TR=0.533356, AR=0.658188, Sharpe=7.3095, MaxDD=-0.051465
+  Score: 5.6016
+  Testing params: {'fast_window': 10, 'slow_window': 20, 'smooth_signals': False}
+DEBUG - Returns statistics: count=5, mean=-0.000781, sum=-0.003906
+DEBUG - Calculated metrics: TR=-0.003898, AR=-0.178689, Sharpe=-0.9641, MaxDD=-0.013924
+  Score: 0.8024
+  Testing params: {'fast_window': 10, 'slow_window': 30, 'smooth_signals': True}
+DEBUG - Returns statistics: count=203, mean=0.001827, sum=0.370821
+DEBUG - Calculated metrics: TR=0.448923, AR=0.584596, Sharpe=6.4466, MaxDD=-0.058349
+  Score: 4.9684
+  Testing params: {'fast_window': 10, 'slow_window': 30, 'smooth_signals': False}
+DEBUG - Returns statistics: count=3, mean=0.001319, sum=0.003958
+DEBUG - Calculated metrics: TR=0.003966, AR=0.394405, Sharpe=4.6738, MaxDD=-0.005200
+  Score: 1.8238
+  Testing params: {'fast_window': 10, 'slow_window': 50, 'smooth_signals': True}
+DEBUG - Returns statistics: count=183, mean=0.001056, sum=0.193275
+DEBUG - Calculated metrics: TR=0.213216, AR=0.304930, Sharpe=3.2553, MaxDD=-0.087117
+  Score: 2.8141
+  Testing params: {'fast_window': 10, 'slow_window': 50, 'smooth_signals': False}
+DEBUG - Returns statistics: count=3, mean=0.001249, sum=0.003747
+DEBUG - Calculated metrics: TR=0.003754, AR=0.369915, Sharpe=13.4324, MaxDD=-0.000052
+  Score: 1.5373
+  Testing params: {'fast_window': 15, 'slow_window': 20, 'smooth_signals': True}
+DEBUG - Returns statistics: count=213, mean=0.002219, sum=0.472667
+DEBUG - Calculated metrics: TR=0.604266, AR=0.749292, Sharpe=8.4397, MaxDD=-0.058349
+  Score: 6.0329
+  Testing params: {'fast_window': 15, 'slow_window': 20, 'smooth_signals': False}
+DEBUG - Returns statistics: count=3, mean=0.004126, sum=0.012378
+DEBUG - Calculated metrics: TR=0.012455, AR=1.828517, Sharpe=42.5176, MaxDD=0.000000
+  Score: 1.8744
+  Testing params: {'fast_window': 15, 'slow_window': 30, 'smooth_signals': True}
+DEBUG - Returns statistics: count=203, mean=0.001837, sum=0.372895
+DEBUG - Calculated metrics: TR=0.451932, AR=0.588681, Sharpe=6.4954, MaxDD=-0.063804
+  Score: 5.0998
+  Testing params: {'fast_window': 15, 'slow_window': 30, 'smooth_signals': False}
+DEBUG - Returns statistics: count=3, mean=0.002918, sum=0.008754
+DEBUG - Calculated metrics: TR=0.008793, AR=1.086208, Sharpe=11.2424, MaxDD=-0.005572
+  Score: 0.0853
+  Testing params: {'fast_window': 15, 'slow_window': 50, 'smooth_signals': True}
+DEBUG - Returns statistics: count=183, mean=0.000755, sum=0.138115
+DEBUG - Calculated metrics: TR=0.148108, AR=0.209481, Sharpe=2.2190, MaxDD=-0.090489
+  Score: 1.9399
+  Testing params: {'fast_window': 15, 'slow_window': 50, 'smooth_signals': False}
+DEBUG - Returns statistics: count=3, mean=0.002183, sum=0.006548
+DEBUG - Calculated metrics: TR=0.006569, AR=0.733298, Sharpe=11.9522, MaxDD=-0.002461
+  Score: 1.9297
+  Best params: {'fast_window': 5, 'slow_window': 20, 'smooth_signals': True}, Score: 6.2904
+Optimizing RSIRule with 48 parameter sets...
+  Testing params: {'rsi_period': 7, 'overbought': 65, 'oversold': 20, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=166, mean=-0.003136, sum=-0.520631
+DEBUG - Calculated metrics: TR=-0.405855, AR=-0.546317, Sharpe=-6.7892, MaxDD=-0.407955
+  Score: -7.5844
+  Testing params: {'rsi_period': 7, 'overbought': 65, 'oversold': 25, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=174, mean=-0.003155, sum=-0.548934
+DEBUG - Calculated metrics: TR=-0.422435, AR=-0.548422, Sharpe=-6.8930, MaxDD=-0.422697
+  Score: -7.8845
+  Testing params: {'rsi_period': 7, 'overbought': 65, 'oversold': 30, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=178, mean=-0.003089, sum=-0.549808
+DEBUG - Calculated metrics: TR=-0.422940, AR=-0.540851, Sharpe=-6.5611, MaxDD=-0.423202
+  Score: -7.6870
+  Testing params: {'rsi_period': 7, 'overbought': 65, 'oversold': 35, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=181, mean=-0.002970, sum=-0.537596
+DEBUG - Calculated metrics: TR=-0.415849, AR=-0.526913, Sharpe=-6.3324, MaxDD=-0.417348
+  Score: -7.4443
+  Testing params: {'rsi_period': 7, 'overbought': 70, 'oversold': 20, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=160, mean=-0.003230, sum=-0.516804
+DEBUG - Calculated metrics: TR=-0.403576, AR=-0.556903, Sharpe=-6.9154, MaxDD=-0.405378
+  Score: -7.5357
+  Testing params: {'rsi_period': 7, 'overbought': 70, 'oversold': 25, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=168, mean=-0.003245, sum=-0.545107
+DEBUG - Calculated metrics: TR=-0.420220, AR=-0.558536, Sharpe=-7.0181, MaxDD=-0.420483
+  Score: -7.8367
+  Testing params: {'rsi_period': 7, 'overbought': 70, 'oversold': 30, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=172, mean=-0.003174, sum=-0.545981
+DEBUG - Calculated metrics: TR=-0.420727, AR=-0.550637, Sharpe=-6.6686, MaxDD=-0.420990
+  Score: -7.6401
+  Testing params: {'rsi_period': 7, 'overbought': 70, 'oversold': 35, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=175, mean=-0.003050, sum=-0.533768
+DEBUG - Calculated metrics: TR=-0.413609, AR=-0.536350, Sharpe=-6.4310, MaxDD=-0.415546
+  Score: -7.3974
+  Testing params: {'rsi_period': 7, 'overbought': 75, 'oversold': 20, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=153, mean=-0.003375, sum=-0.516422
+DEBUG - Calculated metrics: TR=-0.403348, AR=-0.572832, Sharpe=-7.2634, MaxDD=-0.405866
+  Score: -7.6971
+  Testing params: {'rsi_period': 7, 'overbought': 75, 'oversold': 25, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=161, mean=-0.003383, sum=-0.544725
+DEBUG - Calculated metrics: TR=-0.419999, AR=-0.573700, Sharpe=-7.3611, MaxDD=-0.420262
+  Score: -7.9996
+  Testing params: {'rsi_period': 7, 'overbought': 75, 'oversold': 30, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=165, mean=-0.003307, sum=-0.545599
+DEBUG - Calculated metrics: TR=-0.420505, AR=-0.565378, Sharpe=-6.9645, MaxDD=-0.420768
+  Score: -7.7900
+  Testing params: {'rsi_period': 7, 'overbought': 75, 'oversold': 35, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=168, mean=-0.003175, sum=-0.533386
+DEBUG - Calculated metrics: TR=-0.413385, AR=-0.550707, Sharpe=-6.7049, MaxDD=-0.416026
+  Score: -7.5396
+  Testing params: {'rsi_period': 7, 'overbought': 80, 'oversold': 20, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=146, mean=-0.003162, sum=-0.461689
+DEBUG - Calculated metrics: TR=-0.369782, AR=-0.549271, Sharpe=-7.1738, MaxDD=-0.372441
+  Score: -7.1777
+  Testing params: {'rsi_period': 7, 'overbought': 80, 'oversold': 25, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=154, mean=-0.003182, sum=-0.489992
+DEBUG - Calculated metrics: TR=-0.387369, AR=-0.551481, Sharpe=-7.2853, MaxDD=-0.387647
+  Score: -7.4965
+  Testing params: {'rsi_period': 7, 'overbought': 80, 'oversold': 30, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=158, mean=-0.003107, sum=-0.490866
+DEBUG - Calculated metrics: TR=-0.387904, AR=-0.542922, Sharpe=-6.8565, MaxDD=-0.388182
+  Score: -7.2839
+  Testing params: {'rsi_period': 7, 'overbought': 80, 'oversold': 35, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=161, mean=-0.002973, sum=-0.478653
+DEBUG - Calculated metrics: TR=-0.380383, AR=-0.527254, Sharpe=-6.5778, MaxDD=-0.383173
+  Score: -7.0257
+  Testing params: {'rsi_period': 14, 'overbought': 65, 'oversold': 20, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=145, mean=-0.003079, sum=-0.446394
+DEBUG - Calculated metrics: TR=-0.360068, AR=-0.539666, Sharpe=-6.5665, MaxDD=-0.378086
+  Score: -6.8460
+  Testing params: {'rsi_period': 14, 'overbought': 65, 'oversold': 25, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=156, mean=-0.002895, sum=-0.451656
+DEBUG - Calculated metrics: TR=-0.363427, AR=-0.517897, Sharpe=-6.2664, MaxDD=-0.379754
+  Score: -6.7930
+  Testing params: {'rsi_period': 14, 'overbought': 65, 'oversold': 30, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=167, mean=-0.002819, sum=-0.470838
+DEBUG - Calculated metrics: TR=-0.375521, AR=-0.508595, Sharpe=-6.2163, MaxDD=-0.388341
+  Score: -6.8219
+  Testing params: {'rsi_period': 14, 'overbought': 65, 'oversold': 35, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=174, mean=-0.002696, sum=-0.469090
+DEBUG - Calculated metrics: TR=-0.374429, AR=-0.493065, Sharpe=-5.8621, MaxDD=-0.388983
+  Score: -6.6453
+  Testing params: {'rsi_period': 14, 'overbought': 70, 'oversold': 20, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=144, mean=-0.003166, sum=-0.455875
+DEBUG - Calculated metrics: TR=-0.366107, AR=-0.549673, Sharpe=-6.8057, MaxDD=-0.378086
+  Score: -7.0393
+  Testing params: {'rsi_period': 14, 'overbought': 70, 'oversold': 25, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=155, mean=-0.002975, sum=-0.461137
+DEBUG - Calculated metrics: TR=-0.369434, AR=-0.527501, Sharpe=-6.4814, MaxDD=-0.379754
+  Score: -6.9809
+  Testing params: {'rsi_period': 14, 'overbought': 70, 'oversold': 30, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=166, mean=-0.002893, sum=-0.480319
+DEBUG - Calculated metrics: TR=-0.381414, AR=-0.517686, Sharpe=-6.4196, MaxDD=-0.389422
+  Score: -7.0044
+  Testing params: {'rsi_period': 14, 'overbought': 70, 'oversold': 35, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=173, mean=-0.002766, sum=-0.478572
+DEBUG - Calculated metrics: TR=-0.380332, AR=-0.501977, Sharpe=-6.0439, MaxDD=-0.388983
+  Score: -6.8216
+  Testing params: {'rsi_period': 14, 'overbought': 75, 'oversold': 20, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=139, mean=-0.003182, sum=-0.442232
+DEBUG - Calculated metrics: TR=-0.357400, AR=-0.551454, Sharpe=-6.9594, MaxDD=-0.372498
+  Score: -6.9745
+  Testing params: {'rsi_period': 14, 'overbought': 75, 'oversold': 25, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=150, mean=-0.002983, sum=-0.447494
+DEBUG - Calculated metrics: TR=-0.360772, AR=-0.528478, Sharpe=-6.6051, MaxDD=-0.374182
+  Score: -6.9158
+  Testing params: {'rsi_period': 14, 'overbought': 75, 'oversold': 30, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=161, mean=-0.002899, sum=-0.466676
+DEBUG - Calculated metrics: TR=-0.372917, AR=-0.518308, Sharpe=-6.5338, MaxDD=-0.382845
+  Score: -6.9386
+  Testing params: {'rsi_period': 14, 'overbought': 75, 'oversold': 35, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=168, mean=-0.002767, sum=-0.464929
+DEBUG - Calculated metrics: TR=-0.371820, AR=-0.502118, Sharpe=-6.1305, MaxDD=-0.383494
+  Score: -6.7509
+  Testing params: {'rsi_period': 14, 'overbought': 80, 'oversold': 20, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=134, mean=-0.003190, sum=-0.427525
+DEBUG - Calculated metrics: TR=-0.347879, AR=-0.552466, Sharpe=-7.0298, MaxDD=-0.363201
+  Score: -6.8653
+  Testing params: {'rsi_period': 14, 'overbought': 80, 'oversold': 25, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=145, mean=-0.002985, sum=-0.432787
+DEBUG - Calculated metrics: TR=-0.351301, AR=-0.528650, Sharpe=-6.6542, MaxDD=-0.364910
+  Score: -6.8077
+  Testing params: {'rsi_period': 14, 'overbought': 80, 'oversold': 30, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=156, mean=-0.002897, sum=-0.451969
+DEBUG - Calculated metrics: TR=-0.363626, AR=-0.518141, Sharpe=-6.5774, MaxDD=-0.373702
+  Score: -6.8314
+  Testing params: {'rsi_period': 14, 'overbought': 80, 'oversold': 35, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=163, mean=-0.002762, sum=-0.450222
+DEBUG - Calculated metrics: TR=-0.362513, AR=-0.501448, Sharpe=-6.1549, MaxDD=-0.374360
+  Score: -6.6406
+  Testing params: {'rsi_period': 21, 'overbought': 65, 'oversold': 20, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=129, mean=-0.002566, sum=-0.331043
+DEBUG - Calculated metrics: TR=-0.281825, AR=-0.476222, Sharpe=-5.5351, MaxDD=-0.292249
+  Score: -5.9476
+  Testing params: {'rsi_period': 21, 'overbought': 65, 'oversold': 25, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=142, mean=-0.002471, sum=-0.350837
+DEBUG - Calculated metrics: TR=-0.295902, AR=-0.463459, Sharpe=-5.5068, MaxDD=-0.307735
+  Score: -5.6765
+  Testing params: {'rsi_period': 21, 'overbought': 65, 'oversold': 30, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=161, mean=-0.002462, sum=-0.396437
+DEBUG - Calculated metrics: TR=-0.327287, AR=-0.462330, Sharpe=-5.5528, MaxDD=-0.338252
+  Score: -5.9706
+  Testing params: {'rsi_period': 21, 'overbought': 65, 'oversold': 35, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=168, mean=-0.002487, sum=-0.417779
+DEBUG - Calculated metrics: TR=-0.341492, AR=-0.465631, Sharpe=-5.4732, MaxDD=-0.346504
+  Score: -5.8898
+  Testing params: {'rsi_period': 21, 'overbought': 70, 'oversold': 20, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=124, mean=-0.002615, sum=-0.324223
+DEBUG - Calculated metrics: TR=-0.276911, AR=-0.482583, Sharpe=-5.5415, MaxDD=-0.289324
+  Score: -6.1307
+  Testing params: {'rsi_period': 21, 'overbought': 70, 'oversold': 25, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=137, mean=-0.002511, sum=-0.344018
+DEBUG - Calculated metrics: TR=-0.291084, AR=-0.468893, Sharpe=-5.5114, MaxDD=-0.304874
+  Score: -5.5758
+  Testing params: {'rsi_period': 21, 'overbought': 70, 'oversold': 30, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=156, mean=-0.002498, sum=-0.389617
+DEBUG - Calculated metrics: TR=-0.322684, AR=-0.467079, Sharpe=-5.5574, MaxDD=-0.335517
+  Score: -5.8764
+  Testing params: {'rsi_period': 21, 'overbought': 70, 'oversold': 35, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=163, mean=-0.002521, sum=-0.410959
+DEBUG - Calculated metrics: TR=-0.336986, AR=-0.470249, Sharpe=-5.4768, MaxDD=-0.342033
+  Score: -5.8002
+  Testing params: {'rsi_period': 21, 'overbought': 75, 'oversold': 20, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=121, mean=-0.002812, sum=-0.340229
+DEBUG - Calculated metrics: TR=-0.288392, AR=-0.507655, Sharpe=-5.9658, MaxDD=-0.300608
+  Score: -6.5184
+  Testing params: {'rsi_period': 21, 'overbought': 75, 'oversold': 25, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=134, mean=-0.002687, sum=-0.360023
+DEBUG - Calculated metrics: TR=-0.302340, AR=-0.491891, Sharpe=-5.9084, MaxDD=-0.315911
+  Score: -5.9127
+  Testing params: {'rsi_period': 21, 'overbought': 75, 'oversold': 30, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=153, mean=-0.002651, sum=-0.405623
+DEBUG - Calculated metrics: TR=-0.333438, AR=-0.487310, Sharpe=-5.9124, MaxDD=-0.346067
+  Score: -6.1934
+  Testing params: {'rsi_period': 21, 'overbought': 75, 'oversold': 35, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=160, mean=-0.002669, sum=-0.426965
+DEBUG - Calculated metrics: TR=-0.347513, AR=-0.489554, Sharpe=-5.8026, MaxDD=-0.352480
+  Score: -6.0944
+  Testing params: {'rsi_period': 21, 'overbought': 80, 'oversold': 20, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=117, mean=-0.002745, sum=-0.321118
+DEBUG - Calculated metrics: TR=-0.274662, AR=-0.499245, Sharpe=-6.0561, MaxDD=-0.280322
+  Score: -6.1674
+  Testing params: {'rsi_period': 21, 'overbought': 80, 'oversold': 25, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=130, mean=-0.002622, sum=-0.340912
+DEBUG - Calculated metrics: TR=-0.288879, AR=-0.483585, Sharpe=-5.9903, MaxDD=-0.296070
+  Score: -5.7205
+  Testing params: {'rsi_period': 21, 'overbought': 80, 'oversold': 30, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=149, mean=-0.002594, sum=-0.386512
+DEBUG - Calculated metrics: TR=-0.320577, AR=-0.479881, Sharpe=-5.9856, MaxDD=-0.328680
+  Score: -6.0155
+  Testing params: {'rsi_period': 21, 'overbought': 80, 'oversold': 35, 'signal_type': 'levels'}
+DEBUG - Returns statistics: count=156, mean=-0.002614, sum=-0.407854
+DEBUG - Calculated metrics: TR=-0.334924, AR=-0.482549, Sharpe=-5.8615, MaxDD=-0.339986
+  Score: -5.9184
+  Best params: {'overbought': 70, 'oversold': 25, 'rsi_period': 21, 'signal_type': 'levels'}, Score: -5.5758
+Creating optimized SMAcrossoverRule with params: {'fast_window': 5, 'slow_window': 20, 'smooth_signals': True}
+Creating optimized RSIRule with params: {'overbought': 70, 'oversold': 25, 'rsi_period': 21, 'signal_type': 'levels'}
+2025-04-15 16:31:36 [INFO] [__main__] Debugging optimized RSI rule behavior...
+2025-04-15 16:31:36 [INFO] [src.position_management.portfolio] Portfolio initialized: Portfolio_35de73cf with 100000 USD
+2025-04-15 16:31:36 [INFO] [src.engine.execution_engine] Portfolio initialized with 100000.00 cash
+2025-04-15 16:31:36 [INFO] [src.engine.execution_engine] Execution engine initialized
+2025-04-15 16:31:36 [INFO] [src.engine.backtester] Backtester initialized with initial capital: 100000
+2025-04-15 16:31:36 [INFO] [src.engine.execution_engine] Portfolio initialized with 100000.00 cash
+2025-04-15 16:31:36 [INFO] [src.engine.execution_engine] Execution engine reset with 100000.00 capital
+2025-04-15 16:31:36 [INFO] [src.engine.backtester] Starting backtest...
+2025-04-15 16:31:36 [INFO] [src.engine.backtester] Backtest completed. Collecting results...
+2025-04-15 16:31:36 [INFO] [src.engine.backtester] Backtest results: 0 trades, 0.00% return, Sharpe: 0.00
+
+=== RSI RULE BEHAVIOR DEBUG ===
+Tested 1 parameter sets
+
+Parameters: period=21, overbought=70, oversold=25
+  - Total Return: 0.00%
+  - Sharpe Ratio: 0.00
+  - Number of Trades: 0
+2025-04-15 16:31:36 [INFO] [__main__] Running backtests with optimized parameters on training data
+
+Backtesting rule: sma_crossover with params: {'fast_window': 5, 'slow_window': 20, 'smooth_signals': True}
+2025-04-15 16:31:36 [INFO] [src.position_management.portfolio] Portfolio initialized: Portfolio_6d4c2167 with 100000 USD
+2025-04-15 16:31:36 [INFO] [src.engine.execution_engine] Portfolio initialized with 100000.00 cash
+2025-04-15 16:31:36 [INFO] [src.engine.execution_engine] Execution engine initialized
+2025-04-15 16:31:36 [INFO] [src.engine.backtester] Backtester initialized with initial capital: 100000
+2025-04-15 16:31:36 [INFO] [src.engine.execution_engine] Portfolio initialized with 100000.00 cash
+2025-04-15 16:31:36 [INFO] [src.engine.execution_engine] Execution engine reset with 100000.00 capital
+2025-04-15 16:31:36 [INFO] [src.engine.backtester] Starting backtest...
+2025-04-15 16:31:36 [INFO] [src.engine.backtester] Backtest completed. Collecting results...
+2025-04-15 16:31:36 [INFO] [src.engine.backtester] Backtest results: 0 trades, 0.00% return, Sharpe: 0.00
+Backtest results for sma_crossover:
+  - Total Return: 0.00%
+  - Sharpe Ratio: 0.00
+  - Number of Trades: 0
+
+Backtesting rule: rsi_rule with params: {'overbought': 70, 'oversold': 25, 'rsi_period': 21, 'signal_type': 'levels'}
+2025-04-15 16:31:36 [INFO] [src.position_management.portfolio] Portfolio initialized: Portfolio_f873c7ca with 100000 USD
+2025-04-15 16:31:36 [INFO] [src.engine.execution_engine] Portfolio initialized with 100000.00 cash
+2025-04-15 16:31:36 [INFO] [src.engine.execution_engine] Execution engine initialized
+2025-04-15 16:31:36 [INFO] [src.engine.backtester] Backtester initialized with initial capital: 100000
+2025-04-15 16:31:36 [INFO] [src.engine.execution_engine] Portfolio initialized with 100000.00 cash
+2025-04-15 16:31:36 [INFO] [src.engine.execution_engine] Execution engine reset with 100000.00 capital
+2025-04-15 16:31:36 [INFO] [src.engine.backtester] Starting backtest...
+2025-04-15 16:31:36 [INFO] [src.engine.backtester] Backtest completed. Collecting results...
+2025-04-15 16:31:36 [INFO] [src.engine.backtester] Backtest results: 0 trades, 0.00% return, Sharpe: 0.00
+Backtest results for rsi_rule:
+  - Total Return: 0.00%
+  - Sharpe Ratio: 0.00
+  - Number of Trades: 0
+2025-04-15 16:31:36 [INFO] [__main__] Running backtests with optimized parameters on test data
+
+Backtesting rule: sma_crossover with params: {'fast_window': 5, 'slow_window': 20, 'smooth_signals': True}
+2025-04-15 16:31:36 [INFO] [src.position_management.portfolio] Portfolio initialized: Portfolio_ca1beee9 with 100000 USD
+2025-04-15 16:31:36 [INFO] [src.engine.execution_engine] Portfolio initialized with 100000.00 cash
+2025-04-15 16:31:36 [INFO] [src.engine.execution_engine] Execution engine initialized
+2025-04-15 16:31:36 [INFO] [src.engine.backtester] Backtester initialized with initial capital: 100000
+2025-04-15 16:31:36 [INFO] [src.engine.execution_engine] Portfolio initialized with 100000.00 cash
+2025-04-15 16:31:36 [INFO] [src.engine.execution_engine] Execution engine reset with 100000.00 capital
+2025-04-15 16:31:36 [INFO] [src.engine.backtester] Starting backtest...
+2025-04-15 16:31:36 [INFO] [src.engine.backtester] Backtest completed. Collecting results...
+2025-04-15 16:31:36 [INFO] [src.engine.backtester] Backtest results: 0 trades, 0.00% return, Sharpe: 0.00
+Backtest results for sma_crossover:
+  - Total Return: 0.00%
+  - Sharpe Ratio: 0.00
+  - Number of Trades: 0
+
+Backtesting rule: rsi_rule with params: {'overbought': 70, 'oversold': 25, 'rsi_period': 21, 'signal_type': 'levels'}
+2025-04-15 16:31:36 [INFO] [src.position_management.portfolio] Portfolio initialized: Portfolio_b492eeb8 with 100000 USD
+2025-04-15 16:31:36 [INFO] [src.engine.execution_engine] Portfolio initialized with 100000.00 cash
+2025-04-15 16:31:36 [INFO] [src.engine.execution_engine] Execution engine initialized
+2025-04-15 16:31:36 [INFO] [src.engine.backtester] Backtester initialized with initial capital: 100000
+2025-04-15 16:31:36 [INFO] [src.engine.execution_engine] Portfolio initialized with 100000.00 cash
+2025-04-15 16:31:36 [INFO] [src.engine.execution_engine] Execution engine reset with 100000.00 capital
+2025-04-15 16:31:36 [INFO] [src.engine.backtester] Starting backtest...
+2025-04-15 16:31:36 [INFO] [src.engine.backtester] Backtest completed. Collecting results...
+2025-04-15 16:31:36 [INFO] [src.engine.backtester] Backtest results: 0 trades, 0.00% return, Sharpe: 0.00
+Backtest results for rsi_rule:
+  - Total Return: 0.00%
+  - Sharpe Ratio: 0.00
+  - Number of Trades: 0
+2025-04-15 16:31:36 [INFO] [__main__] Saved equity curves plot to equity_curves.png
+2025-04-15 16:31:36 [INFO] [__main__] Saved equity curves plot to equity_curves.png
+2025-04-15 16:31:36 [INFO] [__main__] 
+Parameter Optimization Summary:
+2025-04-15 16:31:36 [INFO] [__main__] --------------------------------------------------
+2025-04-15 16:31:36 [INFO] [__main__] SMA Crossover Rule:
+2025-04-15 16:31:36 [INFO] [__main__]   Default parameters: {'fast_window': 10, 'slow_window': 30, 'smooth_signals': True}
+2025-04-15 16:31:36 [INFO] [__main__]   Default performance (Train): Return=0.00%, Sharpe=0.00
+2025-04-15 16:31:36 [INFO] [__main__]   Optimized parameters: {'fast_window': 5, 'slow_window': 20, 'smooth_signals': True}
+2025-04-15 16:31:36 [INFO] [__main__]   Optimized performance (Train): Return=0.00%, Sharpe=0.00
+2025-04-15 16:31:36 [INFO] [__main__]   Improvement (Train): Return +0.00%, Sharpe +0.00
+2025-04-15 16:31:36 [INFO] [__main__]   Out-of-sample performance (Test): Return=0.00%, Sharpe=0.00
+2025-04-15 16:31:36 [INFO] [__main__] 
+RSI Rule:
+2025-04-15 16:31:36 [INFO] [__main__]   Default parameters: {'rsi_period': 14, 'overbought': 70, 'oversold': 30, 'signal_type': 'levels'}
+2025-04-15 16:31:36 [INFO] [__main__]   Default performance (Train): Return=0.00%, Sharpe=0.00
+2025-04-15 16:31:36 [INFO] [__main__]   Optimized parameters: {'overbought': 70, 'oversold': 25, 'rsi_period': 21, 'signal_type': 'levels'}
+2025-04-15 16:31:36 [INFO] [__main__]   Optimized performance (Train): Return=0.00%, Sharpe=0.00
+2025-04-15 16:31:36 [INFO] [__main__]   Improvement (Train): Return +0.00%, Sharpe +0.00
+2025-04-15 16:31:36 [INFO] [__main__]   Out-of-sample performance (Test): Return=0.00%, Sharpe=0.00
 
 Script executed successfully!
-Status: error
-Bars processed: 0
-Signals generated: 0
-Orders generated: 0
-Fills processed: 0
-Final equity: $0.00
-Total return: 0.00%
+
+Best SMA Parameters:
+  fast_window: 5
+  slow_window: 20
+  smooth_signals: True
+
+Best RSI Parameters:
+  overbought: 70
+  oversold: 25
+  rsi_period: 21
+  signal_type: levels
+
+Check equity_curves.png for a visual comparison

@@ -28,12 +28,10 @@ class ComponentFactory(ABC):
 # Rule-specific implementations
 class RuleFactory(ComponentFactory):
     """Factory for creating rule instances."""
-    
+
     def create(self, rule_class, params):
         """Create a rule instance with the given parameters."""
-        return rule_class(params)
-
-
+        return rule_class(params=params)  # Pass as a named parameter
 
 # Regime detector-specific implementations
 class RegimeDetectorFactory(ComponentFactory):
