@@ -18,6 +18,27 @@ from src.position_management.position_manager import PositionManager, PositionSi
 # Set up logging
 logger = logging.getLogger(__name__)
 
+from enum import Enum, auto
+import numpy as np
+
+class EventType(Enum):
+    BAR = auto()
+    SIGNAL = auto()
+    ORDER = auto()
+    FILL = auto()
+
+
+class Event:
+    def __init__(self, event_type, data=None):
+        self.event_type = event_type
+        self.data = data
+    
+
+
+class BarEvent:
+    def __init__(self, bar):
+        self.bar = bar
+
 class Order:
     """Simple Order class for backtesting."""
     
@@ -124,80 +145,74 @@ class Backtester:
         
         # Register fill handler
         self.event_bus.register(EventType.FILL, self._on_fill)
-    
+
+
     def run(self, use_test_data=False):
         """
         Run the backtest.
-        
+
         Args:
             use_test_data: Whether to use test data (True) or training data (False)
-            
+
         Returns:
             dict: Backtest results
         """
-        # Reset all components before running
-        self.reset()
-        logger.info("Starting backtest...")
-        
-        # Select data iterator based on data set
-        iterator = self.data_handler.iter_test() if use_test_data else self.data_handler.iter_train()
-        
-        # Process each bar
-        for bar_event in iterator:
-            # Get the bar data
-            bar = bar_event.bar if hasattr(bar_event, 'bar') else bar_event
-            
-            # Log periodically for long backtests
-            if hasattr(bar, 'get') and bar.get('timestamp') and hasattr(bar.get('timestamp'), 'day'):
-                timestamp = bar.get('timestamp')
-                if timestamp.day == 1 and timestamp.hour == 0 and timestamp.minute == 0:
-                    logger.info(f"Processing data for {timestamp}")
-            
-            # Process bar through strategy to get signals
-            signal_or_signals = self.strategy.on_bar(bar_event)
-            
-            # Handle signals from strategy
-            self._process_signals(signal_or_signals, bar)
-            
-            # Update portfolio with current bar data
-            self.execution_engine.update(bar)
-            
-            # Execute any pending orders
-            self.execution_engine.execute_pending_orders(bar, self.market_simulator)
-        
-        logger.info("Backtest completed. Collecting results...")
-        
-        # Collect and return results
-        return self.collect_results()
-    
-    def _process_signals(self, signal_or_signals, bar):
-        """
-        Process signals from strategy.
-        
-        Args:
-            signal_or_signals: Single signal or list of signals from strategy
-            bar: Current bar data
-        """
-        if signal_or_signals is None:
-            return
-        
-        # Ensure signals is a list
-        signals = signal_or_signals if isinstance(signal_or_signals, list) else [signal_or_signals]
-        
-        # Process each signal
-        for signal in signals:
-            if signal is None:
-                continue
-                
-            # Store signal for debugging
-            self.signals.append(signal)
-            
-            # Create signal event
-            signal_event = Event(EventType.SIGNAL, signal)
-            
-            # Emit signal event to event bus
-            self.event_bus.emit(signal_event)
-    
+        try:
+            # Reset all components before running
+            self.reset()
+            logger.info("Starting backtest...")
+
+            # Select data iterator based on data set
+            iterator = self.data_handler.iter_test() if use_test_data else self.data_handler.iter_train()
+
+            # Process each bar
+            for bar_event in iterator:
+                # Get the bar data - handle both raw dict and BarEvent
+                if hasattr(bar_event, 'bar'):
+                    bar = bar_event.bar  # It's already a BarEvent
+                else:
+                    bar = bar_event  # It's a raw dict
+                    bar_event = BarEvent(bar)  # Wrap it
+
+                # Log some bars for debugging
+                if isinstance(bar, dict) and 'timestamp' in bar:
+                    logger.info(f"Processing bar for {bar['timestamp']} - Close: {bar.get('Close')}")
+
+                # Process bar through strategy to get signals
+                signal_or_signals = self.strategy.on_bar(bar_event)
+
+                # Handle signals from strategy
+                self._process_signals(signal_or_signals, bar)
+
+                # Update portfolio with current bar data
+                self.execution_engine.update(bar)
+
+                # Execute any pending orders
+                self.execution_engine.execute_pending_orders(bar, self.market_simulator)
+
+            logger.info("Backtest completed. Collecting results...")
+
+            # Collect and return results
+            return self.collect_results()
+        except Exception as e:
+            logger.error(f"Error during backtest execution: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+
+            # Return empty results instead of None
+            return {
+                'error': str(e),
+                'trades': [],
+                'num_trades': 0,
+                'signals': self.signals,
+                'orders': self.orders,
+                'total_percent_return': 0,
+                'total_log_return': 0,
+                'average_return': 0,
+                'portfolio_history': []
+            }
+
+
     def _on_signal(self, event):
         """
         Handle signal events by generating orders.
@@ -353,131 +368,192 @@ class Backtester:
         max_drawdown = np.max(drawdowns) if len(drawdowns) > 0 else 0.0
         
         return max_drawdown
-    
+
     def collect_results(self):
         """
         Collect backtest results for analysis.
-        
+
         Returns:
             dict: Results dictionary with trades, portfolio history, etc.
         """
-        # Get trade history
-        trade_history = self.execution_engine.get_trade_history()
-        
-        # Process trades into standard format
-        processed_trades = self._process_trades(trade_history)
-        
-        # Calculate performance metrics
-        total_return, total_log_return, avg_return = self._calculate_performance_metrics(processed_trades)
-        
-        # Get portfolio history
-        portfolio_history = self.execution_engine.get_portfolio_history()
-        
-        # Calculate Sharpe ratio
-        sharpe_ratio = self.calculate_sharpe()
-        
-        # Calculate max drawdown
-        max_drawdown = self.calculate_max_drawdown()
-        
-        # Return structured results
-        results = {
-            'trades': processed_trades,
-            'num_trades': len(processed_trades),
-            'total_log_return': total_log_return,
-            'total_percent_return': total_return,
-            'average_return': avg_return,
-            'sharpe_ratio': sharpe_ratio,
-            'max_drawdown': max_drawdown,
-            'portfolio_history': portfolio_history,
-            'signals': self.signals,
-            'config': self.config
-        }
-        
-        logger.info(f"Backtest results: {len(processed_trades)} trades, {total_return:.2f}% return, Sharpe: {sharpe_ratio:.2f}")
-        
-        return results
-    
-    def _process_trades(self, trade_history):
+        try:
+            # Get trade history
+            trade_history = self.execution_engine.get_trade_history()
+
+            # Process trades into standard format
+            processed_trades = self._process_trades(trade_history)
+
+            # Calculate performance metrics
+            total_return, total_log_return, avg_return = self._calculate_performance_metrics(processed_trades)
+
+            # Get portfolio history
+            portfolio_history = self.execution_engine.get_portfolio_history()
+
+            # Calculate Sharpe ratio
+            sharpe_ratio = self.calculate_sharpe()
+
+            # Calculate max drawdown
+            max_drawdown = self.calculate_max_drawdown()
+
+            # Return structured results
+            results = {
+                'trades': processed_trades,
+                'num_trades': len(processed_trades),
+                'total_log_return': total_log_return,
+                'total_percent_return': total_return,
+                'average_return': avg_return,
+                'sharpe_ratio': sharpe_ratio,
+                'max_drawdown': max_drawdown,
+                'portfolio_history': portfolio_history,
+                'signals': self.signals,
+                'orders': self.orders,
+                'config': self.config
+            }
+
+            logger.info(f"Backtest results: {len(processed_trades)} trades, {total_return:.2f}% return, Sharpe: {sharpe_ratio:.2f}")
+
+            return results
+        except Exception as e:
+            logger.error(f"Error collecting backtest results: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+
+            # Return basic results
+            return {
+                'error': str(e),
+                'trades': [],
+                'num_trades': 0,
+                'signals': self.signals,
+                'orders': self.orders,
+                'total_percent_return': 0,
+                'total_log_return': 0,
+                'average_return': 0,
+                'portfolio_history': []
+            }
+
+
+    def _process_signals(self, signal_or_signals, bar):
         """
-        Process trade history into standard format.
-        
+        Process signals from strategy.
+
         Args:
-            trade_history: Raw trade history
-            
-        Returns:
-            list: Processed trades in standard format
+            signal_or_signals: Single signal or list of signals from strategy
+            bar: Current bar data
         """
-        # Simple implementation - convert each fill to a trade record
-        processed_trades = []
-        
-        # Pair trades (buy and sell)
-        open_positions = {}
-        
-        for fill in trade_history:
-            # Extract trade information
-            symbol = getattr(fill, 'symbol', 'default')
-            direction = getattr(fill, 'direction', 0)
-            if direction == 0 and hasattr(fill, 'order') and hasattr(fill.order, 'direction'):
-                direction = fill.order.direction
-                
-            timestamp = getattr(fill, 'timestamp', None)
-            price = getattr(fill, 'fill_price', getattr(fill, 'price', 0))
-            quantity = getattr(fill, 'quantity', 0)
-            
-            # Skip invalid trades
-            if direction == 0 or price == 0 or quantity == 0:
+        if signal_or_signals is None:
+            return
+
+        # Ensure signals is a list
+        signals = signal_or_signals if isinstance(signal_or_signals, list) else [signal_or_signals]
+
+        # Process each signal
+        for signal in signals:
+            if signal is None:
                 continue
-            
-            # Check if this closes an existing position
-            position_key = f"{symbol}_{1 if direction < 0 else -1}"  # Opposite direction for closing
-            
-            if position_key in open_positions:
-                # This is a closing trade
-                entry = open_positions[position_key]
-                
-                # Calculate return
-                if entry['direction'] > 0:  # Long position
-                    log_return = np.log(price / entry['price'])
-                else:  # Short position
-                    log_return = np.log(entry['price'] / price)
-                
-                # Create trade record
-                trade = (
-                    entry['timestamp'],
-                    'long' if entry['direction'] > 0 else 'short',
-                    entry['price'],
-                    timestamp,
-                    price,
-                    log_return
-                )
-                
-                processed_trades.append(trade)
-                
-                # Remove closed position
-                del open_positions[position_key]
-            else:
-                # This is an opening trade
-                position_key = f"{symbol}_{direction}"
-                open_positions[position_key] = {
-                    'timestamp': timestamp,
-                    'price': price,
-                    'direction': direction,
-                    'quantity': quantity
-                }
-        
-        # Add any remaining open positions with no return
-        for key, entry in open_positions.items():
-            trade = (
-                entry['timestamp'],
-                'long' if entry['direction'] > 0 else 'short',
-                entry['price'],
-                None,  # No exit time
-                None,  # No exit price
-                0.0    # No return
+
+            # Store signal for debugging
+            self.signals.append(signal)
+
+            # Debug log the raw signal details
+            logger.info(f"Raw signal: {signal}")
+            if hasattr(signal, 'signal_type'):
+                logger.info(f"Signal type: {signal.signal_type}")
+            if hasattr(signal, 'confidence'):
+                logger.info(f"Signal confidence: {signal.confidence}")
+
+            # TEMPORARY HACK: Check component signals to generate orders more aggressively
+            if hasattr(signal, 'metadata') and 'component_signals' in signal.metadata:
+                # Extract raw component signals
+                component_signals = signal.metadata['component_signals']
+                logger.info(f"Component signals: {component_signals}")
+
+                # Check if any component has a non-neutral signal
+                for comp_name, comp_value in component_signals.items():
+                    if comp_value != 0:  # Non-neutral
+                        logger.info(f"Found non-neutral component signal: {comp_name} = {comp_value}")
+
+                        # Create an order directly
+                        direction = 1 if comp_value > 0 else -1
+                        order = Order(
+                            symbol='default',
+                            order_type="MARKET",
+                            quantity=100,  # Default size
+                            direction=direction,
+                            timestamp=signal.timestamp if hasattr(signal, 'timestamp') else None,
+                            price=signal.price if hasattr(signal, 'price') else bar.get('Close', 0)
+                        )
+
+                        # Store order for debugging
+                        self.orders.append(order)
+                        logger.info(f"Created order: {order}")
+
+                        # Create order event
+                        order_event = Event(EventType.ORDER, order)
+
+                        # Emit order event
+                        self.event_bus.emit(order_event)
+                        break  # Just process the first non-neutral component
+
+            # Skip neutral signals
+            if hasattr(signal, 'signal_type') and signal.signal_type == SignalType.NEUTRAL:
+                logger.info("Skipping neutral signal")
+                continue
+
+            # If we get here, we have a non-neutral signal from the strategy
+            # Calculate position size
+            position_size = self.position_manager.calculate_position_size(
+                signal, 
+                self.execution_engine.portfolio if hasattr(self.execution_engine, 'portfolio') else {'equity': self.initial_capital}
             )
-            processed_trades.append(trade)
-        
-        return processed_trades
+
+            # Skip if position size is zero
+            if position_size == 0:
+                logger.info("Position size is zero, skipping order generation")
+                continue
+
+            # Determine direction
+            direction = 1  # Default to buy
+            if hasattr(signal, 'signal_type'):
+                direction = 1 if signal.signal_type == SignalType.BUY else -1
+            elif hasattr(signal, 'direction'):
+                direction = signal.direction
+
+            # Extract timestamp
+            timestamp = None
+            if hasattr(signal, 'timestamp'):
+                timestamp = signal.timestamp
+
+            # Extract price
+            price = None
+            if hasattr(signal, 'price'):
+                price = signal.price
+
+            # Extract symbol
+            symbol = 'default'
+            if hasattr(signal, 'symbol') and signal.symbol:
+                symbol = signal.symbol
+
+            # Create order
+            order = Order(
+                symbol=symbol,
+                order_type="MARKET",
+                quantity=abs(position_size),
+                direction=direction,
+                timestamp=timestamp,
+                price=price
+            )
+
+            # Store order for debugging
+            self.orders.append(order)
+            logger.info(f"Created order from signal: {order}")
+
+            # Create order event
+            order_event = Event(EventType.ORDER, order)
+
+            # Emit order event
+            self.event_bus.emit(order_event)
+
+
     
     def _calculate_performance_metrics(self, processed_trades):
         """
@@ -911,14 +987,6 @@ class DefaultPositionManager:
 
 
 # # Import these from other modules in real implementation
-# from enum import Enum, auto
-# import numpy as np
-
-# class EventType(Enum):
-#     BAR = auto()
-#     SIGNAL = auto()
-#     ORDER = auto()
-#     FILL = auto()
 
 # class Event:
 #     def __init__(self, event_type, data=None):

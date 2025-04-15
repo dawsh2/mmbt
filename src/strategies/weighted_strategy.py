@@ -53,33 +53,31 @@ class WeightedStrategy(Strategy):
         self.buy_threshold = buy_threshold
         self.sell_threshold = sell_threshold
         self.last_signal = None
-    
+
     def on_bar(self, event):
-        """Process a bar and generate a weighted signal.
-        
-        Args:
-            event: Bar event containing market data
-                
-        Returns:
-            Signal: Combined signal based on weighted components
-        """
         bar = event.bar
-        
+
         # Get signals from all components
         combined_signals = []
         component_signals = {}  # For metadata
-        
+
         for i, component in enumerate(self.components):
             signal_object = component.on_bar(bar)
-            
+
             if signal_object and hasattr(signal_object, 'signal_type'):
-                signal_value = signal_object.signal_type.value
-                combined_signals.append(signal_value * self.weights[i])
-                component_signals[getattr(component, 'name', f'component_{i}')] = signal_value
+                # Don't modify by weight for SELL and BUY signals
+                if signal_object.signal_type == SignalType.SELL:
+                    combined_signals.append(-1.0 * self.weights[i])  # Fixed value for SELL
+                elif signal_object.signal_type == SignalType.BUY:
+                    combined_signals.append(1.0 * self.weights[i])   # Fixed value for BUY
+                else:
+                    combined_signals.append(0)  # NEUTRAL
+
+                component_signals[getattr(component, 'name', f'component_{i}')] = signal_object.signal_type.value
             else:
                 combined_signals.append(0)
                 component_signals[getattr(component, 'name', f'component_{i}')] = 0
-        
+
         # Calculate weighted sum
         weighted_sum = np.sum(combined_signals)
         
