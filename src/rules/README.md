@@ -9,6 +9,8 @@ Each rule:
 - Maintains internal state and history
 - Processes bar data (OHLCV)
 - Returns standardized Signal objects
+- Has validation logic for parameters
+- Provides state management capabilities
 
 ### Signal
 Each signal contains:
@@ -17,10 +19,16 @@ Each signal contains:
 - Price at generation
 - Metadata with calculations
 
+### RuleRegistry
+A central registry that:
+- Maintains a catalog of available rule types
+- Allows rules to be organized by category
+- Provides factory methods for rule instantiation
+
 ## Basic Usage
 
 ```python
-from rules import create_rule
+from src.rules import create_rule
 
 # Create a rule
 sma_rule = create_rule('SMAcrossoverRule', {
@@ -44,7 +52,7 @@ if signal.signal_type == SignalType.BUY:
 
 ### Creating Composite Rules
 ```python
-from rules import create_composite_rule
+from src.rules import create_composite_rule
 
 # Combine multiple rules into a composite rule
 composite = create_composite_rule(
@@ -57,6 +65,58 @@ composite = create_composite_rule(
     aggregation_method="majority"  # How to combine signals
 )
 ```
+
+### State Management
+
+Rules maintain internal state that can be reset or manipulated:
+
+```python
+# Reset a rule's state (e.g., when starting a new symbol or timeframe)
+rule.reset()
+
+# Access a rule's state
+current_state = rule.get_state('position')
+
+# Update a rule's state
+rule.update_state('position', 1)  # 1 for long, -1 for short, 0 for flat
+```
+
+### Error Handling
+
+Rules validate their parameters and throw descriptive exceptions:
+
+```python
+try:
+    invalid_rule = create_rule('SMAcrossoverRule', {'fast_window': 50, 'slow_window': 10})
+except ValueError as e:
+    print(f"Invalid parameters: {e}")
+    # Will print: "Invalid parameters: Fast window must be smaller than slow window"
+```
+
+### Integration with Signal Filters
+
+Rules generate signals that can be further processed by signal filters:
+
+```python
+from src.signals.signal_processing import MovingAverageFilter
+from src.rules import create_rule
+
+# Create a rule and a filter
+rule = create_rule('RSIRule')
+signal_filter = MovingAverageFilter(window_size=3)
+
+# Process bar and filter the signal
+raw_signal = rule.on_bar(bar_data)
+filtered_signal = signal_filter.filter(raw_signal)
+```
+
+## Rule Class Hierarchy
+
+The module provides several types of rules:
+
+- **Rule**: The base abstract class for all rules
+- **CompositeRule**: Combines multiple rules with aggregation methods
+- **FeatureBasedRule**: Uses pre-computed features rather than calculating indicators
 
 ## Rule Reference
 
@@ -390,7 +450,7 @@ When creating composite rules, the following aggregation methods are available:
 The RuleFactory provides advanced methods for creating rules:
 
 ```python
-from rules import RuleFactory
+from src.rules import RuleFactory
 
 factory = RuleFactory()
 
@@ -415,12 +475,39 @@ rule = factory.create_from_config({
 })
 ```
 
+## Rule Registry
+
+The RuleRegistry maintains a catalog of all available rule types:
+
+```python
+from src.rules import get_registry
+
+# Get the registry
+registry = get_registry()
+
+# List all available rules
+all_rules = registry.list_rules()
+
+# List rules by category
+volatility_rules = registry.list_rules(category="volatility")
+
+# List all rule categories
+categories = registry.list_categories()
+
+# Create a rule using the registry directly
+rule = registry.create_rule(
+    name="RSIRule",
+    params={"rsi_period": 10},
+    rule_name="custom_rsi"
+)
+```
+
 ## Rule Optimization
 
 Rules can be optimized to find optimal parameters:
 
 ```python
-from rules import RuleOptimizer
+from src.rules import RuleOptimizer
 
 def evaluate_rule(rule):
     # Custom evaluation function
@@ -460,8 +547,8 @@ best_params, best_score = optimizer.optimize_random_search(
 You can create custom rules by subclassing the Rule base class:
 
 ```python
-from rules import Rule, register_rule
-from signals import Signal, SignalType
+from src.rules import Rule, register_rule
+from src.signals import Signal, SignalType
 
 @register_rule(category="custom")
 class MyCustomRule(Rule):
@@ -488,6 +575,33 @@ class MyCustomRule(Rule):
         )
 ```
 
+### Creating Feature-Based Rules
+
+For rules that work on pre-computed features rather than raw price data:
+
+```python
+from src.rules.rule_base import FeatureBasedRule
+from src.rules import register_rule
+
+@register_rule(category="feature_based")
+class MyFeatureRule(FeatureBasedRule):
+    def __init__(self, name="my_feature_rule", params=None, description=""):
+        # Define which features this rule needs
+        feature_names = ['feature1', 'feature2']
+        super().__init__(name, feature_names, params, description)
+    
+    def make_decision(self, features, data):
+        # Logic using features instead of calculating indicators
+        if features['feature1'] > features['feature2']:
+            return Signal(
+                timestamp=data.get('timestamp'),
+                signal_type=SignalType.BUY,
+                price=data.get('Close'),
+                rule_id=self.name
+            )
+        # ...
+```
+
 ### Resetting Rule State
 
 Rules maintain state between bars. Reset them when starting a new analysis:
@@ -499,3 +613,43 @@ rule.reset()
 # Reset all rules in a composite rule
 composite_rule.reset()
 ```
+
+### Analyzing Signal Quality
+
+You can inspect the signals generated by rules:
+
+```python
+# Get confidence level from a signal
+confidence = signal.confidence
+
+# Extract calculation details from metadata
+metadata = signal.metadata
+if 'vi_plus' in metadata:
+    vi_plus = metadata['vi_plus']
+    vi_minus = metadata['vi_minus']
+    
+# Check if a signal came from a filtered source
+is_filtered = metadata.get('filtered', False)
+```
+
+## Best Practices
+
+1. **Reset Rules Between Symbols**: Always reset rules when switching to a new symbol or timeframe.
+
+2. **Validate Parameters**: Check that rule parameters are reasonable for your data frequency.
+
+3. **Chain Processing**: Use signal filters from the signals module to further refine rule signals.
+
+4. **Combine Rules Effectively**: Use composite rules with appropriate aggregation methods for more robust signals.
+
+5. **Monitor Performance**: Track the performance of individual rules to identify the most effective ones.
+
+6. **Handle Errors**: Use try/except blocks when creating rules with custom parameters to catch validation errors.
+
+7. **Manage State**: Be aware that rules maintain internal state that can affect signal generation.
+
+8. **Optimize Parameters**: Use the optimization tools to find the best parameters for your specific market.
+
+9. **Document Custom Rules**: Clearly document the expected input data format for custom rules.
+
+10. **Test Edge Cases**: Ensure custom rules handle edge cases like missing data or extreme values gracefully.

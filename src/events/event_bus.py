@@ -316,6 +316,9 @@ class EventBus:
             self.start_dispatch_thread()
 
 
+
+
+
 class EventCacheManager:
     """
     Manager for caching events for improved performance.
@@ -362,7 +365,7 @@ class EventCacheManager:
         
         # Enforce max cache size
         if len(cache) > self.max_cache_size:
-            # Remove a random key (simpler than LRU for now)
+            # Remove oldest keys first (we'll use a simple approach here)
             for k in list(cache.keys())[:1]:
                 del cache[k]
     
@@ -378,7 +381,7 @@ class EventCacheManager:
             self.caches = {event_type: {} for event_type in EventType}
         else:
             # Clear specific cache
-            self.caches[event_type] = {}
+            self.caches[event_type] = {}            
 
 
 # Example usage
@@ -414,3 +417,6 @@ if __name__ == "__main__":
     # Retrieve cached event
     cached_event = cache_manager.get_cached_event(EventType.BAR, key="AAPL_2023-06-15")
     print(f"Cached event: {cached_event}")
+
+
+    

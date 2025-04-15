@@ -7,30 +7,33 @@ connecting strategy, execution, and data components into a cohesive simulation e
 
 import numpy as np
 import logging
-from typing import Dict, Any, List, Optional, Callable, Union
+from typing import Dict, Any, List, Optional, Union, Callable
+from datetime import datetime
 
 
 from src.events.event_bus import Event, EventBus
 from src.events.event_types import EventType
 from src.signals import Signal, SignalType
-from src.engine import ExecutionEngine, MarketSimulator
-from src.position_management.position_manager import PositionManager, PositionSizer
+from src.engine.execution_engine import ExecutionEngine
+from src.engine.market_simulator import MarketSimulator
+
+# Try to import comprehensive position management
+try:
+    from src.position_management.position_manager import PositionManager as ComprehensivePositionManager
+    from src.position_management.portfolio import Portfolio
+    POSITION_MANAGEMENT_AVAILABLE = True
+except ImportError:
+    POSITION_MANAGEMENT_AVAILABLE = False
+    logging.warning("Comprehensive position management module not available, using simplified version")
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
 
-
-class Event:
-    def __init__(self, event_type, data=None):
-        self.event_type = event_type
-        self.data = data
-    
-
-
 class BarEvent:
     def __init__(self, bar):
         self.bar = bar
+
 
 class Order:
     """Simple Order class for backtesting."""
@@ -59,6 +62,52 @@ class Order:
         return f"Order({self.symbol}, {self.order_type}, {self.direction * self.quantity}, {self.timestamp})"
 
 
+class DefaultPositionManager:
+    """
+    Simple position manager that implements basic functionality.
+    Used as a fallback if the comprehensive position management module is not available.
+    """
+    
+    def __init__(self):
+        """Initialize the position manager."""
+        self.default_size = 100
+    
+    def calculate_position_size(self, signal, portfolio):
+        """
+        Calculate position size based on signal.
+        
+        Args:
+            signal: Trading signal
+            portfolio: Current portfolio state
+            
+        Returns:
+            float: Position size (positive for buy, negative for sell)
+        """
+        # Default position size
+        size = self.default_size
+        
+        # Adjust direction based on signal
+        direction = 1  # Default to buy
+        
+        if hasattr(signal, 'signal_type'):
+            if hasattr(signal.signal_type, 'value'):
+                direction = signal.signal_type.value
+            elif isinstance(signal.signal_type, str):
+                if signal.signal_type in ['SELL', 'SHORT']:
+                    direction = -1
+                elif signal.signal_type == 'NEUTRAL':
+                    return 0
+        elif hasattr(signal, 'direction'):
+            direction = signal.direction
+        
+        # Apply direction to size
+        return size * direction
+    
+    def reset(self):
+        """Reset the position manager state."""
+        pass
+
+
 class Backtester:
     """
     Main orchestration class that coordinates the backtest execution.
@@ -79,12 +128,27 @@ class Backtester:
         self.data_handler = data_handler
         self.strategy = strategy
         
+        # Initialize position management
+        if position_manager is not None:
+            self.position_manager = position_manager
+        elif POSITION_MANAGEMENT_AVAILABLE:
+            # Use the comprehensive position management if available
+            initial_capital = self._extract_initial_capital(config)
+            portfolio = Portfolio(initial_capital=initial_capital)
+            self.position_manager = ComprehensivePositionManager(
+                portfolio=portfolio, 
+                max_positions=config.get('max_positions', 0) if hasattr(config, 'get') else 0
+            )
+        else:
+            # Fall back to the simple position manager
+            self.position_manager = DefaultPositionManager()
+        
         # Initialize execution components
-        self.position_manager = position_manager or DefaultPositionManager()
         self.execution_engine = ExecutionEngine(self.position_manager)
         
         # Initialize event system
         self.event_bus = EventBus()
+        self.execution_engine.event_bus = self.event_bus
         
         # Initialize market simulator
         market_sim_config = self._extract_market_sim_config(config)
@@ -216,7 +280,10 @@ class Backtester:
         signal = event.data
         
         # Skip neutral signals
-        if hasattr(signal, 'signal_type') and signal.signal_type == SignalType.NEUTRAL:
+        if hasattr(signal, 'signal_type') and (
+            signal.signal_type == SignalType.NEUTRAL or 
+            getattr(signal.signal_type, 'value', 0) == 0
+        ):
             return
         
         # Calculate position size
@@ -232,7 +299,11 @@ class Backtester:
         # Determine direction
         direction = 1  # Default to buy
         if hasattr(signal, 'signal_type'):
-            direction = 1 if signal.signal_type == SignalType.BUY else -1
+            if hasattr(signal.signal_type, 'value'):
+                direction = 1 if signal.signal_type.value > 0 else -1
+            elif isinstance(signal.signal_type, str):
+                if signal.signal_type in ['SELL', 'SHORT']:
+                    direction = -1
         elif hasattr(signal, 'direction'):
             direction = signal.direction
         
@@ -503,59 +574,20 @@ class Backtester:
             self.signals.append(signal)
 
             # Debug log the raw signal details
-            logger.info(f"Raw signal: {signal}")
+            logger.debug(f"Raw signal: {signal}")
             if hasattr(signal, 'signal_type'):
-                logger.info(f"Signal type: {signal.signal_type}")
+                logger.debug(f"Signal type: {signal.signal_type}")
             if hasattr(signal, 'confidence'):
-                logger.info(f"Signal confidence: {signal.confidence}")
-
-            # TEMPORARY HACK: Check component signals to generate orders more aggressively
-            if hasattr(signal, 'metadata') and 'component_signals' in signal.metadata:
-                # Extract raw component signals
-                component_signals = signal.metadata['component_signals']
-                logger.info(f"Component signals: {component_signals}")
-
-                # Check if any component has a non-neutral signal
-                for comp_name, comp_value in component_signals.items():
-                    if comp_value != 0:  # Non-neutral
-                        logger.info(f"Found non-neutral component signal: {comp_name} = {comp_value}")
-
-                        # Create an order directly
-                        direction = 1 if comp_value > 0 else -1
-
-                        # For testing, also try BUY orders
-                        if direction < 0:  # Convert negative directions to positive for testing
-                            direction = 1
-                            logger.info(f"Converting order to BUY for testing purposes")
-
-                        order = Order(
-                            symbol='default',
-                            order_type="MARKET",
-                            quantity=100,  # Default size
-                            direction=direction,
-                            timestamp=signal.timestamp if hasattr(signal, 'timestamp') else None,
-                            price=signal.price if hasattr(signal, 'price') else bar.get('Close', 0)
-                        )
-
-                        # Store order for debugging
-                        self.orders.append(order)
-                        logger.info(f"Created order: {order}")
-
-                        # Create order event
-                        order_event = Event(EventType.ORDER, order)
-
-                        # Emit order event
-                        self.event_bus.emit(order_event)
-                        break  # Just process the first non-neutral component
-                
-
+                logger.debug(f"Signal confidence: {signal.confidence}")
 
             # Skip neutral signals
-            if hasattr(signal, 'signal_type') and signal.signal_type == SignalType.NEUTRAL:
-                logger.info("Skipping neutral signal")
+            if hasattr(signal, 'signal_type') and (
+                signal.signal_type == SignalType.NEUTRAL or 
+                getattr(signal.signal_type, 'value', 0) == 0
+            ):
+                logger.debug("Skipping neutral signal")
                 continue
 
-            # If we get here, we have a non-neutral signal from the strategy
             # Calculate position size
             position_size = self.position_manager.calculate_position_size(
                 signal, 
@@ -564,30 +596,28 @@ class Backtester:
 
             # Skip if position size is zero
             if position_size == 0:
-                logger.info("Position size is zero, skipping order generation")
+                logger.debug("Position size is zero, skipping order generation")
                 continue
 
             # Determine direction
             direction = 1  # Default to buy
             if hasattr(signal, 'signal_type'):
-                direction = 1 if signal.signal_type == SignalType.BUY else -1
+                if hasattr(signal.signal_type, 'value'):
+                    direction = 1 if signal.signal_type.value > 0 else -1
+                elif isinstance(signal.signal_type, str):
+                    if signal.signal_type in ['SELL', 'SHORT']:
+                        direction = -1
             elif hasattr(signal, 'direction'):
                 direction = signal.direction
 
             # Extract timestamp
-            timestamp = None
-            if hasattr(signal, 'timestamp'):
-                timestamp = signal.timestamp
+            timestamp = getattr(signal, 'timestamp', datetime.now())
 
             # Extract price
-            price = None
-            if hasattr(signal, 'price'):
-                price = signal.price
+            price = getattr(signal, 'price', bar.get('Close', 0))
 
             # Extract symbol
-            symbol = 'default'
-            if hasattr(signal, 'symbol') and signal.symbol:
-                symbol = signal.symbol
+            symbol = getattr(signal, 'symbol', 'default')
 
             # Create order
             order = Order(
@@ -608,8 +638,6 @@ class Backtester:
 
             # Emit order event
             self.event_bus.emit(order_event)
-
-
     
     def _calculate_performance_metrics(self, processed_trades):
         """
@@ -622,7 +650,7 @@ class Backtester:
             tuple: (total_return, total_log_return, avg_return)
         """
         # Calculate total log return
-        total_log_return = sum(trade[5] for trade in processed_trades)
+        total_log_return = sum(trade[5] for trade in processed_trades if len(trade) > 5 and trade[5] is not None)
         
         # Calculate total percentage return
         total_return = (np.exp(total_log_return) - 1) * 100 if processed_trades else 0
@@ -657,402 +685,3 @@ class Backtester:
         self.signals = []
         self.orders = []
         self.fills = []
-
-
-class DefaultPositionManager:
-    """
-    Default position manager that implements basic functionality.
-    Used as a fallback if no position manager is provided.
-    """
-    
-    def __init__(self):
-        """Initialize the position manager."""
-        self.default_size = 100
-    
-    def calculate_position_size(self, signal, portfolio):
-        """
-        Calculate position size based on signal.
-        
-        Args:
-            signal: Trading signal
-            portfolio: Current portfolio state
-            
-        Returns:
-            float: Position size (positive for buy, negative for sell)
-        """
-        # Default position size
-        size = self.default_size
-        
-        # Adjust direction based on signal
-        direction = 1  # Default to buy
-        
-        if hasattr(signal, 'signal_type'):
-            if signal.signal_type == SignalType.SELL:
-                direction = -1
-            elif signal.signal_type == SignalType.NEUTRAL:
-                return 0
-        elif hasattr(signal, 'direction'):
-            direction = signal.direction
-        
-        # Apply direction to size
-        return size * direction
-    
-    def reset(self):
-        """Reset the position manager state."""
-        pass
-
-# """
-# Backtester for Trading System
-
-# This module provides the main Backtester class which orchestrates the backtesting process,
-# connecting strategy, execution, and data components into a cohesive simulation environment.
-# """
-
-# from typing import Dict, Any, List, Optional, Callable
-# from src.engine import ExecutionEngine, MarketSimulator
-# from src.engine.position_manager import PositionManager, DefaultPositionManager
-
-# class EventBus:
-#     """
-#     Simple event bus for handling and routing events in the system.
-#     """
-    
-#     def __init__(self):
-#         """Initialize the event bus."""
-#         self.handlers = {}
-        
-#     def register(self, event_type, handler):
-#         """
-#         Register a handler for an event type.
-        
-#         Args:
-#             event_type: Type of event to handle
-#             handler: Function to call when event is emitted
-#         """
-#         if event_type not in self.handlers:
-#             self.handlers[event_type] = []
-#         self.handlers[event_type].append(handler)
-        
-#     def emit(self, event):
-#         """
-#         Emit an event to registered handlers.
-        
-#         Args:
-#             event: Event object to emit
-#         """
-#         if event.event_type in self.handlers:
-#             for handler in self.handlers[event.event_type]:
-#                 handler(event)
-                
-#     def reset(self):
-#         """Clear all handlers."""
-#         self.handlers = {}
-
-
-# class Backtester:
-#     """
-#     Main orchestration class that coordinates the backtest execution.
-#     Acts as the facade for the backtesting subsystem.
-#     """
-    
-#     def __init__(self, config, data_handler, strategy, position_manager=None):
-#         """
-#         Initialize the backtester with configuration and dependencies.
-        
-#         Args:
-#             config: Configuration dictionary or ConfigManager instance
-#             data_handler: Data handler providing market data
-#             strategy: Trading strategy to test
-#             position_manager: Optional position manager for risk management
-#         """
-#         self.config = config
-#         self.data_handler = data_handler
-#         self.strategy = strategy
-#         self.position_manager = position_manager or DefaultPositionManager()
-#         self.execution_engine = ExecutionEngine(self.position_manager)
-        
-#         # Extract market simulation config if present
-#         market_sim_config = {}
-#         if isinstance(config, dict) and 'market_simulation' in config:
-#             market_sim_config = config['market_simulation']
-#         elif hasattr(config, 'get'):
-#             market_sim_config = config.get('backtester.market_simulation', {})
-            
-#         self.market_simulator = MarketSimulator(market_sim_config)
-#         self.event_bus = EventBus()
-        
-#         # Set event bus in execution engine
-#         self.execution_engine.event_bus = self.event_bus
-        
-#         # Register event handlers
-#         self.event_bus.register(EventType.SIGNAL, self.on_signal)
-#         self.event_bus.register(EventType.ORDER, self.execution_engine.on_order)
-#         self.event_bus.register(EventType.FILL, self.on_fill)
-    
-#     def run(self, use_test_data=False):
-#         """
-#         Run the backtest.
-        
-#         Args:
-#             use_test_data: Whether to use test data (True) or training data (False)
-            
-#         Returns:
-#             dict: Backtest results
-#         """
-#         # Reset all components
-#         self.reset()
-        
-#         # Select data source and iterator method
-#         if use_test_data:
-#             self.data_handler.reset_test()
-#             data_iter = self._iterate_test_data
-#         else:
-#             self.data_handler.reset_train()
-#             data_iter = self._iterate_train_data
-        
-#         # Process each bar
-#         for bar in data_iter():
-#             # Create bar event
-#             bar_event = Event(EventType.BAR, data=bar)
-#             bar_event.bar = bar  # Add this line to set the bar attribute
-            
-#             # Process bar through strategy
-#             signals = self.strategy.on_bar(bar_event)
-            
-#             # Emit signal events
-#             if signals:
-#                 # Handle both individual signals and lists of signals
-#                 if not isinstance(signals, list):
-#                     signals = [signals]
-                    
-#                 for signal in signals:
-#                     signal_event = Event(EventType.SIGNAL, data=signal)
-#                     self.event_bus.emit(signal_event)
-            
-#             # Update portfolio state with latest bar
-#             self.execution_engine.update(bar)
-            
-#             # Execute any pending orders
-#             self.execution_engine.execute_pending_orders(
-#                 bar, self.market_simulator
-#             )
-        
-#         # Collect results
-#         return self.collect_results()
-    
-#     def _iterate_train_data(self):
-#         """
-#         Iterator for training data.
-        
-#         Yields:
-#             dict: Bar data
-#         """
-#         while True:
-#             bar = self.data_handler.get_next_train_bar()
-#             if bar is None:
-#                 break
-#             yield bar
-    
-#     def _iterate_test_data(self):
-#         """
-#         Iterator for test data.
-        
-#         Yields:
-#             dict: Bar data
-#         """
-#         while True:
-#             bar = self.data_handler.get_next_test_bar()
-#             if bar is None:
-#                 break
-#             yield bar
-    
-#     def on_signal(self, event):
-#         """
-#         Handle signal events by generating orders.
-        
-#         Args:
-#             event: Signal event
-#         """
-#         signal = event.data
-        
-#         # Record signal in history
-#         self.execution_engine.signal_history.append(signal)
-        
-#         # Get position sizing from position manager
-#         position_size = self.position_manager.calculate_position_size(
-#             signal, self.execution_engine.portfolio
-#         )
-        
-#         # Create order if position size is non-zero
-#         if position_size != 0:
-#             order = Order(
-#                 symbol=signal.symbol if hasattr(signal, 'symbol') else 'default',
-#                 order_type="MARKET",
-#                 quantity=abs(position_size),
-#                 direction=1 if position_size > 0 else -1,
-#                 timestamp=signal.timestamp if hasattr(signal, 'timestamp') else None
-#             )
-            
-#             # Emit order event
-#             order_event = Event(EventType.ORDER, data=order)
-#             self.event_bus.emit(order_event)
-    
-#     def on_fill(self, event):
-#         """
-#         Handle fill events.
-        
-#         Args:
-#             event: Fill event
-#         """
-#         # Process fill information - implement specific logic here if needed
-#         pass
-    
-#     def collect_results(self):
-#         """
-#         Collect backtest results for analysis.
-        
-#         Returns:
-#             dict: Results dictionary with trades, portfolio history, etc.
-#         """
-#         # Get trade history from execution engine
-#         trades = [
-#             (fill.timestamp, 
-#              "long" if fill.order.direction > 0 else "short",
-#              fill.fill_price,
-#              fill.timestamp,  # Using same timestamp for entry and exit for simplicity
-#              fill.fill_price,
-#              0.0)  # Log return placeholder - would be calculated from paired trades in a real implementation
-#             for fill in self.execution_engine.trade_history
-#         ]
-        
-#         # Calculate log returns for trades (in a real implementation)
-#         # This is a simplified version that assumes sequential pairs of trades
-#         entry_price = None
-#         entry_type = None
-#         entry_time = None
-#         processed_trades = []
-        
-#         for i, trade in enumerate(trades):
-#             timestamp, direction, price, _, _, _ = trade
-            
-#             if entry_price is None:
-#                 # This is an entry
-#                 entry_price = price
-#                 entry_type = direction
-#                 entry_time = timestamp
-#             else:
-#                 # This is an exit, calculate return
-#                 if entry_type == "long":
-#                     log_return = np.log(price / entry_price)
-#                 else:  # short
-#                     log_return = np.log(entry_price / price)
-                    
-#                 # Create complete trade record
-#                 processed_trade = (
-#                     entry_time,
-#                     entry_type,
-#                     entry_price,
-#                     timestamp,
-#                     price,
-#                     log_return
-#                 )
-#                 processed_trades.append(processed_trade)
-                
-#                 # Reset for next pair
-#                 entry_price = None
-        
-#         # If odd number of trades, add the last one with no return
-#         if entry_price is not None:
-#             processed_trade = (
-#                 entry_time,
-#                 entry_type,
-#                 entry_price,
-#                 None,  # No exit time
-#                 None,  # No exit price
-#                 0.0    # No return
-#             )
-#             processed_trades.append(processed_trade)
-        
-#         # Calculate basic metrics
-#         total_log_return = sum(trade[5] for trade in processed_trades)
-#         total_return = (np.exp(total_log_return) - 1) * 100 if processed_trades else 0
-#         avg_log_return = total_log_return / len(processed_trades) if processed_trades else 0
-        
-#         # Return structured results
-#         return {
-#             'trades': processed_trades,
-#             'num_trades': len(processed_trades),
-#             'total_log_return': total_log_return,
-#             'total_percent_return': total_return,
-#             'average_log_return': avg_log_return,
-#             'portfolio_history': self.execution_engine.get_portfolio_history(),
-#             'signals': self.execution_engine.get_signal_history(),
-#             'config': self.config
-#         }
-    
-#     def reset(self):
-#         """Reset the backtester state."""
-#         self.execution_engine.reset()
-#         self.strategy.reset()
-#         self.event_bus.reset()
-        
-#         # Reset position manager if it has a reset method
-#         if hasattr(self.position_manager, 'reset'):
-#             self.position_manager.reset()
-
-
-# class DefaultPositionManager:
-#     """
-#     Default position manager that implements basic functionality.
-#     Used as a fallback if no position manager is provided.
-#     """
-    
-#     def calculate_position_size(self, signal, portfolio):
-#         """
-#         Calculate position size based on signal.
-        
-#         This simple implementation just returns a fixed position size
-#         in the direction of the signal.
-        
-#         Args:
-#             signal: Trading signal
-#             portfolio: Current portfolio
-            
-#         Returns:
-#             float: Position size (positive for buy, negative for sell)
-#         """
-#         # Default position size (100 units)
-#         size = 100.0
-        
-#         # Adjust direction based on signal
-#         if hasattr(signal, 'signal_type'):
-#             if signal.signal_type.value < 0:  # Sell signal
-#                 size = -size
-#             elif signal.signal_type.value == 0:  # Neutral signal
-#                 size = 0
-#         elif hasattr(signal, 'signal') and signal.signal < 0:
-#             size = -size
-#         elif hasattr(signal, 'direction') and signal.direction < 0:
-#             size = -size
-            
-#         return size
-    
-#     def reset(self):
-#         """Reset the position manager state."""
-#         pass
-
-
-# # Import these from other modules in real implementation
-
-# class Event:
-#     def __init__(self, event_type, data=None):
-#         self.event_type = event_type
-#         self.data = data
-
-# class Order:
-#     def __init__(self, symbol, order_type, quantity, direction, timestamp):
-#         self.symbol = symbol
-#         self.order_type = order_type
-#         self.quantity = quantity
-#         self.direction = direction
-#         self.timestamp = timestamp

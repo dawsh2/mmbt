@@ -104,7 +104,7 @@ Strategy that combines signals from multiple components using weights.
 
 **Constructor Parameters:**
 - `components` (list): List of signal-generating components (rules, strategies, etc.)
-- `weights` (numpy.ndarray, optional): List of weights for each component (default: equal weights)
+- `weights` (list, optional): List of weights for each component (default: equal weights)
 - `buy_threshold` (float, optional): Threshold above which to generate a buy signal (default: 0.5)
 - `sell_threshold` (float, optional): Threshold below which to generate a sell signal (default: -0.5)
 - `name` (str, optional): Strategy name
@@ -117,7 +117,7 @@ import numpy as np
 # Create a weighted strategy
 strategy = WeightedStrategy(
     components=signal_components,  # Any objects with on_bar() method
-    weights=np.array([0.4, 0.3, 0.3]),
+    weights=[0.4, 0.3, 0.3],
     buy_threshold=0.4,
     sell_threshold=-0.4,
     name="CustomWeightedStrategy"
@@ -218,6 +218,8 @@ Strategy that combines signals from top N rules using a consensus mechanism.
 **Constructor Parameters:**
 - `rule_objects` (list): List of rule objects
 - `name` (str, optional): Strategy name
+
+**Note:** This strategy uses `SignalRouter` internally to collect and aggregate signals from rules.
 
 **Example:**
 ```python
@@ -670,6 +672,49 @@ class MultiTimeframeStrategy(Strategy):
     
     def reset(self):
         self.higher_tf_data = {}
+        self.last_signal = None
+```
+
+### Signal Router Integration
+
+The `TopNStrategy` and some other strategies use `SignalRouter` internally to collect and aggregate signals:
+
+```python
+from strategies import Strategy
+from signals import SignalRouter, Signal, SignalType
+
+class CustomRoutingStrategy(Strategy):
+    def __init__(self, rule_objects, name=None):
+        super().__init__(name or "CustomRoutingStrategy")
+        # Initialize SignalRouter with rule objects
+        self.signal_router = SignalRouter(rule_objects)
+        self.last_signal = None
+        
+    def on_bar(self, event):
+        # Use SignalRouter to collect signals from all rules
+        router_output = self.signal_router.on_bar(event)
+        
+        # Get the signal collection
+        signal_collection = router_output["signals"]
+        
+        # Get weighted consensus from the collection
+        consensus_signal_type = signal_collection.get_weighted_consensus()
+        
+        # Create a new signal with the consensus
+        signal = Signal(
+            timestamp=router_output["timestamp"],
+            signal_type=consensus_signal_type,
+            price=router_output["price"],
+            rule_id=self.name,
+            confidence=0.7
+        )
+        
+        self.last_signal = signal
+        return signal
+        
+    def reset(self):
+        # Reset the router and our state
+        self.signal_router.reset()
         self.last_signal = None
 ```
 

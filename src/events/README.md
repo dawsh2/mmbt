@@ -1,55 +1,97 @@
 # Events Module
 
-The Events module implements a robust event-driven architecture for the trading system. It provides a way to decouple system components while enabling efficient communication between them through a central event bus.
+The Events module provides a robust event-driven architecture for the backtesting system. It enables decoupled communication between components through a central event bus, ensuring flexibility and maintainability in the trading system architecture.
 
-## Overview
+## Core Concepts
 
-This module enables:
+The events module is built around these key concepts:
 
-1. **Loose Coupling** - Components communicate without direct dependencies
-2. **Flexible Architecture** - Easy to add, remove, or modify components
-3. **Centralized Communication** - All system messages flow through a common bus
-4. **Standardized Messaging** - Well-defined event types with consistent structures
-5. **Robust Error Handling** - Isolated error handling at the event level
-6. **Asynchronous Processing** - Optional async event processing
+1. **Events**: Self-contained messages that include a type, data payload, and timestamp
+2. **Event Types**: Enumeration of supported event categories in the system
+3. **Event Bus**: Central message broker that routes events between components
+4. **Event Handlers**: Components that process specific types of events
+5. **Event Emitters**: Components that generate and publish events
+
+## Architecture Overview
+
+```
+┌─────────────────┐     ┌───────────────┐     ┌────────────────┐
+│  Event Emitters │────▶│   Event Bus   │────▶│ Event Handlers │
+└─────────────────┘     └───────────────┘     └────────────────┘
+   (Producers)             (Broker)            (Consumers)
+```
+
+This architecture enables:
+
+- **Loose Coupling**: Components communicate without direct dependencies
+- **Flexibility**: Easy to add, remove, or modify components
+- **Centralization**: All messages flow through a common bus
+- **Standardization**: Well-defined event types with consistent structures
 
 ## Core Components
 
-### Event Types
+### EventType
 
-The `EventType` enum defines all supported event types within the system:
+The `EventType` enum defines all supported event categories in the system:
 
 ```python
-from events.event_types import EventType
+from src.events.event_types import EventType
 
-# Example event types
-market_data_event = EventType.BAR
-signal_event = EventType.SIGNAL
-order_event = EventType.ORDER
-fill_event = EventType.FILL
+# Market data events
+event_type = EventType.BAR
+event_type = EventType.TICK
+event_type = EventType.MARKET_OPEN
+event_type = EventType.MARKET_CLOSE
 
-# Get all event types in a category
-market_data_events = EventType.market_data_events()  # Returns set of market data events
+# Signal events
+event_type = EventType.SIGNAL
+
+# Order events
+event_type = EventType.ORDER
+event_type = EventType.CANCEL
+event_type = EventType.MODIFY
+
+# Execution events
+event_type = EventType.FILL
+event_type = EventType.PARTIAL_FILL
+event_type = EventType.REJECT
+
+# Portfolio events
+event_type = EventType.POSITION_OPENED
+event_type = EventType.POSITION_CLOSED
+event_type = EventType.POSITION_MODIFIED
+
+# System events
+event_type = EventType.START
+event_type = EventType.STOP
+event_type = EventType.PAUSE
+event_type = EventType.RESUME
+event_type = EventType.ERROR
+
+# Analysis events
+event_type = EventType.METRIC_CALCULATED
+event_type = EventType.ANALYSIS_COMPLETE
+
+# Custom events
+event_type = EventType.CUSTOM
 ```
 
-Categories of event types include:
+You can group event types by category:
+```python
+# Get all market data events
+market_events = EventType.market_data_events()  # Returns {BAR, TICK, MARKET_OPEN, MARKET_CLOSE}
 
-- **Market Data Events**: `BAR`, `TICK`, `MARKET_OPEN`, `MARKET_CLOSE`
-- **Signal Events**: `SIGNAL`
-- **Order Events**: `ORDER`, `CANCEL`, `MODIFY`
-- **Execution Events**: `FILL`, `PARTIAL_FILL`, `REJECT`
-- **Portfolio Events**: `POSITION_OPENED`, `POSITION_CLOSED`, `POSITION_MODIFIED`
-- **System Events**: `START`, `STOP`, `PAUSE`, `RESUME`, `ERROR`
-- **Analysis Events**: `METRIC_CALCULATED`, `ANALYSIS_COMPLETE`
-- **Custom Events**: `CUSTOM`
+# Get all order-related events
+order_events = EventType.order_events()  # Returns {ORDER, CANCEL, MODIFY, FILL, PARTIAL_FILL, REJECT}
+```
 
 ### Event
 
 The `Event` class represents a single event in the system:
 
 ```python
-from events.event_bus import Event
-from events.event_types import EventType
+from src.events.event_bus import Event
+from src.events.event_types import EventType
 from datetime import datetime
 
 # Create an event
@@ -64,28 +106,34 @@ print(f"Event type: {event.event_type}")
 print(f"Event ID: {event.id}")
 print(f"Event timestamp: {event.timestamp}")
 print(f"Event data: {event.data}")
-
-# Convert to dictionary
-event_dict = event.to_dict()
-
-# Create from dictionary
-reconstructed_event = Event.from_dict(event_dict)
 ```
 
-Each event has:
-- A unique event type
-- A timestamp
-- A unique ID
-- Optional data payload
+### EventBus
 
-### Event Handlers
+The `EventBus` serves as the central hub for all event communication:
+
+```python
+from src.events.event_bus import EventBus
+from src.events.event_types import EventType
+
+# Create an event bus
+event_bus = EventBus()
+
+# Create and emit an event
+event = Event(EventType.BAR, {"symbol": "AAPL", "close": 150.75})
+event_bus.emit(event)
+
+# Get event history
+market_data_events = event_bus.get_history(EventType.BAR)
+```
+
+### EventHandler
 
 `EventHandler` is the base class for all components that process events:
 
 ```python
-from events.event_handlers import EventHandler
-from events.event_types import EventType
-from events.event_bus import Event
+from src.events.event_handlers import EventHandler
+from src.events.event_types import EventType
 
 class MySignalHandler(EventHandler):
     def __init__(self, portfolio_manager):
@@ -94,69 +142,19 @@ class MySignalHandler(EventHandler):
         self.portfolio_manager = portfolio_manager
     
     def _process_event(self, event):
-        # This method is called for each event
+        # Process the event
         signal = event.data
         self.portfolio_manager.on_signal(signal)
 ```
 
-Special handler types include:
-
-- **FunctionEventHandler**: Uses a function as a handler
-- **LoggingHandler**: Logs events at specified levels
-- **DebounceHandler**: Prevents handling too many events of the same type
-- **FilterHandler**: Only handles events that pass a filter
-- **AsyncEventHandler**: Processes events asynchronously
-
-```python
-from events.event_handlers import FunctionEventHandler
-
-# Create a function-based handler
-def handle_signal(event):
-    signal = event.data
-    print(f"Processing signal for {signal['symbol']}")
-
-signal_handler = FunctionEventHandler(EventType.SIGNAL, handle_signal)
-```
-
-### Event Bus
-
-The `EventBus` is the central hub for all event communication:
-
-```python
-from events.event_bus import EventBus, Event
-from events.event_types import EventType
-from events.event_handlers import EventHandler
-
-# Create an event bus
-event_bus = EventBus()
-
-# Create and register a handler
-handler = MySignalHandler(portfolio_manager)
-event_bus.register(EventType.SIGNAL, handler)
-
-# Create and emit an event
-event = Event(EventType.SIGNAL, {"symbol": "AAPL", "direction": 1})
-event_bus.emit(event)
-
-# Get event history
-signal_events = event_bus.get_history(EventType.SIGNAL)
-```
-
-Key features:
-- Register handlers for specific event types
-- Emit events to registered handlers
-- Maintain event history
-- Support for async event processing
-- Weak references to prevent memory leaks
-
-### Event Emitters
+### EventEmitter
 
 `EventEmitter` is a mixin class for components that emit events:
 
 ```python
-from events.event_emitters import EventEmitter
-from events.event_types import EventType
-from events.event_bus import EventBus
+from src.events.event_emitters import EventEmitter
+from src.events.event_types import EventType
+from datetime import datetime
 
 class Strategy(EventEmitter):
     def __init__(self, event_bus):
@@ -174,17 +172,100 @@ class Strategy(EventEmitter):
         self.emit(EventType.SIGNAL, signal)
 ```
 
-Specialized emitters include:
+## Specialized Event Handlers
 
-- **MarketDataEmitter**: For emitting market data events
-- **SignalEmitter**: For emitting trading signals
-- **OrderEmitter**: For emitting order-related events
-- **FillEmitter**: For emitting fill-related events
-- **PortfolioEmitter**: For emitting portfolio events
-- **SystemEmitter**: For emitting system events
+The module provides several specialized event handlers:
+
+### FunctionEventHandler
+
+Handler that delegates processing to a function:
 
 ```python
-from events.event_emitters import MarketDataEmitter
+from src.events.event_handlers import FunctionEventHandler
+
+# Create a function handler
+def handle_market_data(event):
+    bar_data = event.data
+    print(f"Processing bar data: {bar_data['symbol']}")
+
+market_data_handler = FunctionEventHandler(EventType.BAR, handle_market_data)
+event_bus.register(EventType.BAR, market_data_handler)
+```
+
+### LoggingHandler
+
+Handler that logs events at specified levels:
+
+```python
+from src.events.event_handlers import LoggingHandler
+import logging
+
+# Create a logging handler for specific event types
+logging_handler = LoggingHandler([EventType.BAR, EventType.SIGNAL])
+
+# Set different log levels for different event types
+logging_handler.set_event_log_level(EventType.BAR, logging.DEBUG)
+logging_handler.set_event_log_level(EventType.SIGNAL, logging.INFO)
+
+# Register with event bus
+event_bus.register(EventType.BAR, logging_handler)
+event_bus.register(EventType.SIGNAL, logging_handler)
+```
+
+### FilterHandler
+
+Handler that only processes events matching specific criteria:
+
+```python
+from src.events.event_handlers import FilterHandler
+
+# Create the base handler
+base_handler = MySignalHandler(portfolio_manager)
+
+# Create filter function
+def high_confidence_filter(event):
+    return event.data.get('confidence', 0) >= 0.7
+
+# Create filtered handler
+filtered_handler = FilterHandler(
+    [EventType.SIGNAL], 
+    base_handler, 
+    high_confidence_filter
+)
+
+# Register the filtered handler
+event_bus.register(EventType.SIGNAL, filtered_handler)
+```
+
+### DebounceHandler
+
+Handler that prevents processing the same event type too frequently:
+
+```python
+from src.events.event_handlers import DebounceHandler
+
+# Create base handler
+base_handler = MySignalHandler(portfolio_manager)
+
+# Create debounced handler (min 100ms between events)
+debounced_handler = DebounceHandler(
+    [EventType.SIGNAL],
+    base_handler,
+    0.1  # 100 milliseconds
+)
+
+# Register with event bus
+event_bus.register(EventType.SIGNAL, debounced_handler)
+```
+
+## Specialized Event Emitters
+
+The module provides specialized event emitters for different event types:
+
+### MarketDataEmitter
+
+```python
+from src.events.event_emitters import MarketDataEmitter
 
 # Create a market data emitter
 market_data_emitter = MarketDataEmitter(event_bus)
@@ -198,371 +279,256 @@ market_data_emitter.emit_bar({
     "close": 151.0,
     "volume": 1000000
 })
+
+# Emit market open/close events
+market_data_emitter.emit_market_open()
+market_data_emitter.emit_market_close()
 ```
 
-### Event Schemas
-
-The `schema` module defines data schemas for different event types:
+### SignalEmitter
 
 ```python
-from events.schema import validate_event_data, get_schema_documentation
+from src.events.event_emitters import SignalEmitter
 
-# Get documentation for an event schema
-print(get_schema_documentation('SIGNAL'))
+# Create a signal emitter
+signal_emitter = SignalEmitter(event_bus)
 
-# Validate event data against schema
-signal_data = {
-    'timestamp': datetime.now(),
-    'signal_type': 'BUY',
-    'price': 150.75,
-    'symbol': 'AAPL',
-    'confidence': 0.8
-}
-
-validated_data = validate_event_data('SIGNAL', signal_data)
+# Emit a signal
+signal_emitter.emit_signal(
+    symbol="AAPL",
+    signal_type="BUY",
+    price=151.0,
+    confidence=0.8,
+    rule_id="sma_crossover"
+)
 ```
 
-Schemas are available for:
-- `BAR` events
-- `SIGNAL` events
-- `ORDER` events
-- `FILL` events
-- `MARKET_CLOSE` events
-- And more
-
-## Event Groups and Hierarchies
-
-Components can be organized in event handler groups:
+### OrderEmitter
 
 ```python
-from events.event_handlers import EventHandlerGroup
+from src.events.event_emitters import OrderEmitter
 
-# Create a group of related handlers
-strategy_handlers = EventHandlerGroup("strategy_handlers", [
-    signal_handler,
-    order_handler,
-    market_data_handler
-])
+# Create an order emitter
+order_emitter = OrderEmitter(event_bus)
 
-# Enable or disable all handlers in the group
-strategy_handlers.disable_all()
-strategy_handlers.enable_all()
+# Emit an order
+order_emitter.emit_order(
+    symbol="AAPL",
+    order_type="MARKET",
+    quantity=100,
+    direction=1,  # Buy
+    price=151.0
+)
+
+# Emit a cancel order
+order_emitter.emit_cancel("order-123", reason="Strategy change")
 ```
 
-## Asynchronous Event Processing
-
-The event bus supports asynchronous event processing:
+### FillEmitter
 
 ```python
-from events.event_bus import EventBus
+from src.events.event_emitters import FillEmitter
 
-# Create async event bus
-async_event_bus = EventBus(async_mode=True)
+# Create a fill emitter
+fill_emitter = FillEmitter(event_bus)
 
-# Register handlers and emit events as usual
-async_event_bus.register(EventType.BAR, handler)
-async_event_bus.emit(event)
-
-# Stop async processing when done
-async_event_bus.stop_dispatch_thread()
+# Emit a fill event
+fill_emitter.emit_fill(
+    order_id="order-123",
+    symbol="AAPL",
+    quantity=100,
+    price=151.25,
+    direction=1,
+    transaction_cost=7.50
+)
 ```
 
-## Event Monitoring and Caching
+## Domain-Specific Handlers
 
-The module includes tools for monitoring and caching events:
+The module includes handlers for specific trading system components:
+
+### MarketDataHandler
+
+Handles market data events and forwards them to strategies:
 
 ```python
-from events.event_handlers import LoggingHandler
-from events.event_bus import EventCacheManager
-import logging
+from src.events.event_handlers import MarketDataHandler
 
-# Create a logging handler for all events
-logging_handler = LoggingHandler(list(EventType), logging.INFO)
-for event_type in EventType:
-    event_bus.register(event_type, logging_handler)
+# Create market data handler
+market_data_handler = MarketDataHandler(strategy)
 
-# Create event cache manager
-cache_manager = EventCacheManager(max_cache_size=100)
+# Register with event bus
+event_bus.register(EventType.BAR, market_data_handler)
+event_bus.register(EventType.TICK, market_data_handler)
+```
 
-# Cache an event for reuse
-cache_manager.cache_event(event, key="AAPL_2023-06-15")
+### SignalHandler
 
-# Retrieve cached event
-cached_event = cache_manager.get_cached_event(EventType.BAR, key="AAPL_2023-06-15")
+Handles signal events and forwards them to portfolio management:
+
+```python
+from src.events.event_handlers import SignalHandler
+
+# Create signal handler
+signal_handler = SignalHandler(portfolio_manager)
+
+# Register with event bus
+event_bus.register(EventType.SIGNAL, signal_handler)
+```
+
+### OrderHandler
+
+Handles order events and forwards them to execution engine:
+
+```python
+from src.events.event_handlers import OrderHandler
+
+# Create order handler
+order_handler = OrderHandler(execution_engine)
+
+# Register with event bus
+event_bus.register(EventType.ORDER, order_handler)
+event_bus.register(EventType.CANCEL, order_handler)
+event_bus.register(EventType.MODIFY, order_handler)
+```
+
+### FillHandler
+
+Handles fill events and updates portfolio positions:
+
+```python
+from src.events.event_handlers import FillHandler
+
+# Create fill handler
+fill_handler = FillHandler(portfolio_manager)
+
+# Register with event bus
+event_bus.register(EventType.FILL, fill_handler)
+event_bus.register(EventType.PARTIAL_FILL, fill_handler)
 ```
 
 ## Integration Examples
 
-### Basic Event Flow
+### Basic Trading System Flow
 
 ```python
-from events.event_bus import EventBus, Event
-from events.event_types import EventType
-from events.event_handlers import FunctionEventHandler
-
-# Create event bus
-event_bus = EventBus()
-
-# Define handlers
-def handle_bar(event):
-    bar_data = event.data
-    print(f"Processing bar: {bar_data['symbol']} @ {bar_data['close']}")
-
-def handle_signal(event):
-    signal = event.data
-    print(f"Processing signal: {signal['symbol']} {signal['direction']}")
-
-def handle_order(event):
-    order = event.data
-    print(f"Processing order: {order['symbol']} {order['quantity']} @ {order['price']}")
-
-# Register handlers
-event_bus.register(EventType.BAR, FunctionEventHandler(EventType.BAR, handle_bar))
-event_bus.register(EventType.SIGNAL, FunctionEventHandler(EventType.SIGNAL, handle_signal))
-event_bus.register(EventType.ORDER, FunctionEventHandler(EventType.ORDER, handle_order))
-
-# Emit events
-event_bus.emit(Event(EventType.BAR, {"symbol": "AAPL", "close": 150.0}))
-event_bus.emit(Event(EventType.SIGNAL, {"symbol": "AAPL", "direction": 1}))
-event_bus.emit(Event(EventType.ORDER, {"symbol": "AAPL", "quantity": 100, "price": 150.0}))
-```
-
-### Complete Trading System Event Flow
-
-```python
-from events.event_bus import EventBus
-from events.event_types import EventType
-from events.event_handlers import EventHandler
-from events.event_emitters import EventEmitter
+from src.events.event_bus import EventBus
+from src.events.event_handlers import MarketDataHandler, SignalHandler, OrderHandler, FillHandler
+from src.events.event_emitters import MarketDataEmitter
 
 # Create event bus
 event_bus = EventBus()
 
 # Create components
-class DataHandler(EventEmitter):
-    def __init__(self, event_bus):
-        super().__init__(event_bus)
-        
-    def process_bar(self, bar_data):
-        # Emit bar event
-        self.emit(EventType.BAR, bar_data)
-        
-class Strategy(EventHandler, EventEmitter):
-    def __init__(self, event_bus):
-        EventHandler.__init__(self, [EventType.BAR])
-        EventEmitter.__init__(self, event_bus)
-        
-    def _process_event(self, event):
-        if event.event_type == EventType.BAR:
-            bar_data = event.data
-            
-            # Simple strategy: Buy when price increases
-            if bar_data["close"] > bar_data["open"]:
-                signal = {
-                    "symbol": bar_data["symbol"],
-                    "direction": 1,  # Buy
-                    "price": bar_data["close"]
-                }
-                
-                # Emit signal event
-                self.emit(EventType.SIGNAL, signal)
-                
-class PortfolioManager(EventHandler, EventEmitter):
-    def __init__(self, event_bus):
-        EventHandler.__init__(self, [EventType.SIGNAL, EventType.FILL])
-        EventEmitter.__init__(self, event_bus)
-        
-    def _process_event(self, event):
-        if event.event_type == EventType.SIGNAL:
-            signal = event.data
-            
-            # Convert signal to order
-            order = {
-                "symbol": signal["symbol"],
-                "direction": signal["direction"],
-                "quantity": 100,
-                "price": signal["price"],
-                "order_type": "MARKET"
-            }
-            
-            # Emit order event
-            self.emit(EventType.ORDER, order)
-            
-        elif event.event_type == EventType.FILL:
-            fill = event.data
-            print(f"Position opened: {fill['symbol']} {fill['quantity']} @ {fill['price']}")
-            
-class ExecutionHandler(EventHandler, EventEmitter):
-    def __init__(self, event_bus):
-        EventHandler.__init__(self, [EventType.ORDER])
-        EventEmitter.__init__(self, event_bus)
-        
-    def _process_event(self, event):
-        if event.event_type == EventType.ORDER:
-            order = event.data
-            
-            # Process order to fill
-            fill = {
-                "symbol": order["symbol"],
-                "quantity": order["quantity"],
-                "price": order["price"],
-                "direction": order["direction"],
-                "timestamp": datetime.now()
-            }
-            
-            # Emit fill event
-            self.emit(EventType.FILL, fill)
+strategy = Strategy()
+portfolio_manager = PortfolioManager()
+execution_engine = ExecutionEngine()
 
-# Create and connect components
-data_handler = DataHandler(event_bus)
-strategy = Strategy(event_bus)
-portfolio = PortfolioManager(event_bus)
-execution = ExecutionHandler(event_bus)
+# Create handlers
+market_data_handler = MarketDataHandler(strategy)
+signal_handler = SignalHandler(portfolio_manager)
+order_handler = OrderHandler(execution_engine)
+fill_handler = FillHandler(portfolio_manager)
 
-# Register handlers
-event_bus.register(EventType.BAR, strategy)
-event_bus.register(EventType.SIGNAL, portfolio)
-event_bus.register(EventType.ORDER, execution)
-event_bus.register(EventType.FILL, portfolio)
+# Register handlers with event bus
+event_bus.register(EventType.BAR, market_data_handler)
+event_bus.register(EventType.SIGNAL, signal_handler)
+event_bus.register(EventType.ORDER, order_handler)
+event_bus.register(EventType.FILL, fill_handler)
 
-# Process a bar
-data_handler.process_bar({
+# Create market data emitter
+market_data_emitter = MarketDataEmitter(event_bus)
+
+# Simulate a bar event
+market_data_emitter.emit_bar({
     "symbol": "AAPL",
     "open": 150.0,
-    "high": 152.5,
+    "high": 151.5,
     "low": 149.5,
-    "close": 152.0,
+    "close": 151.0,
     "volume": 1000000
 })
+
+# The event flows through the system:
+# 1. Bar event emitted
+# 2. MarketDataHandler processes it and calls strategy.on_bar()
+# 3. Strategy generates a signal event
+# 4. SignalHandler processes it and creates an order
+# 5. OrderHandler processes the order event
+# 6. ExecutionEngine executes the order and emits a fill event
+# 7. FillHandler updates portfolio positions
 ```
 
-### Custom Event Filtering
+### Integration with Backtester
 
 ```python
-from events.event_bus import EventBus, Event
-from events.event_types import EventType
-from events.event_handlers import EventHandler, FilterHandler
+from src.events.event_bus import EventBus
+from src.engine.backtester import Backtester
+from src.strategies import WeightedStrategy
 
 # Create event bus
 event_bus = EventBus()
 
-# Create a base handler
-class SignalProcessor(EventHandler):
-    def __init__(self):
-        super().__init__([EventType.SIGNAL])
-        
-    def _process_event(self, event):
-        signal = event.data
-        print(f"Processing signal: {signal['symbol']} {signal['direction']}")
+# Create components with shared event bus
+strategy = WeightedStrategy(components=rule_objects, weights=[0.4, 0.3, 0.3])
+backtester = Backtester(config, data_handler, strategy)
 
-# Create filter function
-def high_confidence_filter(event):
-    signal = event.data
-    return signal.get('confidence', 0) >= 0.7
-
-# Create filtered handler
-signal_processor = SignalProcessor()
-filtered_handler = FilterHandler(
-    [EventType.SIGNAL], 
-    signal_processor, 
-    high_confidence_filter
-)
-
-# Register the filtered handler
-event_bus.register(EventType.SIGNAL, filtered_handler)
-
-# Emit signals
-event_bus.emit(Event(EventType.SIGNAL, {
-    "symbol": "AAPL", 
-    "direction": 1, 
-    "confidence": 0.8
-}))  # Will be processed
-
-event_bus.emit(Event(EventType.SIGNAL, {
-    "symbol": "MSFT", 
-    "direction": 1, 
-    "confidence": 0.5
-}))  # Will be filtered out
+# Run backtest (automatically uses event bus for communication)
+results = backtester.run()
 ```
-
-## Performance Considerations
-
-1. **Event Volume**: Be mindful of event frequency and volume, particularly for high-frequency data
-2. **Handler Performance**: Keep handlers efficient to avoid bottlenecks
-3. **Weak References**: The event bus uses weak references to avoid memory leaks
-4. **Async Processing**: Use async mode for high-volume event processing
-5. **Event Caching**: Use event caching for frequently reused events
-6. **Selective History**: Use selective history to avoid memory issues
 
 ## Best Practices
 
-1. **Consistent Event Structure**: Maintain consistent data structures for each event type
-2. **Validate Event Data**: Use schema validation for important events
-3. **Handle Errors Gracefully**: Implement proper error handling in event handlers
-4. **Document Event Types**: Document the purpose and data structure of custom event types
-5. **Use Event Groups**: Organize related handlers into groups for better management
-6. **Be Cautious with Async**: Async processing adds complexity; use only when needed
-7. **Monitor Event Flow**: Log or monitor events during development and testing
-8. **Follow Event Hierarchy**: Use appropriate event types for specific domains
+1. **Register handlers early**: Register all event handlers at initialization time before emitting any events.
 
-## Debugging Tools
+2. **Use weak references**: The EventBus uses weak references to handlers to prevent memory leaks. Make sure you maintain a reference to your handlers elsewhere if they need to persist.
 
-The module includes tools for debugging event flow:
+3. **Keep handlers focused**: Each handler should focus on a specific task. Use composition to build complex handlers from simpler ones.
 
-```python
-from events.event_handlers import LoggingHandler
-import logging
+4. **Error handling**: Implement proper error handling in event handlers to prevent exceptions from halting the entire system.
 
-# Create a logging handler for all events
-logging_handler = LoggingHandler(list(EventType))
+5. **Event history**: Use event history for debugging and analysis, but be mindful of memory usage with large backtests.
 
-# Set specific log levels for different event types
-logging_handler.set_event_log_level(EventType.BAR, logging.DEBUG)
-logging_handler.set_event_log_level(EventType.SIGNAL, logging.INFO)
-logging_handler.set_event_log_level(EventType.ORDER, logging.WARNING)
+6. **Consider thread safety**: If using multiple threads, be aware of potential race conditions in event handling.
 
-# Register handler for all event types
-for event_type in EventType:
-    event_bus.register(event_type, logging_handler)
-```
+7. **Event schemas**: Use consistent data structures for each event type to prevent downstream processing errors.
 
-## Event Schema Documentation
+## Event Type Reference
 
-Each event type has a documented schema that describes its expected data structure:
+### Market Data Events
+- `BAR`: New price bar with OHLCV data
+- `TICK`: Individual tick data with price and volume
+- `MARKET_OPEN`: Market opening notification
+- `MARKET_CLOSE`: Market closing notification
 
-### BAR Event
-- `timestamp`: Bar timestamp (required)
-- `Open`: Opening price (required)
-- `High`: High price (required)
-- `Low`: Low price (required)
-- `Close`: Closing price (required)
-- `Volume`: Volume (optional)
-- `is_eod`: Whether this is end of day (optional)
-- `symbol`: Instrument symbol (optional)
+### Signal Events
+- `SIGNAL`: Trading signal generated by a strategy
 
-### SIGNAL Event
-- `timestamp`: Signal timestamp (required)
-- `signal_type`: Signal type (BUY, SELL, NEUTRAL) (required)
-- `price`: Price at signal generation (required)
-- `rule_id`: ID of rule that generated the signal (optional)
-- `confidence`: Confidence score (0-1) (optional)
-- `metadata`: Additional signal metadata (optional)
-- `symbol`: Instrument symbol (optional)
+### Order Events
+- `ORDER`: Order request for execution
+- `CANCEL`: Order cancellation request
+- `MODIFY`: Order modification request
 
-### ORDER Event
-- `timestamp`: Order timestamp (required)
-- `symbol`: Instrument symbol (required)
-- `order_type`: Order type (MARKET, LIMIT, etc.) (required)
-- `quantity`: Order quantity (required)
-- `direction`: Order direction (1 for buy, -1 for sell) (required)
-- `price`: Limit price (for LIMIT orders) (optional)
-- `order_id`: Unique order ID (optional)
+### Execution Events
+- `FILL`: Order completely filled
+- `PARTIAL_FILL`: Order partially filled
+- `REJECT`: Order rejected by broker or exchange
 
-### FILL Event
-- `timestamp`: Fill timestamp (required)
-- `symbol`: Instrument symbol (required)
-- `quantity`: Filled quantity (required)
-- `price`: Fill price (required)
-- `direction`: Direction (1 for buy, -1 for sell) (required)
-- `order_id`: Original order ID (optional)
-- `transaction_cost`: Transaction cost (optional)
+### Portfolio Events
+- `POSITION_OPENED`: New position opened
+- `POSITION_CLOSED`: Existing position closed
+- `POSITION_MODIFIED`: Position size or parameters modified
+
+### System Events
+- `START`: System or component start
+- `STOP`: System or component stop
+- `PAUSE`: System or component pause
+- `RESUME`: System or component resume
+- `ERROR`: System or component error
+
+### Analysis Events
+- `METRIC_CALCULATED`: Performance metric calculation completed
+- `ANALYSIS_COMPLETE`: Analysis process completed
+
+### Custom Events
+- `CUSTOM`: Custom event type for user-defined events

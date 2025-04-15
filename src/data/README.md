@@ -10,6 +10,7 @@ This module provides a layered approach to data handling:
 2. **Data Transformers** - Components for preprocessing and transforming raw data
 3. **Data Handlers** - Core components that manage data flow and provide a unified interface to the rest of the system
 4. **Data Connectors** - Components for connecting to external data services
+5. **Data Cache** - Optimizes performance by storing frequently accessed data
 
 ## Core Components
 
@@ -40,6 +41,123 @@ data = csv_source.get_data(
     end_date=datetime(2022, 12, 31),
     timeframe="1d"
 )
+```
+
+### Data Handler
+
+The `DataHandler` is the main class for orchestrating data operations. It provides:
+
+- Loading data from various sources
+- Splitting data into training and testing sets
+- Iterating through data sequentially
+- Filtering data by symbol or date range
+
+```python
+# Example: Using the DataHandler
+from data.data_handler import DataHandler
+
+# Create data handler with a data source
+data_handler = DataHandler(csv_source)
+
+# Load data - IMPORTANT: This takes a list of symbols
+data_handler.load_data(
+    symbols=["AAPL", "MSFT"],  # List of symbols
+    start_date=datetime(2022, 1, 1),
+    end_date=datetime(2022, 12, 31),
+    timeframe="1d"
+)
+
+# Iterate through training data
+for bar in data_handler.iter_train():
+    # Process each bar
+    print(bar['timestamp'], bar['Close'])
+
+# Get data for a specific symbol
+aapl_data = data_handler.get_symbol_data("AAPL")
+
+# Get data for a specific date range
+range_data = data_handler.get_range(
+    start_date=datetime(2022, 6, 1),
+    end_date=datetime(2022, 6, 30)
+)
+```
+
+### Data Transformers
+
+The `DataTransformer` classes provide functionality to preprocess and transform market data:
+
+- **ResampleTransformer** - Resamples data to different timeframes (e.g., 1m to 5m)
+- **MissingValueHandler** - Fills in missing values using various methods
+- **AdjustedCloseTransformer** - Adjusts OHLC data using Adjusted Close
+- **ReturnCalculator** - Calculates returns from price data
+- **NormalizationTransformer** - Normalizes data using different methods
+- **FeatureEngineeringTransformer** - Creates technical indicators and derived features
+- **TransformerPipeline** - Applies multiple transformers in sequence
+
+```python
+# Example: Using transformers
+from data.data_transformer import (
+    ResampleTransformer,
+    FeatureEngineeringTransformer,
+    TransformerPipeline
+)
+
+# Create a transformer pipeline
+pipeline = TransformerPipeline([
+    MissingValueHandler(method='ffill'),
+    ResampleTransformer(timeframe='1h'),
+    FeatureEngineeringTransformer(
+        features=['ma', 'rsi', 'bbands'],
+        params={'ma_periods': [10, 20, 50]}
+    )
+])
+
+# Transform data
+transformed_data = pipeline.transform(original_data)
+```
+
+### Data Connectors
+
+The `DataConnector` classes facilitate connection to external data services:
+
+- **APIConnector** - Base class for API connections
+- **AlphaVantageConnector** - Connector for Alpha Vantage API
+- **YahooFinanceConnector** - Connector for Yahoo Finance API
+- **WebSocketClient** - Generic WebSocket client
+- **MarketDataWebSocketClient** - WebSocket client for market data
+- **DatabaseConnector** - Base class for database connections
+- **SQLiteConnector** - Connector for SQLite databases
+
+```python
+# Example: Using an API connector
+from data.data_connectors import AlphaVantageConnector
+
+# Create connector
+connector = AlphaVantageConnector(api_key="YOUR_API_KEY")
+
+# Get historical data
+historical_data = connector.get_historical_data(
+    symbol="AAPL",
+    start_date=datetime(2022, 1, 1),
+    end_date=datetime(2022, 12, 31),
+    timeframe="1d"
+)
+
+# Get latest price
+current_price = connector.get_latest_price("AAPL")
+```
+
+### Data Cache
+
+The `DataCache` optimizes performance by storing frequently accessed data:
+
+```python
+from data.data_sources import DataCache
+
+# Configure cache
+DataCache.set_max_size(100)  # Store up to 100 datasets
+
+# Data is automatically cached when loaded through data sources
 ```
 
 ## Important Implementation Details
@@ -238,3 +356,6 @@ If you're having issues loading data:
 5. **Parse dates consistently** - Ensure timestamps are properly parsed as datetime objects
 6. **Validate CSV columns** - Make sure your CSV has all required columns (timestamp, OHLC)
 7. **Keep the timeframe consistent** - Use the same timeframe string in filenames and method calls
+8. **Use the transformer pipeline** - For consistent data preprocessing across different datasets
+9. **Implement caching** - For datasets that are accessed frequently
+10. **Handle missing data** - Use appropriate filling strategies for your specific use case

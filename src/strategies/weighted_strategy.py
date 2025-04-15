@@ -10,7 +10,11 @@ from typing import List, Optional, Dict, Any, Union
 from src.strategies.strategy_base import Strategy
 from src.strategies.strategy_registry import StrategyRegistry
 from signals import Signal, SignalType
-from src.log_system import logger
+from src.log_system import TradeLogger
+
+
+logger = TradeLogger.get_logger('trading.strategy')
+
 
 
 @StrategyRegistry.register(category="core")

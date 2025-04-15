@@ -8,7 +8,17 @@ The Signals module provides a framework for generating, processing, and filterin
 **SignalType**: Enumeration of different signal types (BUY, SELL, NEUTRAL).  
 **SignalFilter**: Base class for signal filtering algorithms that remove noise from raw signals.  
 **SignalTransform**: Base class for transformations that process signal data to extract additional insights.  
-**SignalProcessor**: Coordinates signal processing operations including filtering, transformation, and confidence scoring.
+**SignalProcessor**: Coordinates signal processing operations including filtering, transformation, and confidence scoring.  
+**SignalRouter**: Routes signals from multiple rules and provides consensus methods.  
+**SignalCollection**: A collection of signals with methods to determine consensus.
+
+## Dependencies
+
+The Signals module relies on the following dependencies:
+- NumPy: For numerical operations
+- Collections: For using deque data structures
+- ABC: For abstract base classes
+- Typing: For type hints
 
 ## Basic Usage
 
@@ -107,6 +117,75 @@ class SignalType(Enum):
     BUY = 1
     SELL = -1
     NEUTRAL = 0
+```
+
+### SignalCollection
+
+A collection of signals that provides consensus methods.
+
+**Constructor Parameters:**
+- None
+
+**Methods:**
+- `add(signal)`: Add a signal to the collection
+  - `signal` (Signal): Signal to add
+- `get_weighted_consensus()`: Get the weighted consensus signal type from all signals
+  - Returns: SignalType representing the consensus
+
+**Example:**
+```python
+from signals import SignalCollection, Signal, SignalType
+
+# Create a collection of signals
+collection = SignalCollection()
+
+# Add signals
+collection.add(Signal(timestamp="2023-06-15", signal_type=SignalType.BUY, price=100, confidence=0.8))
+collection.add(Signal(timestamp="2023-06-15", signal_type=SignalType.BUY, price=100, confidence=0.6))
+collection.add(Signal(timestamp="2023-06-15", signal_type=SignalType.SELL, price=100, confidence=0.4))
+
+# Get consensus
+consensus = collection.get_weighted_consensus()
+print(f"Consensus signal type: {consensus}")  # BUY (weighted majority)
+```
+
+### SignalRouter
+
+Routes signals from multiple rules and provides consensus methods. Used for backward compatibility with legacy code.
+
+**Constructor Parameters:**
+- `rule_objects` (List[Any]): List of rule objects that generate signals
+
+**Methods:**
+- `on_bar(event)`: Process a bar event through all rules and collect signals
+  - `event`: Bar event containing market data
+  - Returns: Dictionary containing the collected signals and bar metadata
+- `reset()`: Reset all rules
+
+**Example:**
+```python
+from signals import SignalRouter
+from rules import RSIRule, SMAcrossoverRule
+
+# Create rules
+rules = [
+    RSIRule(params={"rsi_period": 14}),
+    SMAcrossoverRule(params={"fast_window": 10, "slow_window": 30})
+]
+
+# Create router
+router = SignalRouter(rules)
+
+# Process a bar
+result = router.on_bar(bar_data)
+
+# Access signals and metadata
+signals = result["signals"]
+timestamp = result["timestamp"]
+price = result["price"]
+
+# Get consensus
+consensus = signals.get_weighted_consensus()
 ```
 
 ### SignalFilter
@@ -288,6 +367,7 @@ Apply wavelet transform to price data for multi-scale analysis.
 **Example:**
 ```python
 from signals.signal_processing import WaveletTransform
+import numpy as np
 
 # Create wavelet transform
 wavelet = WaveletTransform(wavelet='db4', level=3)
@@ -814,6 +894,17 @@ def create_signal_processor_from_config(config_file=None):
 # Usage
 processor = create_signal_processor_from_config('trading_config.yaml')
 processed_signal = processor.process_signal(signal)
+```
+
+## File Structure
+
+The Signals module is organized as follows:
+
+```
+signals/
+├── __init__.py             # Exports main classes like Signal, SignalType
+├── signal_processing.py    # Contains filtering and transformation classes
+└── signal_router.py        # Contains SignalRouter and SignalCollection classes
 ```
 
 ## Best Practices

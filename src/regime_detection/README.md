@@ -6,20 +6,22 @@ The Regime Detection module identifies market regimes (trending, range-bound, vo
 
 **RegimeType**: Enumeration of market regimes (TRENDING_UP, TRENDING_DOWN, RANGE_BOUND, VOLATILE, etc.).  
 **DetectorBase**: Abstract base class for all regime detection algorithms.  
-**Detector Registry**: Central registry for detector types with dynamic registration.  
+**DetectorRegistry**: Central registry for detector types with dynamic registration.  
 **RegimeManager**: Coordinates regime detection and strategy selection.
 
 ## Basic Usage
 
 ```python
-from regime_detection import RegimeType, DetectorRegistry
-from regime_detection.detectors.trend_detectors import TrendStrengthRegimeDetector
-from strategies import WeightedStrategy
+from src.regime_detection import RegimeType, DetectorRegistry, registry
+from src.regime_detection.detectors.trend_detectors import TrendStrengthRegimeDetector
+from src.strategies import WeightedStrategy
 
 # Create a regime detector
 detector = TrendStrengthRegimeDetector(
-    adx_period=14,
-    adx_threshold=25
+    config={
+        "adx_period": 14,
+        "adx_threshold": 25
+    }
 )
 
 # Process market data
@@ -37,24 +39,30 @@ print(f"Current market regime: {current_regime}")  # e.g., TRENDING_UP
 
 # Create regime-specific strategies
 trending_up_strategy = WeightedStrategy(
-    rules=trend_following_rules,
+    components=trend_following_rules,
     buy_threshold=0.3,
     sell_threshold=-0.5
 )
 
 range_bound_strategy = WeightedStrategy(
-    rules=mean_reversion_rules,
+    components=mean_reversion_rules,
     buy_threshold=0.4,
     sell_threshold=-0.4
 )
 
 # Create regime manager
-from regime_detection import RegimeManager
+from src.regime_detection import RegimeManager
+from src.strategy import WeightedRuleStrategyFactory
 
+# Create strategy factory
+strategy_factory = WeightedRuleStrategyFactory()
+
+# Create regime manager
 regime_manager = RegimeManager(
     regime_detector=detector,
     strategy_factory=strategy_factory,
-    rule_objects=rule_objects
+    rule_objects=rule_objects,
+    data_handler=data_handler
 )
 
 # Add regime-specific strategies
@@ -101,7 +109,7 @@ Abstract base class for regime detection algorithms.
 
 **Example:**
 ```python
-from regime_detection import DetectorBase, RegimeType
+from src.regime_detection import DetectorBase, RegimeType
 
 class MyCustomDetector(DetectorBase):
     def __init__(self, name=None, config=None):
@@ -132,19 +140,19 @@ Registry of available regime detectors for dynamic registration and discovery.
 
 **Example:**
 ```python
-from regime_detection import DetectorRegistry
+from src.regime_detection import DetectorRegistry, registry
 
 # Register a new detector
-@DetectorRegistry.register(category="custom")
+@registry.register(category="custom")
 class MyCustomDetector(DetectorBase):
     # Implementation...
     pass
 
 # Get a detector class
-detector_class = DetectorRegistry.get_detector_class("TrendStrengthRegimeDetector")
+detector_class = registry.get_detector_class("TrendStrengthRegimeDetector")
 
 # List all detectors in a category
-volatility_detectors = DetectorRegistry.list_detectors(category="volatility")
+volatility_detectors = registry.list_detectors(category="volatility")
 ```
 
 ### DetectorFactory
@@ -161,7 +169,7 @@ Factory for creating regime detector instances.
 
 **Example:**
 ```python
-from regime_detection import DetectorFactory
+from src.regime_detection import DetectorFactory
 
 factory = DetectorFactory()
 
@@ -206,8 +214,8 @@ Manages trading strategies based on detected market regimes.
 
 **Example:**
 ```python
-from regime_detection import RegimeManager
-from strategies import WeightedRuleStrategyFactory
+from src.regime_detection import RegimeManager
+from src.strategies import WeightedRuleStrategyFactory
 
 # Create strategy factory
 strategy_factory = WeightedRuleStrategyFactory()
@@ -249,9 +257,12 @@ Detects trending and range-bound markets using the Average Directional Index (AD
 
 **Example:**
 ```python
-from regime_detection.detectors.trend_detectors import TrendStrengthRegimeDetector
+from src.regime_detection.detectors.trend_detectors import TrendStrengthRegimeDetector
 
-detector = TrendStrengthRegimeDetector(adx_period=14, adx_threshold=25)
+detector = TrendStrengthRegimeDetector(config={
+    "adx_period": 14, 
+    "adx_threshold": 25
+})
 regime = detector.detect_regime(bar_data)
 ```
 
@@ -271,12 +282,12 @@ Identifies volatile and low-volatility markets based on the standard deviation o
 
 **Example:**
 ```python
-from regime_detection.detectors.volatility_detectors import VolatilityRegimeDetector
+from src.regime_detection.detectors.volatility_detectors import VolatilityRegimeDetector
 
-detector = VolatilityRegimeDetector(
-    lookback_period=20,
-    volatility_threshold=0.015
-)
+detector = VolatilityRegimeDetector(config={
+    "lookback_period": 20,
+    "volatility_threshold": 0.015
+})
 regime = detector.detect_regime(bar_data)
 ```
 
@@ -295,7 +306,7 @@ Combines multiple regime detectors using voting or weighted methods.
 
 **Example:**
 ```python
-from regime_detection.detectors.composite_detectors import CompositeDetector
+from src.regime_detection.detectors.composite_detectors import CompositeDetector
 
 detector = CompositeDetector(
     detectors=[trend_detector, volatility_detector],
@@ -309,46 +320,45 @@ regime = detector.detect_regime(bar_data)
 ### Creating Adaptive Strategies with Regime Detection
 
 ```python
-from regime_detection import RegimeType, TrendStrengthRegimeDetector
-from strategies import RegimeStrategy, WeightedStrategy
+from src.regime_detection import RegimeType
+from src.regime_detection.detectors.volatility_detectors import VolatilityRegimeDetector
+from src.strategies import WeightedStrategy, RegimeStrategy
 
 # Create regime detector
-detector = TrendStrengthRegimeDetector(adx_period=14, adx_threshold=25)
+detector = VolatilityRegimeDetector(config={
+    "lookback_period": 20,
+    "volatility_threshold": 0.015
+})
 
-# Define different strategies for different regimes
-trending_up_strategy = WeightedStrategy(
-    rules=momentum_rules,
+# Define different strategies for different volatility regimes
+low_vol_strategy = WeightedStrategy(
+    components=trend_following_rules,
     weights=[0.4, 0.3, 0.3],
-    buy_threshold=0.3,  # More aggressive in uptrend
-    sell_threshold=-0.6
-)
-
-trending_down_strategy = WeightedStrategy(
-    rules=trend_following_rules,  
-    weights=[0.5, 0.5],
-    buy_threshold=0.7,  # More conservative in downtrend
+    buy_threshold=0.3,
     sell_threshold=-0.3
 )
 
-range_bound_strategy = WeightedStrategy(
-    rules=mean_reversion_rules,
-    weights=[0.6, 0.4],
-    buy_threshold=0.4,
-    sell_threshold=-0.4
+high_vol_strategy = WeightedStrategy(
+    components=mean_reversion_rules,
+    weights=[0.5, 0.5],
+    buy_threshold=0.6,  # Higher threshold in volatile markets
+    sell_threshold=-0.6
 )
 
-default_strategy = WeightedStrategy(rules=balanced_rules)
-
-# Create regime strategy that selects appropriate sub-strategy
+# Create a regime strategy
 regime_strategy = RegimeStrategy(
     regime_detector=detector,
     regime_strategies={
-        RegimeType.TRENDING_UP: trending_up_strategy,
-        RegimeType.TRENDING_DOWN: trending_down_strategy,
-        RegimeType.RANGE_BOUND: range_bound_strategy
+        RegimeType.LOW_VOLATILITY: low_vol_strategy,
+        RegimeType.VOLATILE: high_vol_strategy
     },
-    default_strategy=default_strategy
+    default_strategy=low_vol_strategy  # Default to low volatility strategy
 )
+
+# Process market data with regime-adaptive strategy
+signal = regime_strategy.on_bar(event)
+print(f"Current regime: {regime_strategy.current_regime}")
+print(f"Signal type: {signal.signal_type}")
 ```
 
 ### Analyzing Regime Distribution and Performance
@@ -356,7 +366,8 @@ regime_strategy = RegimeStrategy(
 ```python
 import pandas as pd
 import matplotlib.pyplot as plt
-from regime_detection import TrendStrengthRegimeDetector
+import numpy as np
+from src.regime_detection.detectors.trend_detectors import TrendStrengthRegimeDetector
 
 def analyze_regimes(data, detector):
     """Analyze regime distribution and performance in historical data."""
@@ -410,19 +421,25 @@ def analyze_regimes(data, detector):
 ### Integration with Optimization Framework
 
 ```python
-from optimization import OptimizerManager, OptimizationMethod
-from regime_detection import TrendStrengthRegimeDetector
+from src.optimization import OptimizerManager, OptimizationMethod
+from src.regime_detection.detectors.trend_detectors import TrendStrengthRegimeDetector
 
 # Create detector with initial parameters
-detector = TrendStrengthRegimeDetector(adx_period=14, adx_threshold=25)
+detector = TrendStrengthRegimeDetector(config={
+    "adx_period": 14,
+    "adx_threshold": 25
+})
 
 # Create optimizer for regime detector
 optimizer = OptimizerManager(data_handler)
 
 # Register detector with parameter ranges
-optimizer.register_regime_detector("trend_detector", TrendStrengthRegimeDetector,
-                                  {"adx_period": [10, 14, 20], 
-                                   "adx_threshold": [20, 25, 30]})
+optimizer.register_regime_detector(
+    "trend_detector", 
+    TrendStrengthRegimeDetector,
+    {"adx_period": [10, 14, 20], 
+     "adx_threshold": [20, 25, 30]}
+)
 
 # Optimize detector parameters
 optimized_detectors = optimizer.optimize(
@@ -446,9 +463,9 @@ regime_strategy = RegimeStrategy(
 ### Building a Custom Detector
 
 ```python
-from regime_detection import DetectorBase, RegimeType, DetectorRegistry
+from src.regime_detection import DetectorBase, RegimeType, registry
 
-@DetectorRegistry.register(category="custom")
+@registry.register(category="custom")
 class MovingAverageRegimeDetector(DetectorBase):
     """
     Regime detector based on moving average relationships.
@@ -521,13 +538,14 @@ class MovingAverageRegimeDetector(DetectorBase):
 
 ### With Indicators Module
 
-The Regime Detection module reuses components from the Indicators module for calculations:
+The Regime Detection module can reuse components from the Indicators module for calculations:
 
 ```python
-from indicators.trend import average_directional_index
-from indicators.volatility import historical_volatility
-from regime_detection import DetectorBase, RegimeType
+from src.indicators.trend import average_directional_index
+from src.indicators.volatility import historical_volatility
+from src.regime_detection import DetectorBase, RegimeType, registry
 
+@registry.register(category="custom")
 class CustomIndicatorDetector(DetectorBase):
     """Detector that uses existing indicator functions."""
     
@@ -562,9 +580,15 @@ class CustomIndicatorDetector(DetectorBase):
         )
         
         # Determine regime based on indicators
-        # Implementation details...
-        
-        return self.current_regime
+        if adx > 25:
+            if plus_di > minus_di:
+                return RegimeType.TRENDING_UP
+            else:
+                return RegimeType.TRENDING_DOWN
+        elif volatility > 0.015:
+            return RegimeType.VOLATILE
+        else:
+            return RegimeType.RANGE_BOUND
 ```
 
 ### With Strategies Module
@@ -572,8 +596,9 @@ class CustomIndicatorDetector(DetectorBase):
 Integrate regime detection with the strategies module:
 
 ```python
-from strategies import Strategy, StrategyRegistry
-from regime_detection import RegimeType
+from src.strategies import Strategy
+from src.strategies.strategy_registry import StrategyRegistry
+from src.regime_detection import RegimeType
 
 @StrategyRegistry.register(category="regime_adaptive")
 class AdaptiveMAStrategy(Strategy):
@@ -633,9 +658,9 @@ class AdaptiveMAStrategy(Strategy):
 Adjust risk parameters based on detected regime:
 
 ```python
-from risk_management import RiskManager
-from risk_management.types import RiskParameters
-from regime_detection import RegimeType
+from src.risk_management import RiskManager
+from src.risk_management.types import RiskParameters
+from src.regime_detection import RegimeType
 
 class RegimeAwareRiskManager(RiskManager):
     """Risk manager that adapts parameters based on market regime."""
