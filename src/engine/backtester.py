@@ -9,6 +9,7 @@ import numpy as np
 import logging
 from typing import Dict, Any, List, Optional, Callable, Union
 
+
 from src.events.event_bus import Event, EventBus
 from src.events.event_types import EventType
 from src.signals import Signal, SignalType
@@ -18,14 +19,6 @@ from src.position_management.position_manager import PositionManager, PositionSi
 # Set up logging
 logger = logging.getLogger(__name__)
 
-from enum import Enum, auto
-import numpy as np
-
-class EventType(Enum):
-    BAR = auto()
-    SIGNAL = auto()
-    ORDER = auto()
-    FILL = auto()
 
 
 class Event:
@@ -432,6 +425,61 @@ class Backtester:
             }
 
 
+    def _process_trades(self, trade_history):
+        """
+        Process trade history into a standardized format.
+
+        Args:
+            trade_history: List of Fill objects representing trades
+
+        Returns:
+            List of processed trade records
+        """
+        processed_trades = []
+
+        # Create pairs of entry and exit for each position
+        current_position = None
+
+        for fill in trade_history:
+            if current_position is None:
+                # Start a new position
+                current_position = (
+                    fill.timestamp,  # Entry time
+                    fill.direction,  # Direction
+                    fill.fill_price,  # Entry price
+                    None,  # Exit time (to be filled later)
+                    None,  # Exit price (to be filled later)
+                    0.0    # Log return (to be calculated)
+                )
+            else:
+                # Close the position
+                entry_time, direction, entry_price, _, _, _ = current_position
+
+                # Calculate log return
+                if direction > 0:  # Long position
+                    log_return = np.log(fill.fill_price / entry_price)
+                else:  # Short position
+                    log_return = np.log(entry_price / fill.fill_price)
+
+                # Complete the trade record
+                trade_record = (
+                    entry_time,
+                    direction,
+                    entry_price,
+                    fill.timestamp,  # Exit time
+                    fill.fill_price,  # Exit price
+                    log_return
+                )
+
+                processed_trades.append(trade_record)
+                current_position = None
+
+        # If we have an open position at the end
+        if current_position is not None:
+            processed_trades.append(current_position)
+
+        return processed_trades
+
     def _process_signals(self, signal_or_signals, bar):
         """
         Process signals from strategy.
@@ -474,6 +522,12 @@ class Backtester:
 
                         # Create an order directly
                         direction = 1 if comp_value > 0 else -1
+
+                        # For testing, also try BUY orders
+                        if direction < 0:  # Convert negative directions to positive for testing
+                            direction = 1
+                            logger.info(f"Converting order to BUY for testing purposes")
+
                         order = Order(
                             symbol='default',
                             order_type="MARKET",
@@ -493,6 +547,8 @@ class Backtester:
                         # Emit order event
                         self.event_bus.emit(order_event)
                         break  # Just process the first non-neutral component
+                
+
 
             # Skip neutral signals
             if hasattr(signal, 'signal_type') and signal.signal_type == SignalType.NEUTRAL:

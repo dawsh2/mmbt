@@ -15,19 +15,12 @@ import logging
 # Get logger
 logger = logging.getLogger(__name__)
 
-# Event types for the event system
-class EventType(Enum):
-    BAR = auto()
-    SIGNAL = auto()
-    ORDER = auto()
-    FILL = auto()
+# Import EventType from events module
+from src.events.event_types import EventType
+# Import Event from events module
+from src.events.event_bus import Event
 
-class Event:
-    """Base class for all events in the system."""
-    def __init__(self, event_type: EventType, data: Any = None):
-        self.event_type = event_type
-        self.data = data
-        self.timestamp = datetime.now()
+
 
 class Order:
     """Represents a trading order."""
@@ -328,30 +321,30 @@ class ExecutionEngine:
         logger.info(f"Created order from signal: {order}")
 
         return order
-    
+
     def execute_pending_orders(self, bar: Dict[str, Any], market_simulator):
         """Execute any pending orders based on current bar data."""
         if not self.pending_orders:
             return
-            
+
         # Log the current bar
         symbol = bar.get('symbol', 'default') if hasattr(bar, 'get') else 'default'
         close_price = bar.get('Close', 0) if hasattr(bar, 'get') else 0
-        
-        logger.debug(f"Processing bar: symbol={symbol}, close={close_price}")
-        
+
+        logger.info(f"Processing {len(self.pending_orders)} pending orders for bar: {symbol}, close={close_price}")
+
         # Track which orders were executed
         executed_orders = []
         fills = []
-        
+
         for order in self.pending_orders:
-            # THIS IS THE CRITICAL FIX! Don't skip orders based on symbol
-            # The previous code was checking for symbol match, which was causing orders to stay pending
-            
+            logger.info(f"Attempting to execute order: {order}")
+
             # Get execution price from market simulator
             if market_simulator and hasattr(market_simulator, 'calculate_execution_price'):
                 try:
                     execution_price = market_simulator.calculate_execution_price(order, bar)
+                    logger.info(f"Market simulator price: {execution_price}")
                 except Exception as e:
                     logger.error(f"Error calculating execution price: {e}")
                     execution_price = close_price  # Fallback to close price
@@ -361,42 +354,30 @@ class ExecutionEngine:
                 # Add a small slippage (0.1%)
                 slippage = execution_price * 0.001 * (1 if order.direction > 0 else -1)
                 execution_price += slippage
-            
+                logger.info(f"Using fallback price with slippage: {execution_price}")
+
             # Get timestamp
             timestamp = bar.get('timestamp', datetime.now()) if hasattr(bar, 'get') else datetime.now()
-            
+
             # Execute the order
             try:
                 fill = self._execute_order(order, execution_price, timestamp)
                 fills.append(fill)
                 executed_orders.append(order)
-                logger.info(f"Order executed: {order}, Fill price: {execution_price:.2f}")
+                logger.info(f"Order executed successfully: {order}, Fill price: {execution_price:.2f}")
             except Exception as e:
-                logger.error(f"Error executing order: {e}")
-        
-        # Remove executed orders from pending list
-        for order in executed_orders:
-            self.pending_orders.remove(order)
-        
-        # Add fills to trade history
-        self.trade_history.extend(fills)
-        
-        # Emit fill events
-        if self.event_bus:
-            for fill in fills:
-                fill_event = Event(EventType.FILL, data=fill)
-                self.event_bus.emit(fill_event)
-        
-        # Log remaining orders
-        if self.pending_orders:
-            logger.debug(f"{len(self.pending_orders)} orders still pending")
-    
+                logger.error(f"Error executing order - DETAILS: {e}")
+                logger.error(f"Order: {order}, Direction: {order.direction}, Quantity: {order.quantity}")
+                logger.error(f"Portfolio cash: {self.portfolio.cash}, Current equity: {self.portfolio.equity}")
+
     def _execute_order(self, order: Order, price: float, timestamp: datetime) -> Fill:
         """Execute a single order and update portfolio."""
         # For buy orders, use positive quantity
         # For sell orders, use negative quantity
         quantity_delta = order.quantity * order.direction
-        
+
+        logger.info(f"Executing {order.direction > 0 and 'BUY' or 'SELL'} order: {abs(quantity_delta)} shares at {price}")
+
         # Update portfolio with new position
         success = self.portfolio.update_position(
             order.symbol,
@@ -404,20 +385,23 @@ class ExecutionEngine:
             price,
             timestamp
         )
-        
+
         if not success:
-            logger.warning(f"Failed to execute order: {order}")
-            raise ValueError("Order execution failed")
-        
+            logger.error(f"Failed to execute order: {order}, Quantity: {quantity_delta}")
+            logger.error(f"Portfolio state: Cash={self.portfolio.cash}, Equity={self.portfolio.equity}")
+            logger.error(f"Current positions: {self.portfolio.get_position_snapshot()}")
+            raise ValueError(f"Order execution failed for {order}")
+
         # Create fill record
         fill = Fill(
             order=order,
             fill_price=price,
             timestamp=timestamp
         )
-        
+
         return fill
-    
+
+
     def update(self, bar: Dict[str, Any]):
         """Update portfolio with latest market data."""
         # Mark-to-market all positions
