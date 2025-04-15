@@ -13,18 +13,14 @@ from src.events.event_handlers import (
     FunctionEventHandler,
     LoggingHandler,
     FilterHandler,
+    DebounceHandler,
+    AsyncEventHandler,
+    EventHandlerGroup,
+    CompositeHandler,
     MarketDataHandler,
     SignalHandler,
     OrderHandler,
     FillHandler
-)
-
-# Import additional handlers from our new implementation
-from src.events.missing_handlers import (
-    DebounceHandler,
-    AsyncEventHandler,
-    EventHandlerGroup,
-    CompositeHandler
 )
 
 # Import event emitters
@@ -33,14 +29,9 @@ from src.events.event_emitters import (
     MarketDataEmitter,
     SignalEmitter,
     OrderEmitter,
-    FillEmitter
-)
-
-# Import additional emitters from our new implementation
-from src.events.missing_emitters import (
+    FillEmitter,
     PortfolioEmitter,
-    SystemEmitter,
-    AnalysisEmitter
+    SystemEmitter
 )
 
 # Make common classes available directly from events module
@@ -72,6 +63,5 @@ __all__ = [
     'OrderEmitter',
     'FillEmitter',
     'PortfolioEmitter',
-    'SystemEmitter',
-    'AnalysisEmitter'
+    'SystemEmitter'
 ]
