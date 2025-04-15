@@ -5,7 +5,6 @@ import numpy as np
 import time
 import gc
 from enum import Enum, auto
-from src.optimization import OptimizationMethod  # Import from the package
 from src.optimization.evaluators import RuleEvaluator, RegimeDetectorEvaluator
 from src.optimization.grid_search import GridOptimizer
 from src.optimization.components import RuleFactory, RegimeDetectorFactory
@@ -13,13 +12,8 @@ from src.optimization.genetic_optimizer import GeneticOptimizer
 from src.strategies.weighted_strategy import WeightedStrategy as WeightedRuleStrategy
 from src.regime_detection import RegimeManager
 
-class OptimizationMethod(Enum):
-    """Enumeration of supported optimization methods."""
-    GENETIC = auto()
-    GRID_SEARCH = auto()  # Added grid search
-    BAYESIAN = auto()
-    RANDOM_SEARCH = auto()
-    JOINT = auto()
+from src.optimization import OptimizationMethod, OptimizationSequence
+
 
 class OptimizerManager:
     """
