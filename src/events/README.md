@@ -107,12 +107,36 @@ market_close_event = Event(EventType.MARKET_CLOSE, {'timestamp': datetime.now()}
 event_bus.emit(market_close_event)
 ```
 
-## Important Notes
+## Important: Event Handler Requirements
 
-- **Use EventManager**: Always use the EventManager to set up event handlers rather than manually connecting components.
-- **Correct Event Transformation**: The EventManager ensures proper transformation of events between components.
-- **Proper Event Flow**: Follow the established event flow pattern to ensure consistent system behavior.
-- **Error Handling**: All EventHandlers include built-in error handling to prevent exceptions from disrupting the event loop.
+When registering event handlers, all handlers must accept an event parameter:
+
+```python
+# CORRECT
+def handle_bar(event):
+    # Process event.data
+    bar_data = event.data
+    # Process bar data...
+
+# INCORRECT - will cause errors
+def handle_bar(bar_data):
+    # Direct processing without event wrapper
+    # This will fail!
+```
+
+All handlers must expect to receive an Event object, not just the data. Event handlers are responsible for extracting the data from the event:
+
+```python
+def on_bar(self, event):
+    bar_data = event.data
+    # Process bar_data...
+```
+
+When emitting events, always wrap data in an Event object:
+
+```python
+event_bus.emit(Event(EventType.BAR, bar_data))
+```
 
 ## Best Practices
 
@@ -121,3 +145,6 @@ event_bus.emit(market_close_event)
 3. **Handle Events Appropriately**: Process events in ways that maintain the integrity of the event flow.
 4. **Add Context to Events**: Include relevant metadata in events to provide context for handlers.
 5. **Monitor Event Flow**: Use the LoggingHandler to track events for debugging and analysis.
+6. **Always Wrap Data in Events**: When emitting events, always create proper Event objects.
+7. **Extract Data in Handlers**: In handlers, always extract data from the event before processing.
+8. **Use Consistent Event Types**: Use the standardized EventType enumeration values.

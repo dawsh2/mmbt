@@ -43,10 +43,19 @@ bar_data = {
     'Low': 99.5, 'Close': 101.2
 }
 
+# Generate a signal directly
+signal = sma_rule.generate_signal(bar_data)
+
+# Alternatively, you can process through on_bar which handles both raw data and events
 signal = sma_rule.on_bar(bar_data)
 
+# Or with an event object
+from src.events import Event, EventType
+bar_event = Event(EventType.BAR, bar_data)
+signal = sma_rule.on_bar(bar_event)  # on_bar will extract data from the event automatically
+
 # Use the signal
-if signal.signal_type == SignalType.BUY:
+if signal and signal.signal_type == SignalType.BUY:
     print(f"Buy signal with {signal.confidence:.2f} confidence")
 ```
 
@@ -105,9 +114,84 @@ from src.rules import create_rule
 rule = create_rule('RSIRule')
 signal_filter = MovingAverageFilter(window_size=3)
 
-# Process bar and filter the signal
-raw_signal = rule.on_bar(bar_data)
+# Process bar data and filter the signal
+raw_signal = rule.generate_signal(bar_data)
 filtered_signal = signal_filter.filter(raw_signal)
+
+# Or with events
+event = Event(EventType.BAR, bar_data)
+raw_signal = rule.on_bar(event)  # on_bar extracts data from the event
+filtered_signal = signal_filter.filter(raw_signal)
+```
+
+## Rule Interface
+
+When creating custom rules, you should implement the `generate_signal(data)` method, which receives a dictionary of bar data:
+
+```python
+class MyCustomRule(Rule):
+    @classmethod
+    def default_params(cls):
+        return {
+            'parameter1': 10,
+            'parameter2': 20
+        }
+    
+    def _validate_params(self):
+        if self.params['parameter1'] <= 0:
+            raise ValueError("parameter1 must be positive")
+    
+    def generate_signal(self, data):
+        """
+        Generate a trading signal from the provided data.
+        
+        Args:
+            data: Dictionary containing price data and indicators
+                 
+        Returns:
+            Signal object representing the trading decision
+        """
+        # Custom signal generation logic
+        if data["Close"] > data["Open"] * (1 + self.params['parameter1']/100):
+            return Signal(
+                timestamp=data.get('timestamp'),
+                signal_type=SignalType.BUY,  # or SELL or NEUTRAL
+                price=data.get('Close'),
+                rule_id=self.name,
+                confidence=0.7  # 0.0 to 1.0
+            )
+        
+        # Return None or a NEUTRAL signal if no conditions are met
+        return None
+```
+
+The base `Rule` class handles both event objects and raw data in its `on_bar` method:
+
+```python
+def on_bar(self, event_or_data):
+    """
+    Process a bar event or data and generate a trading signal.
+    
+    This method can accept either an Event object or raw bar data.
+    If an Event object is provided, it automatically extracts the data before
+    passing it to generate_signal().
+    
+    Args:
+        event_or_data: Event object or dictionary with bar data
+                 
+    Returns:
+        Signal object with the trading decision
+    """
+    # Extract data if given an Event object
+    if hasattr(event_or_data, 'data'):
+        bar_data = event_or_data.data
+    else:
+        bar_data = event_or_data
+        
+    # Generate signal using specific rule logic
+    signal = self.generate_signal(bar_data)
+    self.signals.append(signal)
+    return signal
 ```
 
 ## Rule Class Hierarchy
@@ -565,15 +649,133 @@ class MyCustomRule(Rule):
             raise ValueError("parameter1 must be positive")
     
     def generate_signal(self, data):
+        """
+        Generate a trading signal from the provided data.
+        
+        Note: Implement generate_signal, not on_bar. The base class handles
+        event object conversion in on_bar automatically.
+        
+        Args:
+            data: Dictionary containing price data and indicators
+                 
+        Returns:
+            Signal object or None
+        """
         # Custom signal generation logic
-        # ...
-        return Signal(
-            timestamp=data.get('timestamp'),
-            signal_type=SignalType.BUY,  # or SELL or NEUTRAL
-            price=data.get('Close'),
-            rule_id=self.name,
-            confidence=0.7  # 0.0 to 1.0
-        )
+        if data["Close"] > data["Open"] * (1 + self.params['parameter1']/100):
+            return Signal(
+                timestamp=data.get('timestamp'),
+                signal_type=SignalType.BUY,
+                price=data.get('Close'),
+                rule_id=self.name,
+                confidence=0.7
+            )
+        
+        # Return None for no signal
+        return None
+```
+
+### AlwaysBuyRule - Useful for Testing
+
+A simple rule that always generates buy signals at a specified frequency:
+
+```python
+class AlwaysBuyRule(Rule):
+    """
+    A debugging rule that always generates buy signals at a specified frequency.
+    
+    This rule is intended for testing and debugging purposes only, and should
+    not be used for actual trading.
+    
+    Parameters:
+    -----------
+    frequency : int
+        Generate a signal every 'frequency' bars (default: 2)
+    confidence : float
+        Confidence level for generated signals (default: 1.0)
+    """
+    
+    @classmethod
+    def default_params(cls):
+        return {
+            'frequency': 2,   # Generate signals every 2 bars by default
+            'confidence': 1.0  # Full confidence for testing
+        }
+    
+    def __init__(self, name="always_buy", params=None, description=""):
+        super().__init__(name, params or self.default_params(), description or "Debug rule that always generates buy signals")
+        self.bar_count = 0
+        self.last_signal = None
+    
+    def _validate_params(self):
+        """Validate the parameters."""
+        if self.params['frequency'] <= 0:
+            raise ValueError("Frequency must be positive")
+        if not 0 <= self.params['confidence'] <= 1:
+            raise ValueError("Confidence must be between 0 and 1")
+    
+    def reset(self):
+        """Reset the rule state."""
+        super().reset()
+        self.bar_count = 0
+        self.last_signal = None
+    
+    def generate_signal(self, data):
+        """
+        Generate a buy signal at the specified frequency.
+        
+        Args:
+            data: Dictionary containing bar data
+            
+        Returns:
+            Signal or None
+        """
+        # Increment bar counter
+        self.bar_count += 1
+        
+        # Get current bar info
+        timestamp = data.get("timestamp")
+        close_price = data.get("Close")
+        
+        # Generate a buy signal at the specified frequency
+        if self.bar_count % self.params['frequency'] == 0:
+            # Create signal object
+            signal = Signal(
+                timestamp=timestamp,
+                signal_type=SignalType.BUY,
+                price=close_price,
+                rule_id=self.name,
+                confidence=self.params['confidence'],
+                metadata={"bar_count": self.bar_count}
+            )
+            
+            # Store last signal
+            self.last_signal = signal
+            
+            return signal
+        
+        # No signal for this bar
+        return None
+    
+    def get_state(self, key=None):
+        """
+        Get the current state of the rule.
+        
+        Args:
+            key: Optional specific state key to retrieve
+            
+        Returns:
+            State dictionary or specific value
+        """
+        state = {
+            'bar_count': self.bar_count,
+            'last_signal': self.last_signal,
+        }
+        
+        if key is not None:
+            return state.get(key)
+        
+        return state
 ```
 
 ### Creating Feature-Based Rules
@@ -645,12 +847,12 @@ is_filtered = metadata.get('filtered', False)
 
 5. **Monitor Performance**: Track the performance of individual rules to identify the most effective ones.
 
-6. **Handle Errors**: Use try/except blocks when creating rules with custom parameters to catch validation errors.
+6. **Implement generate_signal**: When creating custom rules, implement the `generate_signal(data)` method, not `on_bar`.
 
-7. **Manage State**: Be aware that rules maintain internal state that can affect signal generation.
+7. **Use on_bar for Convenience**: The `on_bar` method handles both Event objects and raw data as input.
 
-8. **Optimize Parameters**: Use the optimization tools to find the best parameters for your specific market.
+8. **Consider Test Rules**: Use the AlwaysBuyRule for testing the event flow without complex logic.
 
-9. **Document Custom Rules**: Clearly document the expected input data format for custom rules.
+9. **Maintain Rule State**: Use bar_count and other internal state variables for consistent tracking between bars.
 
-10. **Test Edge Cases**: Ensure custom rules handle edge cases like missing data or extreme values gracefully.
+10. **Document Custom Rules**: Clearly document the expected input data format for custom rules.

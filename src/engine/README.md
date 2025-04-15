@@ -9,6 +9,21 @@ The Engine module is the core execution component of the trading system, handlin
 **MarketSimulator**: Simulates realistic market conditions including slippage and transaction costs.  
 **Event System**: Passes events (bars, signals, orders, fills) between system components.
 
+## Event Flow in Backtesting
+
+The complete event flow in the system follows this sequence:
+
+1. `BAR` events are emitted for each bar of market data
+2. Strategy components receive the bar events via their `on_bar(event)` methods
+3. If a strategy generates a signal, it is emitted as a `SIGNAL` event
+4. The PositionManager receives signal events via its `on_signal(event)` method
+5. If the PositionManager decides to act on the signal, it generates an `ORDER` event
+6. The ExecutionEngine receives order events via its `on_order(event)` method
+7. The ExecutionEngine simulates execution and emits a `FILL` event
+8. The Portfolio is updated with the fill information
+
+This event flow ensures that each component is responsible only for its specific role in the trading process.
+
 ## Basic Usage
 
 ```python
@@ -148,15 +163,38 @@ execution_engine.execute_pending_orders(current_bar, market_simulator)
 
 #### update(bar)
 
-Update portfolio with latest market data.
+Update portfolio with latest market data and record portfolio state.
 
 **Parameters:**
-- `bar` (dict): Current bar data
+- `bar` (dict): Current bar data containing at minimum 'symbol' and 'Close' keys
 
 **Example:**
 ```python
 execution_engine.update(current_bar)
 ```
+
+### Updating Portfolio with Market Data
+
+The ExecutionEngine is responsible for updating the portfolio with current market data:
+
+```python
+def update(self, bar_data):
+    """
+    Update portfolio with latest market data.
+    
+    Parameters:
+    -----------
+    bar_data : dict
+        Current bar data with at minimum 'symbol' and 'Close' keys
+    """
+    # Update last known prices
+    self.last_known_prices[bar_data['symbol']] = bar_data['Close']
+    
+    # Record portfolio state for history
+    self._record_portfolio_state(bar_data['timestamp'])
+```
+
+This method should be called for each new bar to ensure the portfolio state is updated with current market prices.
 
 #### get_trade_history()
 
@@ -382,3 +420,7 @@ fee_model = TieredFeeModel(
 6. **Use event handlers for custom analytics**: Leverage the event system to monitor specific aspects of the backtest
 
 7. **Separate parameter optimization from backtesting**: Use the backtester to evaluate strategies with pre-optimized parameters rather than doing both at once
+
+8. **Maintain proper event flow**: Ensure all components receive and process events correctly according to the defined event flow
+
+9. **Update portfolio regularly**: Call the `update()` method with each new bar to keep the portfolio state current

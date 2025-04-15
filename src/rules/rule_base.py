@@ -76,22 +76,32 @@ class Rule(ABC):
             Signal object representing the trading decision
         """
         pass
-    
-    def on_bar(self, bar_data: Dict[str, Any]) -> Signal:
+
+    def on_bar(self, event_or_data):
         """
-        Process a new price bar and generate a trading signal.
-        
-        This is the main entry point called by the trading system for each new bar.
-        
+        Process a bar event and generate a trading signal.
+
+        This method can accept either an Event object containing
+        bar data or the bar data directly.
+
         Args:
-            bar_data: Dictionary containing bar data (OHLCV)
-                 
+            event_or_data: Event object or dictionary containing bar data
+
         Returns:
             Signal object with the trading decision
         """
+        # Extract data from event if it's an Event object
+        if hasattr(event_or_data, 'data'):
+            bar_data = event_or_data.data
+        else:
+            # If direct data is passed (backward compatibility)
+            bar_data = event_or_data
+
+        # Generate signal and store in history
         signal = self.generate_signal(bar_data)
         self.signals.append(signal)
         return signal
+
     
     def update_state(self, key: str, value: Any) -> None:
         """

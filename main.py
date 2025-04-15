@@ -8,7 +8,8 @@ import pandas as pd
 import numpy as np
 
 # Import system components
-from src.events import EventBus, Event, EventType, LoggingHandler, MarketDataEmitter, EventManager
+from src.events import EventBus, Event, EventType
+from src.events.event_handlers import LoggingHandler
 
 # Import configuration
 from src.config import ConfigManager
@@ -17,13 +18,12 @@ from src.config import ConfigManager
 from src.data.data_handler import DataHandler
 from src.data.data_sources import CSVDataSource
 
-# Import rules
-from src.rules import create_rule
 # Import our custom AlwaysBuyRule
 from always_buy_rule import AlwaysBuyRule
 
 # Import strategies
 from src.strategies import WeightedStrategy
+from strategy_wrapper import StrategyWrapper
 
 # Import position management
 from src.position_management.portfolio import Portfolio
@@ -80,6 +80,164 @@ def create_synthetic_data(symbol="SYNTHETIC", timeframe="1d", filename=None):
     
     return df
 
+class EventProcessor:
+    """
+    Helper class to process and track events in the system.
+    """
+    def __init__(self, event_bus, strategy, position_manager, execution_engine, portfolio):
+        self.event_bus = event_bus
+        self.strategy = strategy
+        self.position_manager = position_manager
+        self.execution_engine = execution_engine
+        self.portfolio = portfolio
+        self.signal_count = 0
+        self.order_count = 0
+        self.fill_count = 0
+        
+    def process_bar(self, bar):
+        """Process a bar of market data through the system."""
+        # Create and emit a bar event
+        bar_event = Event(EventType.BAR, bar)
+        self.event_bus.emit(bar_event)
+        
+        # Update execution engine with latest prices
+        self.execution_engine.update(bar)
+        
+    def handle_signal(self, event):
+        """Handle a signal event."""
+        self.signal_count += 1
+        logger.info(f"Signal #{self.signal_count} received: {event.data.signal_type} at price {event.data.price}")
+        
+        # Generate an order based on the signal
+        try:
+            # Get signal data
+            signal_data = event.data
+            symbol = signal_data.metadata.get('symbol', 'SYNTHETIC')
+            direction = signal_data.signal_type.value  # 1 for BUY, -1 for SELL
+            price = signal_data.price
+            
+            # Create order data - hard-coded for testing
+            order_data = {
+                'symbol': symbol,
+                'order_type': 'MARKET',
+                'direction': direction,
+                'quantity': 100,  # Fixed quantity for testing
+                'price': price,
+                'timestamp': signal_data.timestamp
+            }
+            
+            # Create and emit order event
+            logger.info(f"Creating order from signal: {order_data}")
+            order_event = Event(EventType.ORDER, order_data)
+            self.event_bus.emit(order_event)
+            
+            # Increment order count
+            self.order_count += 1
+            
+        except Exception as e:
+            logger.error(f"Error creating order from signal: {e}", exc_info=True)
+        
+        # Forward to position manager (in case forwarding in event bus fails)
+        try:
+            self.position_manager.on_signal(event)
+        except Exception as e:
+            logger.error(f"Error in position_manager.on_signal: {e}")
+    
+    def handle_order(self, event):
+        """Handle an order event."""
+        self.order_count += 1
+        logger.info(f"Order #{self.order_count} received: {event.data}")
+        
+        # Forward to execution engine (in case forwarding in event bus fails)
+        try:
+            self.execution_engine.on_order(event)
+        except Exception as e:
+            logger.error(f"Error in execution_engine.on_order: {e}")
+            
+        # Directly create a fill for testing
+        try:
+            # Get order data
+            order_data = event.data
+            symbol = order_data.get('symbol', 'SYNTHETIC')
+            direction = order_data.get('direction', 0)
+            quantity = order_data.get('quantity', 100)
+            price = order_data.get('price', 0)
+            
+            # Create fill data - hard-coded for testing
+            fill_data = {
+                'symbol': symbol,
+                'direction': direction,
+                'quantity': quantity,
+                'price': price,
+                'timestamp': order_data.get('timestamp', datetime.datetime.now()),
+                'commission': 1.0,
+                'slippage': 0.01
+            }
+            
+            # Create and emit fill event
+            logger.info(f"Creating fill from order: {fill_data}")
+            fill_event = Event(EventType.FILL, fill_data)
+            self.event_bus.emit(fill_event)
+            
+        except Exception as e:
+            logger.error(f"Error creating fill from order: {e}", exc_info=True)
+    
+    def handle_fill(self, event):
+        """Handle a fill event."""
+        self.fill_count += 1
+        logger.info(f"Fill #{self.fill_count} received: {event.data}")
+        
+        # Update portfolio based on fill
+        try:
+            # Assuming on_fill is available on portfolio
+            if hasattr(self.portfolio, 'on_fill'):
+                self.portfolio.on_fill(event)
+                logger.info("Called portfolio.on_fill")
+            else:
+                logger.warning("Portfolio does not have on_fill method")
+                
+                # Try to update portfolio manually
+                fill_data = event.data
+                if isinstance(fill_data, dict):
+                    symbol = fill_data.get('symbol')
+                    direction = fill_data.get('direction', 0)
+                    quantity = fill_data.get('quantity', 0) 
+                    price = fill_data.get('price', 0)
+                    timestamp = fill_data.get('timestamp', datetime.datetime.now())
+                    
+                    if direction > 0:
+                        logger.info(f"Opening long position: {quantity} shares of {symbol} at {price}")
+                        position = self.portfolio.open_position(symbol, 1, quantity, price, timestamp)
+                        logger.info(f"Created position: {position}")
+                    elif direction < 0:
+                        logger.info(f"Opening short position: {quantity} shares of {symbol} at {price}")
+                        position = self.portfolio.open_position(symbol, -1, quantity, price, timestamp)
+                        logger.info(f"Created position: {position}")
+                    else:
+                        logger.warning("Fill direction is 0, cannot create position")
+                else:
+                    logger.warning(f"Fill data is not a dictionary: {fill_data}")
+                
+        except Exception as e:
+            logger.error(f"Error handling fill: {e}", exc_info=True)
+    
+    def register_handlers(self):
+        """Register event handlers with the event bus."""
+        # Register this instance's handler methods
+        self.event_bus.register(EventType.SIGNAL, self.handle_signal)
+        self.event_bus.register(EventType.ORDER, self.handle_order)
+        self.event_bus.register(EventType.FILL, self.handle_fill)
+        
+        logger.info("Event processor handlers registered")
+    
+    def get_status(self):
+        """Get the current status of the event processor."""
+        return {
+            'signals_generated': self.signal_count,
+            'orders_generated': self.order_count,
+            'fills_processed': self.fill_count
+        }
+
 def main():
     """Main entry point for the trading system."""
     logger.info("Starting the trading system")
@@ -102,12 +260,9 @@ def main():
         event_bus = EventBus()
         
         # Add a logging handler for debugging
-        log_handler = LoggingHandler([EventType.BAR, EventType.SIGNAL, 
-                                    EventType.ORDER, EventType.FILL,
-                                    EventType.MARKET_OPEN, EventType.MARKET_CLOSE])
-        for event_type in [EventType.BAR, EventType.SIGNAL, EventType.ORDER, EventType.FILL,
-                          EventType.MARKET_OPEN, EventType.MARKET_CLOSE]:
-            event_bus.register(event_type, log_handler)
+        log_handler = LoggingHandler([EventType.MARKET_OPEN, EventType.MARKET_CLOSE])
+        event_bus.register(EventType.MARKET_OPEN, log_handler)
+        event_bus.register(EventType.MARKET_CLOSE, log_handler)
         
         # 2. Create and configure the config manager
         logger.info("Loading configuration")
@@ -137,38 +292,45 @@ def main():
         # 5. Create trading strategy with rules
         logger.info("Setting up trading strategy")
         
-        # Create AlwaysBuyRule directly instead of using create_rule
+        # Create our AlwaysBuyRule (already has on_bar method)
         always_buy_rule = AlwaysBuyRule(
             name="always_buy_debug",
             params={
-                'frequency': 10,  # Generate a signal every 10 bars
-                'confidence': 0.9  # High confidence for testing
+                'frequency': 2,  # Generate a signal every 2 bars
+                'confidence': 1.0  # Full confidence for testing
             },
             description="Debug rule that always generates buy signals"
         )
         
-        # Create SMA crossover rule as a backup
-        try:
-            sma_rule = create_rule('SMAcrossoverRule', {
-                'fast_window': 5,  # Smaller window to be more sensitive
-                'slow_window': 15,
-                'smooth_signals': True  # Generate signals when MAs are aligned
-            })
-            rule_components = [always_buy_rule, sma_rule]
-            rule_weights = [0.7, 0.3]  # Weight heavily towards the always buy rule
-        except Exception as e:
-            logger.warning(f"Could not create SMAcrossoverRule: {e}. Using only AlwaysBuyRule.")
-            rule_components = [always_buy_rule]
-            rule_weights = [1.0]
+        # Test the AlwaysBuyRule directly before using it
+        logger.info("Directly testing AlwaysBuyRule...")
+        test_bar = {
+            "timestamp": datetime.datetime.now(),
+            "Open": 100.0,
+            "High": 101.0,
+            "Low": 99.0,
+            "Close": 100.5,
+            "Volume": 10000,
+            "symbol": "TEST"
+        }
+        test_event = Event(EventType.BAR, test_bar)
         
-        # Create strategy with the AlwaysBuyRule
+        # Call the rule directly
+        test_signal = always_buy_rule.on_bar(test_event)
+        logger.info(f"Direct test of AlwaysBuyRule result: {test_signal}")
+        logger.info(f"Rule state after direct test: {always_buy_rule.get_state()}")
+        
+        # Create strategy with our rule
         strategy = WeightedStrategy(
-            components=rule_components,
-            weights=rule_weights,
-            buy_threshold=0.5,  # Lower threshold to ensure signals trigger actions
+            components=[always_buy_rule],
+            weights=[1.0],  # Only one rule, so full weight
+            buy_threshold=0.5,
             sell_threshold=-0.5,
             name="DebugStrategy"
         )
+        
+        # Wrap the strategy to handle events properly
+        wrapped_strategy = StrategyWrapper(strategy)
         
         # 6. Set up portfolio and position manager
         logger.info("Setting up portfolio and position management")
@@ -200,18 +362,22 @@ def main():
         execution_engine = ExecutionEngine(position_manager)
         execution_engine.market_simulator = market_simulator
         
-        # 8. Create event manager
-        logger.info("Creating event manager")
-        event_manager = EventManager(
+        # 8. Create event processor
+        logger.info("Creating event processor")
+        event_processor = EventProcessor(
             event_bus=event_bus,
-            strategy=strategy,
+            strategy=wrapped_strategy,
             position_manager=position_manager,
             execution_engine=execution_engine,
             portfolio=portfolio
         )
         
-        # Initialize the system
-        event_manager.initialize()
+        # Register event handlers
+        logger.info("Registering event handlers")
+        # Register the strategy to handle bar events
+        event_bus.register(EventType.BAR, wrapped_strategy.on_bar)
+        # Register other handlers via the event processor
+        event_processor.register_handlers()
         
         # 9. Load market data
         logger.info("Loading market data")
@@ -228,42 +394,72 @@ def main():
         
         logger.info(f"Successfully loaded {len(data_handler.train_data)} bars of data")
         
-        # 10. Process market data through the event manager
+        # 10. Process market data through the event system
         logger.info("Processing market data")
         
-        # Emit market open event - FIXED: Create Event object
+        # Emit market open event
         market_open_event = Event(EventType.MARKET_OPEN, {'timestamp': start_date})
         event_bus.emit(market_open_event)
         
         # Process all bars
         count = 0
         for bar in data_handler.iter_train():
-            # Process the bar through the event manager
-            event_manager.process_market_data(bar)
+            # Process the bar through the event processor
+            # Create bar event
+            bar_event = Event(EventType.BAR, bar)
+            
+            # DIRECTLY call the rule's on_bar method
+            logger.info(f"Directly calling AlwaysBuyRule.on_bar for bar {count}")
+            signal = always_buy_rule.on_bar(bar_event)
+            
+            # If we got a signal, emit it
+            if signal is not None:
+                logger.info(f"Signal generated directly: {signal.signal_type}")
+                
+                # Create signal event
+                signal_event = Event(EventType.SIGNAL, signal)
+                
+                # Emit the signal event
+                event_bus.emit(signal_event)
+                
+            event_processor.process_bar(bar)
             count += 1
             
             # Print status periodically
-            if count % 20 == 0:
+            if count % 10 == 0:
                 logger.info(f"Processed {count} bars of data")
                 
-                # Log rule state periodically if the rule has a get_state method
-                if hasattr(always_buy_rule, 'get_state'):
-                    try:
-                        rule_state = always_buy_rule.get_state()
-                        logger.info(f"Rule state: {rule_state}")
-                    except Exception as e:
-                        logger.warning(f"Could not get rule state: {str(e)}")
+                # Log rule state periodically
+                rule_state = always_buy_rule.get_state()
+                logger.info(f"Rule state: {rule_state}")
                 
-        # Emit market close event - FIXED: Create Event object
+                # Log portfolio state
+                portfolio_metrics = portfolio.get_performance_metrics()
+                logger.info(f"Current equity: ${portfolio_metrics['current_equity']:.2f}")
+                logger.info(f"Open positions: {len(portfolio.positions)}")
+                
+                # Log event stats
+                event_stats = event_processor.get_status()
+                logger.info(f"Event stats: Signals={event_stats['signals_generated']}, " + 
+                           f"Orders={event_stats['orders_generated']}, " +
+                           f"Fills={event_stats['fills_processed']}")
+                
+                # Log open positions details
+                if portfolio.positions:
+                    logger.info("Open positions:")
+                    for pos_id, position in portfolio.positions.items():
+                        logger.info(f"  - {position.symbol}: {position.quantity} shares at {position.entry_price:.2f}")
+        
+        # Emit market close event
         market_close_event = Event(EventType.MARKET_CLOSE, {'timestamp': end_date})
         event_bus.emit(market_close_event)
         
         # 11. Display results
         logger.info("Backtest complete")
         
-        # Get system status
-        status = event_manager.get_status()
-        logger.info(f"System status: {status}")
+        # Get event processor status
+        status = event_processor.get_status()
+        logger.info(f"Event processor status: {status}")
         
         # Calculate portfolio performance
         final_equity = portfolio.get_performance_metrics()['current_equity']
@@ -278,9 +474,9 @@ def main():
         result.update({
             "status": "backtest_complete", 
             "bars_processed": count,
-            "signals_generated": status.get('signals_generated', 0),
-            "orders_generated": status.get('orders_generated', 0),
-            "fills_processed": status.get('fills_processed', 0),
+            "signals_generated": status['signals_generated'],
+            "orders_generated": status['orders_generated'],
+            "fills_processed": status['fills_processed'],
             "final_equity": final_equity,
             "total_return": total_return
         })

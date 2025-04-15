@@ -1,167 +1,144 @@
 #!/usr/bin/env python3
-# always_buy_rule.py - A simple rule that always generates buy signals for debugging
+# always_buy_rule.py - Simple rule that periodically generates buy signals for debugging
 
-import logging
-import datetime
-from src.rules.rule_base import Rule
+from src.rules import Rule
 from src.signals import Signal, SignalType
+import logging
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
 class AlwaysBuyRule(Rule):
     """
-    A simple rule that always generates buy signals.
-    Used for debugging signal propagation through the system.
+    A debugging rule that always generates buy signals at a specified frequency.
+    
+    This rule is intended for testing and debugging purposes only, and should
+    not be used for actual trading.
+    
+    Parameters:
+    -----------
+    frequency : int
+        Generate a signal every 'frequency' bars (default: 2)
+    confidence : float
+        Confidence level for generated signals (default: 1.0)
     """
     
     @classmethod
     def default_params(cls):
         return {
-            'frequency': 5,  # Generate a signal every N bars
-            'confidence': 0.9  # Signal confidence level
+            'frequency': 2,   # Generate signals more frequently for testing
+            'confidence': 1.0  # Full confidence for testing
         }
     
     def __init__(self, name="always_buy", params=None, description=""):
-        """
-        Initialize the always buy rule.
-        
-        Args:
-            name (str): Unique name for the rule
-            params (dict): Parameters for the rule
-            description (str): Description of the rule
-        """
-        super().__init__(name, params or self.default_params(), description or "Rule that always generates buy signals")
-        
-        # Initialize state
+        super().__init__(name, params or self.default_params(), description or "Debug rule that always generates buy signals")
         self.bar_count = 0
         self.last_signal = None
-        
+        logger.info(f"Initialized AlwaysBuyRule with params: {self.params}")
+    
     def _validate_params(self):
-        """Validate rule parameters."""
+        """Validate the parameters."""
         if self.params['frequency'] <= 0:
             raise ValueError("Frequency must be positive")
-        
         if not 0 <= self.params['confidence'] <= 1:
             raise ValueError("Confidence must be between 0 and 1")
     
-    def generate_signal(self, data):
+    def reset(self):
+        """Reset the rule state."""
+        super().reset()
+        self.bar_count = 0
+        self.last_signal = None
+        logger.info(f"Reset AlwaysBuyRule state")
+    
+    def on_bar(self, event):
         """
-        Generate a buy signal based on configured frequency.
+        Process a bar event and potentially generate a signal.
         
-        Args:
-            data: Market data event
+        Parameters:
+        -----------
+        event : Event
+            Event object containing bar data
             
         Returns:
-            Signal or None: Trading signal if it's time to generate one, None otherwise
+        --------
+        Signal or None
+            A buy signal at the specified frequency, or None
         """
-        # Extract price and timestamp from the data
-        price = self._extract_price(data)
-        if price is None:
-            logger.warning(f"Could not extract price from data: {data}")
+        # Log event details for debugging
+        logger.info(f"AlwaysBuyRule.on_bar called with event type: {event.event_type if hasattr(event, 'event_type') else 'Unknown'}")
+        
+        # Check if we have data in the event
+        if not hasattr(event, 'data') or event.data is None:
+            logger.warning("AlwaysBuyRule.on_bar: Event has no data")
             return None
-            
-        timestamp = self._extract_timestamp(data)
-        symbol = self._extract_symbol(data)
+
+        # Get the data from the event
+        data = event.data
+        
+        # Log data for debugging
+        logger.info(f"AlwaysBuyRule.on_bar data keys: {data.keys() if isinstance(data, dict) else 'Not a dict'}")
         
         # Increment bar counter
         self.bar_count += 1
+        logger.info(f"AlwaysBuyRule bar_count incremented to {self.bar_count}")
         
-        # Generate signal according to frequency
+        # Get current bar info
+        timestamp = data.get("timestamp") if isinstance(data, dict) else None
+        close_price = data.get("Close") if isinstance(data, dict) else None
+        
+        logger.info(f"AlwaysBuyRule timestamp: {timestamp}, close: {close_price}")
+        
+        # Log periodically for debugging
+        if self.bar_count % 50 == 0:
+            logger.info(f"AlwaysBuyRule processed {self.bar_count} bars")
+        
+        # Generate a buy signal at the specified frequency
         if self.bar_count % self.params['frequency'] == 0:
+            # Create signal object
             signal = Signal(
                 timestamp=timestamp,
                 signal_type=SignalType.BUY,
-                price=price,
+                price=close_price,
                 rule_id=self.name,
-                symbol=symbol,
                 confidence=self.params['confidence'],
-                metadata={
-                    'bar_count': self.bar_count,
-                    'rule': 'AlwaysBuyRule'
-                }
+                metadata={"bar_count": self.bar_count}
             )
             
+            # Log signal creation
+            logger.info(f"AlwaysBuyRule generated BUY signal at bar {self.bar_count}, price {close_price}")
+            
+            # Store last signal
             self.last_signal = signal
-            logger.info(f"Generated BUY signal at price {price} (bar {self.bar_count})")
+            
             return signal
         
+        # No signal for this bar
+        logger.info(f"AlwaysBuyRule not generating signal at bar {self.bar_count}")
         return None
     
-    def _extract_price(self, data):
-        """Extract price from various data formats."""
-        # Case 1: data is a dict with 'Close'
-        if isinstance(data, dict) and 'Close' in data:
-            return data['Close']
-            
-        # Case 2: data has 'bar' attribute which is a dict
-        if hasattr(data, 'bar') and isinstance(data.bar, dict) and 'Close' in data.bar:
-            return data.bar['Close']
-            
-        # Case 3: data has data attribute with Close
-        if hasattr(data, 'data') and isinstance(data.data, dict) and 'Close' in data.data:
-            return data.data['Close']
-            
-        # Failed to extract price
-        logger.warning(f"Could not extract price from data type: {type(data)}")
-        return None
-    
-    def _extract_timestamp(self, data):
-        """Extract timestamp from various data formats."""
-        # Case 1: data is a dict with 'timestamp'
-        if isinstance(data, dict) and 'timestamp' in data:
-            return data['timestamp']
-            
-        # Case 2: data has 'bar' attribute which is a dict
-        if hasattr(data, 'bar') and isinstance(data.bar, dict) and 'timestamp' in data.bar:
-            return data.bar['timestamp']
-            
-        # Case 3: data has timestamp attribute directly
-        if hasattr(data, 'timestamp'):
-            return data.timestamp
-            
-        # Default to current time
-        return datetime.datetime.now()
-    
-    def _extract_symbol(self, data):
-        """Extract symbol from various data formats."""
-        # Case 1: data is a dict with 'symbol'
-        if isinstance(data, dict) and 'symbol' in data:
-            return data['symbol']
-            
-        # Case 2: data has 'bar' attribute which is a dict
-        if hasattr(data, 'bar') and isinstance(data.bar, dict) and 'symbol' in data.bar:
-            return data.bar['symbol']
-            
-        # Case 3: data has symbol attribute directly
-        if hasattr(data, 'symbol'):
-            return data.symbol
-            
-        # Default symbol
-        return "UNKNOWN"
-    
-    def reset(self):
-        """Reset rule state."""
-        self.bar_count = 0
-        self.last_signal = None
-        
-    def get_state(self, key=None):
+    # Maintain the original generate_signal method for compatibility
+    def generate_signal(self, data):
         """
-        Get rule state.
+        Legacy method to maintain compatibility.
         
-        Args:
-            key (str, optional): State key to retrieve
+        Parameters:
+        -----------
+        data : dict
+            Market data for the current bar
             
         Returns:
-            The value of the specified state key, or a dict of all state if key is None
+        --------
+        Signal or None
+            A buy signal at the specified frequency, or None
         """
-        state = {
-            'bar_count': self.bar_count,
-            'last_signal': self.last_signal,
-            'params': self.params
+        logger.warning("generate_signal called directly - you should be using on_bar instead")
+        return None
+    
+    def get_state(self):
+        """Return the current state of the rule for debugging."""
+        return {
+            "bar_count": self.bar_count,
+            "frequency": self.params['frequency'],
+            "confidence": self.params['confidence'],
+            "last_signal": self.last_signal.timestamp if self.last_signal else None
         }
-        
-        if key is not None:
-            return state.get(key)
-        
-        return state
