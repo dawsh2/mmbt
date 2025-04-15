@@ -1,6 +1,6 @@
 # Risk Management Module Documentation
 
-The Risk Management package provides a comprehensive framework for implementing advanced risk management using MAE (Maximum Adverse Excursion), MFE (Maximum Favorable Excursion), and ETD (Entry-To-Exit Duration) analysis to derive data-driven risk parameters for algorithmic trading systems.
+The Risk Management module provides a comprehensive framework for implementing advanced risk management using MAE (Maximum Adverse Excursion), MFE (Maximum Favorable Excursion), and ETD (Entry-To-Exit Duration) analysis to derive data-driven risk parameters for algorithmic trading systems.
 
 ## Core Concepts
 
@@ -10,11 +10,15 @@ The Risk Management package provides a comprehensive framework for implementing 
 **RiskParameterOptimizer**: Derives optimal risk parameters from historical metrics.  
 **Exit Reasons**: Enumeration of different exit conditions (stop-loss, take-profit, etc.).
 
+## Integration with Analytics Module
+
+For visualization of risk metrics and parameters, use the Analytics module which provides specialized visualization tools for performance analysis, including risk metrics visualization.
+
 ## Basic Usage
 
 ```python
-from risk_management import RiskManager, RiskMetricsCollector, RiskParameters
-from risk_management.types import ExitReason
+from src.risk_management import RiskManager, RiskMetricsCollector, RiskParameters
+from src.risk_management.types import ExitReason
 from datetime import datetime
 
 # Create risk parameters
@@ -427,7 +431,7 @@ Analyze MAE distribution and characteristics.
 
 **Example:**
 ```python
-from risk_management import RiskAnalysisEngine
+from src.risk_management import RiskAnalysisEngine
 
 analysis_engine = RiskAnalysisEngine(metrics_df)
 mae_stats = analysis_engine.analyze_mae()
@@ -530,7 +534,7 @@ Derive optimal stop-loss parameters based on MAE analysis.
 
 **Example:**
 ```python
-from risk_management import RiskParameterOptimizer
+from src.risk_management import RiskParameterOptimizer
 
 optimizer = RiskParameterOptimizer(analysis_results)
 stop_loss = optimizer.optimize_stop_loss('conservative')
@@ -634,7 +638,7 @@ Data class for storing risk management parameters.
 
 **Example:**
 ```python
-from risk_management.types import RiskParameters, RiskToleranceLevel
+from src.risk_management.types import RiskParameters, RiskToleranceLevel
 
 params = RiskParameters(
     stop_loss_pct=2.0,
@@ -650,7 +654,7 @@ params = RiskParameters(
 Enum for different risk tolerance levels.
 
 ```python
-from risk_management.types import RiskToleranceLevel
+from src.risk_management.types import RiskToleranceLevel
 
 level = RiskToleranceLevel.CONSERVATIVE
 # Options: CONSERVATIVE, MODERATE, AGGRESSIVE
@@ -661,7 +665,7 @@ level = RiskToleranceLevel.CONSERVATIVE
 Enum for different exit reasons.
 
 ```python
-from risk_management.types import ExitReason
+from src.risk_management.types import ExitReason
 
 reason = ExitReason.STOP_LOSS
 # Options: STOP_LOSS, TAKE_PROFIT, TRAILING_STOP, TIME_EXIT, STRATEGY_EXIT, UNKNOWN
@@ -685,290 +689,3 @@ Data class for storing trade metrics.
 - `is_winner` (bool, optional): Whether the trade was profitable
 - `exit_reason` (ExitReason, optional): Reason for the exit
 - `price_path` (list, optional): List of price data during the trade
-
-## Advanced Usage
-
-### Optimizing Risk Parameters Based on Historical Data
-
-```python
-from risk_management import RiskMetricsCollector, RiskAnalysisEngine, RiskParameterOptimizer
-from risk_management.types import RiskParameters, ExitReason
-import pandas as pd
-
-# Load historical trade data
-trades_df = pd.read_csv('historical_trades.csv')
-
-# Create metrics collector
-collector = RiskMetricsCollector()
-
-# Add each historical trade
-for _, trade in trades_df.iterrows():
-    collector.track_completed_trade(
-        entry_time=pd.to_datetime(trade['entry_time']),
-        entry_price=trade['entry_price'],
-        direction=trade['direction'],
-        exit_time=pd.to_datetime(trade['exit_time']),
-        exit_price=trade['exit_price'],
-        exit_reason=ExitReason[trade['exit_reason']]
-    )
-
-# Create analysis engine from collector
-analyzer = RiskAnalysisEngine.from_collector(collector)
-
-# Run analysis
-analysis_results = analyzer.analyze_all()
-
-# Create parameter optimizer
-optimizer = RiskParameterOptimizer(analysis_results)
-
-# Get different parameter sets
-conservative_params = optimizer.get_optimal_parameters('conservative')
-moderate_params = optimizer.get_optimal_parameters('moderate')
-aggressive_params = optimizer.get_optimal_parameters('aggressive')
-
-# Get balanced parameters (best expectancy)
-balanced_params = optimizer.get_balanced_parameters()
-
-# Display results
-print("Conservative Parameters:")
-print(f"  Stop Loss: {conservative_params.stop_loss_pct:.2f}%")
-print(f"  Take Profit: {conservative_params.take_profit_pct:.2f}%")
-
-print("\nAggressive Parameters:")
-print(f"  Stop Loss: {aggressive_params.stop_loss_pct:.2f}%")
-print(f"  Take Profit: {aggressive_params.take_profit_pct:.2f}%")
-
-print("\nBalanced Parameters (Best Expectancy):")
-print(f"  Stop Loss: {balanced_params.stop_loss_pct:.2f}%")
-print(f"  Take Profit: {balanced_params.take_profit_pct:.2f}%")
-print(f"  Trailing Stop Activation: {balanced_params.trailing_stop_activation_pct:.2f}%")
-print(f"  Trailing Stop Distance: {balanced_params.trailing_stop_distance_pct:.2f}%")
-print(f"  Expected Win Rate: {balanced_params.expected_win_rate:.2f}")
-print(f"  Risk-Reward Ratio: {balanced_params.risk_reward_ratio:.2f}")
-```
-
-### Creating a Dynamic Risk Manager with Parameter Updates
-
-```python
-from risk_management import RiskManager, RiskMetricsCollector, RiskAnalysisEngine, RiskParameterOptimizer
-from risk_management.types import RiskParameters
-import pandas as pd
-
-class DynamicRiskManager:
-    """Risk manager that periodically updates parameters based on performance."""
-    
-    def __init__(self, initial_params, update_frequency=50):
-        self.metrics_collector = RiskMetricsCollector()
-        self.risk_manager = RiskManager(
-            risk_params=initial_params,
-            metrics_collector=self.metrics_collector
-        )
-        self.update_frequency = update_frequency
-        self.trade_count = 0
-        
-    def open_trade(self, *args, **kwargs):
-        """Open a trade with the risk manager."""
-        self.trade_count += 1
-        return self.risk_manager.open_trade(*args, **kwargs)
-        
-    def update_price(self, *args, **kwargs):
-        """Update price with the risk manager."""
-        return self.risk_manager.update_price(*args, **kwargs)
-        
-    def close_trade(self, *args, **kwargs):
-        """Close a trade with the risk manager."""
-        result = self.risk_manager.close_trade(*args, **kwargs)
-        
-        # Check if it's time to update parameters
-        if self.trade_count % self.update_frequency == 0:
-            self._update_parameters()
-            
-        return result
-        
-    def _update_parameters(self):
-        """Update risk parameters based on collected metrics."""
-        if len(self.metrics_collector.trade_metrics) < 20:
-            # Not enough data to update parameters
-            return
-            
-        # Create analysis engine
-        analyzer = RiskAnalysisEngine.from_collector(self.metrics_collector)
-        
-        # Run analysis
-        analysis_results = analyzer.analyze_all()
-        
-        # Create parameter optimizer
-        optimizer = RiskParameterOptimizer(analysis_results)
-        
-        # Get balanced parameters
-        new_params = optimizer.get_balanced_parameters()
-        
-        # Update risk manager with new parameters
-        self.risk_manager.update_risk_parameters(new_params)
-        
-        print(f"Updated risk parameters based on {len(self.metrics_collector.trade_metrics)} trades")
-        print(f"  New Stop Loss: {new_params.stop_loss_pct:.2f}%")
-        print(f"  New Take Profit: {new_params.take_profit_pct:.2f}%")
-```
-
-### Implementing Custom Position Sizing
-
-```python
-from risk_management import RiskManager, RiskParameters
-from risk_management.types import ExitReason
-
-def kelly_position_sizer(direction, entry_price, stop_price, target_price, 
-                         risk_reward_ratio, expected_win_rate):
-    """
-    Calculate position size using Kelly Criterion.
-    
-    Args:
-        direction: Trade direction ('long' or 'short')
-        entry_price: Entry price
-        stop_price: Stop loss price
-        target_price: Take profit price
-        risk_reward_ratio: Expected risk-reward ratio
-        expected_win_rate: Expected win rate
-        
-    Returns:
-        Recommended position size as percentage of portfolio
-    """
-    # Calculate win probability and payoff ratio
-    win_prob = expected_win_rate
-    
-    # Calculate payoff ratio from prices
-    if direction.lower() == 'long':
-        loss = entry_price - stop_price
-        gain = target_price - entry_price
-    else:  # short
-        loss = stop_price - entry_price
-        gain = entry_price - target_price
-        
-    # Normalize to make loss = 1
-    if loss != 0:
-        payoff_ratio = gain / loss
-    else:
-        payoff_ratio = risk_reward_ratio
-    
-    # Kelly formula: f* = p - (1-p)/r
-    # where p = probability of win, r = payoff ratio
-    kelly_pct = win_prob - (1 - win_prob) / payoff_ratio
-    
-    # Limit Kelly to reasonable range (0-50%)
-    kelly_pct = max(0, min(kelly_pct, 0.5))
-    
-    # Apply half-Kelly for safety
-    half_kelly = kelly_pct * 0.5
-    
-    return half_kelly
-
-# Create risk manager with custom position sizer
-risk_params = RiskParameters(
-    stop_loss_pct=2.0,
-    take_profit_pct=4.0,
-    expected_win_rate=0.6,
-    risk_reward_ratio=2.0
-)
-
-risk_manager = RiskManager(
-    risk_params=risk_params,
-    position_size_calculator=kelly_position_sizer
-)
-
-# Open trade with position sizing
-trade_details = risk_manager.open_trade(
-    trade_id="trade_001",
-    direction="LONG",
-    entry_price=100.0,
-    entry_time=datetime.now()
-)
-
-print(f"Recommended position size: {trade_details['position_size']:.2%}")
-```
-
-### Analyzing Trade Performance by Exit Reason
-
-```python
-from risk_management import RiskMetricsCollector, RiskAnalysisEngine
-import pandas as pd
-import matplotlib.pyplot as plt
-
-# Assume we have a collector with completed trades
-collector = RiskMetricsCollector()
-# ...add trades to collector...
-
-# Get metrics DataFrame
-metrics_df = collector.get_metrics_dataframe()
-
-# Create analysis engine
-analyzer = RiskAnalysisEngine(metrics_df)
-
-# Analyze exit reasons
-exit_stats = analyzer.analyze_exit_reasons()
-
-# Plot performance by exit reason
-plt.figure(figsize=(12, 8))
-
-# Create subplots
-plt.subplot(2, 2, 1)
-exit_counts = pd.Series(exit_stats['counts'])
-exit_counts.plot(kind='bar')
-plt.title("Number of Trades by Exit Reason")
-plt.ylabel("Count")
-
-plt.subplot(2, 2, 2)
-win_rates = pd.Series(exit_stats['win_rates'])
-win_rates.plot(kind='bar')
-plt.title("Win Rate by Exit Reason")
-plt.ylabel("Win Rate")
-
-plt.subplot(2, 2, 3)
-avg_returns = pd.Series(exit_stats['avg_returns'])
-avg_returns.plot(kind='bar')
-plt.title("Average Return by Exit Reason")
-plt.ylabel("Return %")
-
-plt.subplot(2, 2, 4)
-avg_mae = pd.Series(exit_stats['avg_mae'])
-avg_mfe = pd.Series(exit_stats['avg_mfe'])
-pd.DataFrame({'MAE': avg_mae, 'MFE': avg_mfe}).plot(kind='bar')
-plt.title("Average MAE/MFE by Exit Reason")
-plt.ylabel("Percentage")
-
-plt.tight_layout()
-plt.show()
-
-# Analyze which exit reasons perform best
-exit_performance = pd.DataFrame({
-    'count': pd.Series(exit_stats['counts']),
-    'win_rate': pd.Series(exit_stats['win_rates']),
-    'avg_return': pd.Series(exit_stats['avg_returns']),
-    'mae': pd.Series(exit_stats['avg_mae']),
-    'mfe': pd.Series(exit_stats['avg_mfe'])
-})
-
-print("Exit Reason Performance Summary:")
-print(exit_performance)
-```
-
-## Best Practices
-
-1. **Start with conservative parameters**: Begin with more conservative risk parameters and adjust based on real performance data.
-
-2. **Collect sufficient data**: Collect metrics from at least 30-50 trades before attempting to optimize parameters.
-
-3. **Regularly update parameters**: Markets change over time, so periodically re-optimize your risk parameters.
-
-4. **Consider regime-specific parameters**: Different market regimes may require different risk parameters.
-
-5. **Verify parameter stability**: Ensure that optimized parameters are stable across different time periods.
-
-6. **Balance theory and empirics**: Combine theoretical risk models with empirical results from your trading data.
-
-7. **Use proper position sizing**: Always incorporate position sizing that accounts for risk parameters and account size.
-
-8. **Monitor MAE and MFE**: Continuously analyze MAE and MFE to identify potential improvements to risk rules.
-
-9. **Evaluate expectancy**: Focus on maximizing the mathematical expectancy of your trading system.
-
-10. **Maintain risk discipline**: Never override risk parameters based on subjective judgment or emotions.

@@ -240,6 +240,7 @@ Relative Strength Index (RSI) rule.
 - `signal_type`: Signal generation method ('levels', 'divergence', 'midline') (default: 'levels')
 
 ```python
+
 rsi_rule = create_rule('RSIRule', {
     'rsi_period': 14,
     'overbought': 70,

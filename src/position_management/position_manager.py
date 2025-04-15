@@ -103,8 +103,12 @@ class PositionManager:
         Returns:
             List of position action dictionaries
         """
+        print(f"\nPOSITION MANAGER received signal: {signal_event}")
         signals = {}
         current_prices = {}
+        # After signals and current_prices are populated
+        print(f"Extracted signals: {signals}")
+        print(f"Extracted prices: {current_prices}")
         
         # Extract signals and prices from event
         if 'batch_signals' in signal_event:
@@ -121,6 +125,7 @@ class PositionManager:
             
         # Process signals into position actions
         actions = self._process_signals(signals, current_prices)
+        print(f"Generated actions: {actions}")
         
         return actions
             

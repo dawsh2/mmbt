@@ -8,6 +8,12 @@ This trading system is a modular, event-driven framework designed for developing
 
 The architecture employs an event-driven design pattern, where components communicate through a central event bus, promoting loose coupling, flexibility, and extensibility. This design makes it easy to add new strategies, data sources, or execution methods without modifying existing code.
 
+## TODOs and Improvements
+
+- **Move trade history to Portfolio**: Currently `get_trade_history()` is located in the ExecutionEngine class, but conceptually this data belongs in the Portfolio class. Move this functionality to Portfolio for better encapsulation and more intuitive API.
+- **Fix Portfolio pricing**: The current implementation shows portfolio equity dropping to $0 during backtesting. This needs investigation to ensure proper price updates and position valuation.
+- **Improve cross-component documentation**: Make module interdependencies clearer in documentation, especially which components store what data.
+
 ## System Architecture
 
 ![System Architecture](https://mermaid.ink/img/pako:eNqNkl9PwjAUxb-K6ROQ8oAkGpdAwAdjFokm4tN8aOctyNbSdp0J4bvbMRQWYtT7dO85v9O7f_YIUaYQRHCq5YlxOa-W4qIkxw_iRHTKfuTsLOWn4KjVTlwJrbQ6C8lTgsuP2kGrKYlXCy1Mw2jK3pNTKz6D3UCGKuv1BhP-MwmxXdJAGTnVyj5GS9UoUq9UxAo6Ri6ZQ5c-rz0ejmbbpAQz2B55IVvTgHPDKfDLQtKRYmUcQ-0YN1uIoICZcZjGmEAEDa-0Nb4ToAj3i0Zgm2yjYmm76TsBeswdtgITnRt0DUztapV7P9yLzHnlYLQFp1U-b2TDWQM7uGm8l6m5oQo-YAQpRtcFzZTjqnBsAiPGgEeF4XtPFUww0pIZGS2vwPRKgG9aSqIjrhTrvcEIcxdtl2l6B0-rXF86l3XuZIGSyqLnAQoKN8u-BXSDoMR4KPzDYeB7kVo-SsGGwZCO_cg_-kOD8YFPh8PjwaE_iCc4DsLxuH9h-NP-hPaj-Bp_F9o_FfwBCn3iSg?type=png)

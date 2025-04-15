@@ -2,107 +2,188 @@
 
 The Analytics module provides tools for analyzing and visualizing backtesting results and trading performance metrics. It helps traders evaluate strategies, measure risk-adjusted returns, and gain insights into trading patterns.
 
-## Overview
+## Module Structure
 
-This module includes functions to:
-- Process and standardize backtesting results
-- Calculate performance metrics
-- Generate visualizations of trading performance 
-- Analyze drawdowns and recovery periods
-- Compare multiple strategies
+```
+src/analytics/
+├── __init__.py             # Package exports and fallback definitions
+├── metrics.py              # Performance metrics calculation functions
+└── visualization.py        # Visualization tools for performance analysis
+```
+
+## Core Functionality
+
+- **Performance Metrics Calculation**: Calculate metrics like Sharpe ratio, drawdown, win rate
+- **Trade Analysis**: Analyze trade characteristics, durations, and profit distributions
+- **Visualization**: Create charts for equity curves, drawdowns, return distributions, and more
+- **Regime Analysis**: Compare performance across different market regimes
 
 ## Basic Usage
 
 ```python
-from analytics import process_backtester_results
-from analytics.performance_metrics import calculate_sharpe_ratio, calculate_drawdown
+from src.analytics.metrics import calculate_metrics_from_trades, calculate_max_drawdown
 
 # Process backtest results
-results = backtester.run()
-trades, equity_curve = process_backtester_results(results)
+trades = backtester_results['trades']
+equity_curve = backtester_results['equity_curve']
 
-# Calculate performance metrics
-sharpe = calculate_sharpe_ratio(equity_curve)
-max_drawdown, max_drawdown_duration = calculate_drawdown(equity_curve)
+# Calculate comprehensive metrics
+metrics = calculate_metrics_from_trades(trades)
+max_dd = calculate_max_drawdown(equity_curve)
 
-print(f"Sharpe Ratio: {sharpe:.2f}")
-print(f"Maximum Drawdown: {max_drawdown:.2%}")
-print(f"Maximum Drawdown Duration: {max_drawdown_duration} periods")
+print(f"Sharpe Ratio: {metrics['sharpe_ratio']:.2f}")
+print(f"Win Rate: {metrics['win_rate']:.2%}")
+print(f"Maximum Drawdown: {max_dd:.2f}%")
 ```
 
-## Core Functions
+## Visualization Usage
 
-### `process_backtester_results(results)`
-
-Converts backtester results to a standardized format.
-
-**Parameters:**
-- `results` (dict): Dictionary of results from `Backtester.run()`
-
-**Returns:**
-- `tuple`: (trades list, equity curve)
-
-**Example:**
 ```python
-trades, equity_curve = process_backtester_results(results)
+from src.analytics.visualization import TradeVisualizer
+
+# Create a visualizer
+visualizer = TradeVisualizer()
+
+# Create various plots
+equity_fig = visualizer.plot_equity_curve(trades, initial_capital=100000)
+drawdown_fig = visualizer.plot_drawdowns(trades, initial_capital=100000)
+returns_fig = visualizer.plot_returns_distribution(trades)
+
+# Create a comprehensive dashboard
+dashboard_figs = visualizer.create_performance_dashboard(
+    trades, 
+    regime_data=market_regimes,
+    title="Strategy Performance Dashboard"
+)
+
+# Save the analysis
+visualizer.save_dashboard(dashboard_figs, output_dir="./analysis_results")
 ```
 
-### `calculate_sharpe_ratio(returns, risk_free_rate=0.0, periods_per_year=252)`
+## Key Metrics Functions
 
-Calculates the Sharpe ratio of a return series.
+### `calculate_metrics_from_trades(trades)`
 
-**Parameters:**
-- `returns` (list or array): Series of returns
-- `risk_free_rate` (float): Annual risk-free rate (default: 0.0)
-- `periods_per_year` (int): Number of periods in a year (default: 252 for daily returns)
-
-**Returns:**
-- `float`: Sharpe ratio
-
-### `calculate_drawdown(equity_curve)`
-
-Calculates maximum drawdown and duration.
+Calculate comprehensive performance metrics from a list of trades.
 
 **Parameters:**
-- `equity_curve` (list or array): Series of equity values
+- `trades`: List of trade tuples (entry_time, direction, entry_price, exit_time, exit_price, log_return)
 
 **Returns:**
-- `tuple`: (maximum drawdown percentage, maximum drawdown duration)
+- Dictionary of performance metrics including:
+  - `total_trades`: Number of trades
+  - `win_rate`: Percentage of winning trades
+  - `total_return`: Total percentage return
+  - `sharpe_ratio`: Sharpe ratio (risk-adjusted return)
+  - `sortino_ratio`: Sortino ratio (downside risk-adjusted return)
+  - `max_drawdown`: Maximum drawdown percentage
+  - `calmar_ratio`: Return divided by maximum drawdown
+  - `profit_factor`: Gross profit divided by gross loss
+  - And several other metrics
+
+### `calculate_max_drawdown(equity_curve)`
+
+Calculate the maximum drawdown from an equity curve.
+
+**Parameters:**
+- `equity_curve`: List or array of equity values
+
+**Returns:**
+- Maximum drawdown as a percentage
+
+### `calculate_monthly_returns(trades)`
+
+Calculate monthly returns from trades.
+
+**Parameters:**
+- `trades`: List of trade tuples
+
+**Returns:**
+- Dictionary mapping month strings (YYYY-MM) to percentage returns
+
+### `analyze_trade_durations(trades)`
+
+Analyze trade durations.
+
+**Parameters:**
+- `trades`: List of trade tuples
+
+**Returns:**
+- Dictionary with statistics on trade durations
+
+## Visualization Features
+
+The `TradeVisualizer` class provides the following visualization methods:
+
+### `plot_equity_curve(trades, title="Equity Curve", benchmark_data=None, initial_capital=10000)`
+
+Plot the equity curve from trades.
+
+### `plot_drawdowns(trades, title="Drawdown Analysis", threshold=5.0, initial_capital=10000)`
+
+Plot drawdowns over time.
+
+### `plot_returns_distribution(trades, title="Trade Returns Distribution")`
+
+Plot the distribution of trade returns.
+
+### `plot_monthly_returns(trades, title="Monthly Returns")`
+
+Plot monthly returns as a heatmap.
+
+### `plot_regime_performance(trades, regime_data, title="Performance by Market Regime")`
+
+Plot performance broken down by market regime.
+
+### `plot_trade_analysis(trades, title="Trade Analysis")`
+
+Create a comprehensive trade analysis with multiple subplots.
+
+### `plot_trade_durations(trades, title="Trade Duration Analysis")`
+
+Analyze and plot trade durations.
+
+### `create_performance_dashboard(trades, regime_data=None, title="Trading Performance Dashboard", initial_capital=10000)`
+
+Create a comprehensive performance dashboard with multiple visualizations.
 
 ## Integration with Other Modules
 
 ### With Backtester Module
 
 ```python
-from backtester import Backtester
-from data_handler import CSVDataHandler
-from strategies import WeightedStrategy
-from analytics import process_backtester_results, compare_strategies
+from src.engine import Backtester
+from src.analytics.metrics import calculate_metrics_from_trades
 
 # Run backtest
 backtester = Backtester(data_handler, strategy)
 results = backtester.run()
 
-# Analyze results
-trades, equity_curve = process_backtester_results(results)
-performance_metrics = calculate_performance_metrics(equity_curve, trades)
+# Process and analyze results
+trades = results['trades']
+metrics = calculate_metrics_from_trades(trades)
 ```
 
-### With Visualization Components
+### With Risk Management Module
+
+The Analytics module can be used to visualize risk metrics collected by the Risk Management module:
 
 ```python
-from analytics.visualization import plot_equity_curve, plot_drawdown, plot_trade_distribution
+from src.risk_management import RiskMetricsCollector
+from src.analytics.visualization import TradeVisualizer
 
-# Create visualizations
-equity_fig = plot_equity_curve(equity_curve)
-drawdown_fig = plot_drawdown(equity_curve)
-trade_dist_fig = plot_trade_distribution(trades)
+# Get metrics from risk collector
+metrics_df = risk_metrics_collector.get_metrics_dataframe()
+
+# Create risk visualizations
+visualizer = TradeVisualizer()
+mae_mfe_fig = visualizer.plot_risk_metrics(metrics_df)
 ```
 
 ## Best Practices
 
-1. **Standardize analysis workflow** - Create a consistent process for analyzing all strategies
-2. **Compare to benchmarks** - Always compare strategy performance to relevant market benchmarks
-3. **Focus on risk-adjusted returns** - Use metrics like Sharpe and Sortino ratios for evaluation
-4. **Analyze drawdowns carefully** - Pay special attention to maximum drawdown and recovery time
-5. **Consider regime-specific performance** - Evaluate how strategies perform in different market regimes
+1. **Use standardized trade format** - Ensure trades are in the expected format for metrics functions
+2. **Compare to benchmarks** - Use the benchmark_data parameter in visualizations to compare to market indices
+3. **Analyze drawdowns carefully** - Pay special attention to maximum drawdown and recovery time
+4. **Save analysis results** - Use the save_dashboard method to preserve analysis for later review
+5. **Use comprehensive dashboards** - The create_performance_dashboard method provides a complete view of performance

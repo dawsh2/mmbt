@@ -1,114 +1,102 @@
-## Event System
+# Event System Documentation
 
-The Events module provides a robust event-driven architecture that enables decoupled communication between components through a central event bus. It defines standard event types and provides mechanisms for routing events from producers to consumers.
+## Overview
 
-### Core Components
+The event system provides a robust event-driven architecture for the backtesting system. It enables decoupled communication between components through a central event bus, ensuring flexibility and maintainability in the trading system architecture.
 
-```
-events/
-├── __init__.py             # Package exports
-├── event_bus.py            # Event and EventBus classes
-├── event_types.py          # EventType enumeration
-├── event_handlers.py       # Event handler classes
-├── event_emitters.py       # Event emitter classes
-└── schema.py               # Event data schemas
-```
-
-### Key Classes
-
-- `EventBus`: Central message broker for routing events
-- `Event`: Container for event data with type, payload, and timestamp
-- `EventType`: Enumeration of event types (BAR, TICK, SIGNAL, etc.)
-- `EventHandler`: Base class for components that process events
-- `EventEmitter`: Base class for components that emit events
+## Core Components
 
 ### Event Types
 
-The system supports various event types organized by category:
+The system defines standard event types in `EventType` enumeration, including:
 
-```
-Market Data Events
-├── BAR
-├── TICK
-├── MARKET_OPEN
-└── MARKET_CLOSE
-
-Signal Events
-└── SIGNAL
-
-Order Events
-├── ORDER
-├── CANCEL
-└── MODIFY
-
-Execution Events
-├── FILL
-├── PARTIAL_FILL
-└── REJECT
-
-Portfolio Events
-├── POSITION_OPENED
-├── POSITION_CLOSED
-└── POSITION_MODIFIED
-
-System Events
-├── START
-├── STOP
-├── PAUSE
-├── RESUME
-└── ERROR
-```
+- **Market Data Events**: `BAR`, `TICK`, `MARKET_OPEN`, `MARKET_CLOSE`
+- **Signal Events**: `SIGNAL`
+- **Order Events**: `ORDER`, `CANCEL`, `MODIFY`
+- **Execution Events**: `FILL`, `PARTIAL_FILL`, `REJECT`
+- **Portfolio Events**: `POSITION_OPENED`, `POSITION_CLOSED`, `POSITION_MODIFIED`
+- **System Events**: `START`, `STOP`, `PAUSE`, `RESUME`, `ERROR`
+- **Analysis Events**: `METRIC_CALCULATED`, `ANALYSIS_COMPLETE`
 
 ### Event Handlers
 
-Event handlers process events received from the event bus:
+Event handlers process specific types of events. The system includes specialized handlers:
 
-- `LoggingHandler`: Logs events at specified levels
-- `FunctionEventHandler`: Delegates event processing to a function
-- `FilterHandler`: Filters events based on criteria
-- `DebounceHandler`: Prevents processing events too frequently
-- `CompositeHandler`: Delegates to multiple handlers
-- `AsyncEventHandler`: Processes events asynchronously
-- `EventHandlerGroup`: Manages groups of handlers
-- Domain-specific handlers: `MarketDataHandler`, `SignalHandler`, `OrderHandler`, `FillHandler`
+- **MarketDataHandler**: Processes market data events
+- **SignalHandler**: Processes signal events
+- **OrderHandler**: Processes order events
+- **FillHandler**: Processes fill events to update the portfolio
 
-### Event Emitters
+## Event Flow
 
-Event emitters generate events and send them to the event bus:
+The typical event flow in the system is:
 
-- `MarketDataEmitter`: Emits bar, tick, and market events
-- `SignalEmitter`: Emits signal events from strategies
-- `OrderEmitter`: Emits order-related events
-- `FillEmitter`: Emits fill-related events
-- `PortfolioEmitter`: Emits portfolio-related events
-- `SystemEmitter`: Emits system-related events
+1. `BAR` events → Strategy → `SIGNAL` events
+2. `SIGNAL` events → Position Manager → `ORDER` events
+3. `ORDER` events → Execution Engine → `FILL` events
+4. `FILL` events → Fill Handler → Position Manager
 
-### Example Usage
+## Setting Up Event Handlers
+
+To properly connect components through the event system, you need to register the appropriate handlers for each event type:
 
 ```python
-from src.events.event_bus import EventBus, Event
-from src.events.event_types import EventType
-from src.events.event_handlers import LoggingHandler
-from src.events.event_emitters import MarketDataEmitter
+# Strategy handles bar events and emits signals
+event_bus.register(EventType.BAR, lambda event: event_bus.emit(
+    Event(EventType.SIGNAL, strategy.on_bar(BarEvent(event.data)))
+))
 
-# Create event bus
-event_bus = EventBus()
+# Position manager handles signal events and emits orders
+event_bus.register(EventType.SIGNAL, position_manager.on_signal)
 
-# Create logging handler
-logging_handler = LoggingHandler([EventType.BAR])
-event_bus.register(EventType.BAR, logging_handler)
+# Execution engine handles order events
+event_bus.register(EventType.ORDER, execution_engine.on_order)
 
-# Create market data emitter
-market_data_emitter = MarketDataEmitter(event_bus)
+# Create and register a FillHandler to handle fill events
+from events.event_handlers import FillHandler
+fill_handler = FillHandler(position_manager)
+event_bus.register(EventType.FILL, fill_handler)
+event_bus.register(EventType.PARTIAL_FILL, fill_handler)
+```
 
-# Emit bar event
-market_data_emitter.emit_bar({
-    "symbol": "AAPL",
-    "timestamp": datetime.now(),
-    "Open": 150.0,
-    "High": 151.5,
-    "Low": 149.5,
-    "Close": 151.0,
-    "Volume": 1000000
-})
+## Important Notes
+
+- **Do not register the Portfolio directly**: The Portfolio class doesn't have event handler methods. Instead, use the Position Manager through the FillHandler.
+- **Use specialized handlers**: For each event type, use the appropriate specialized handler class rather than attempting to register components directly.
+- **Component relationships**: The Position Manager updates the Portfolio based on fill information, so the FillHandler should be connected to the Position Manager, not directly to the Portfolio.
+
+## Common Pitfalls
+
+1. **Incorrect handler registration**: Registering components that don't implement the necessary handler methods (e.g., trying to register Portfolio or ExecutionEngine for FILL events)
+   
+   ```python
+   # INCORRECT
+   event_bus.register(EventType.FILL, portfolio.on_fill)  # Portfolio has no on_fill method
+   event_bus.register(EventType.FILL, execution_engine.on_fill)  # ExecutionEngine has no on_fill method
+   
+   # CORRECT
+   fill_handler = FillHandler(position_manager)
+   event_bus.register(EventType.FILL, fill_handler)
+   ```
+
+2. **Missing handler registration**: Not registering any handler for an important event type
+
+3. **Wrong component relationships**: Using the wrong components to handle certain event types
+
+## Event Handler Implementation
+
+If you need to create a custom event handler, you should extend the EventHandler base class:
+
+```python
+from events.event_handlers import EventHandler
+from events.event_types import EventType
+
+class MyCustomHandler(EventHandler):
+    def __init__(self, target_component):
+        super().__init__([EventType.CUSTOM])  # Register for CUSTOM events
+        self.target_component = target_component
+    
+    def _process_event(self, event):
+        # Process the event and update the target component
+        self.target_component.process_custom_event(event.data)
 ```

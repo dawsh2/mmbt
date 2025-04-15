@@ -9,7 +9,6 @@ Main components:
 - RiskMetricsCollector: Collects risk metrics from trades
 - RiskAnalysisEngine: Analyzes collected metrics
 - RiskParameterOptimizer: Derives optimal risk parameters
-- RiskVisualization: Visualizes risk metrics and parameters
 """
 
 # Export main classes
@@ -17,7 +16,6 @@ from src.risk_management.risk_manager import RiskManager
 from src.risk_management.collector import RiskMetricsCollector
 from src.risk_management.analyzer import RiskAnalysisEngine
 from src.risk_management.parameter_optimizer import RiskParameterOptimizer
-from src.risk_management.visualization import RiskVisualization
 
 # Export type definitions
 from src.risk_management.types import (
@@ -34,7 +32,6 @@ __all__ = [
     'RiskMetricsCollector',
     'RiskAnalysisEngine',
     'RiskParameterOptimizer',
-    'RiskVisualization',
     
     # Types
     'RiskParameters',

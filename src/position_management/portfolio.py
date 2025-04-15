@@ -376,6 +376,15 @@ class Portfolio:
         self.cash_history.append((timestamp, self.cash))
         
         return exits
+
+    def get_cash(self) -> float:
+        """
+        Get the current cash balance.
+
+        Returns:
+            Current cash balance
+        """
+        return self.cash
     
     def get_position_value(self) -> float:
         """
