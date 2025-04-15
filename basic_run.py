@@ -9,6 +9,12 @@ import logging
 import datetime
 import pandas as pd
 from datetime import datetime, timedelta
+import sys
+import os
+from inspect import signature
+from src.strategies import WeightedStrategy
+logging.info(f"WeightedStrategy signature: {signature(WeightedStrategy.__init__)}")
+
 
 # Configure logging
 logging.basicConfig(
@@ -27,7 +33,7 @@ try:
     from src.config import ConfigManager
     from src.data.data_sources import CSVDataSource
     from src.data.data_handler import DataHandler
-    from src.rules import SMAcrossoverRule, create_rule
+    from src.rules import create_rule
     from src.strategies import WeightedStrategy
     from src.signals import Signal, SignalType
     from src.engine import Backtester
@@ -51,7 +57,6 @@ except Exception as e:
     raise
 
 # Create data source and handler
-# Create data source and handler
 try:
     # For debugging, let's create a simple synthetic dataset
     logger.info("Creating synthetic data for testing")
@@ -74,30 +79,39 @@ try:
     }
     
     df = pd.DataFrame(data)
-    df['symbol'] = 'SYNTHETIC'
     
-    # Save to CSV for testing
-    csv_path = 'SYNTHETIC_1d.csv'  # Use a naming convention your data source might expect
-    df.to_csv(csv_path, index=False)
-    logger.info(f"Saved synthetic data to {csv_path}")
+    # Create a single CSV file with the CORRECT filename pattern
+    symbol = "SYNTHETIC"
+    timeframe = "1d"
+    filename = f"{symbol}_{timeframe}.csv"
+    df.to_csv(filename, index=False)
+    logger.info(f"Saved synthetic data to {os.path.abspath(filename)}")
     
     # Create data source
-    data_source = CSVDataSource('.')
+    data_source = CSVDataSource(".")  # Current directory
+    
+    # Verify the file exists
+    expected_file = f"{symbol}_{timeframe}.csv"
+    logger.info(f"Looking for file: {expected_file}")
+    logger.info(f"File exists: {os.path.exists(expected_file)}")
     
     # Create data handler
     data_handler = DataHandler(data_source)
     
-    # Load data - without the filename parameter
+    # Load data using the correct method signature
+    # IMPORTANT: symbols parameter takes a LIST of strings
     data_handler.load_data(
-        symbols=['SYNTHETIC'], 
-        start_date=dates[0], 
-        end_date=dates[-1]
-        # Remove the filename parameter
+        symbols=[symbol],  # This is a LIST with one symbol
+        start_date=dates[0],
+        end_date=dates[-1],
+        timeframe=timeframe
     )
-    logger.info("Successfully created data handler and loaded data")
+    logger.info(f"Successfully created data handler and loaded {len(data_handler.full_data)} rows of data")
 except Exception as e:
     logger.error(f"Failed to create data source/handler: {e}")
     raise
+
+
 # Create rule and strategy
 try:
     # Create a simple SMA crossover rule
@@ -106,9 +120,9 @@ try:
         'slow_window': 30
     })
     
-    # Create a weighted strategy with the rule
+    # Using components instead of rules based on the actual signature
     strategy = WeightedStrategy(
-        rules=[sma_rule],
+        components=[sma_rule],  # Changed from 'rules' to 'components'
         weights=[1.0],
         buy_threshold=0.1,
         sell_threshold=-0.1,
@@ -119,15 +133,15 @@ except Exception as e:
     logger.error(f"Failed to create rule/strategy: {e}")
     raise
 
-# Create and run backtester
+
 try:
     # Create backtester
     backtester = Backtester(config, data_handler, strategy)
     logger.info("Successfully created backtester")
     
-    # Run backtest with verbose output
+    # Run backtest without the verbose parameter (it's not supported)
     logger.info("Running backtest...")
-    results = backtester.run(verbose=True)
+    results = backtester.run(use_test_data=False)  # Changed from verbose=True to use_test_data=False
     
     # Log results
     logger.info("Backtest completed")

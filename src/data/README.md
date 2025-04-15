@@ -32,91 +32,35 @@ csv_source = CSVDataSource("data/csv", filename_pattern="{symbol}_{timeframe}.cs
 # Get available symbols
 symbols = csv_source.get_symbols()
 
-# Get data for a symbol
+# Get data for a symbol - IMPORTANT: Note the difference between get_data and DataHandler.load_data
+# This method takes a single symbol string, not a list
 data = csv_source.get_data(
-    symbol="AAPL",
+    symbol="AAPL",  # Single string, not a list
     start_date=datetime(2022, 1, 1),
     end_date=datetime(2022, 12, 31),
     timeframe="1d"
 )
 ```
 
-### Data Transformers
+## Important Implementation Details
 
-The `DataTransformer` abstract base class defines the interface for components that transform raw market data:
+### Data Source vs. Data Handler Methods
 
-- **ResampleTransformer** - For changing the timeframe of data
-- **MissingValueHandler** - For handling missing or invalid data points
-- **AdjustedCloseTransformer** - For adjusting OHLC data using adjusted close prices
-- **ReturnCalculator** - For calculating returns from price data
-- **NormalizationTransformer** - For normalizing price data
-- **FeatureEngineeringTransformer** - For adding technical indicators and features
-- **TransformerPipeline** - For applying multiple transformers in sequence
+**CRITICAL DIFFERENCE**: There's an important distinction between the methods in `DataSource` and `DataHandler`:
 
-```python
-# Example: Creating a transformer pipeline
-from data.data_transformers import (
-    ResampleTransformer, 
-    MissingValueHandler, 
-    FeatureEngineeringTransformer,
-    TransformerPipeline
-)
+1. **DataSource.get_data()** takes a **single symbol string** parameter:
+   ```python
+   # CORRECT - single symbol string
+   data_source.get_data(symbol="AAPL", start_date=start_date, end_date=end_date, timeframe="1d")
+   ```
 
-# Create transformer pipeline
-pipeline = TransformerPipeline([
-    MissingValueHandler(method='ffill'),
-    ResampleTransformer(timeframe='1h'),
-    FeatureEngineeringTransformer(
-        features=['ma', 'rsi', 'bbands'],
-        params={'ma_periods': [10, 20, 50]}
-    )
-])
+2. **DataHandler.load_data()** takes a **list of symbol strings**:
+   ```python
+   # CORRECT - list of symbols
+   data_handler.load_data(symbols=["AAPL"], start_date=start_date, end_date=end_date, timeframe="1d")
+   ```
 
-# Transform data
-transformed_data = pipeline.transform(data)
-```
-
-### Data Handler
-
-The `DataHandler` class is the main interface between data sources and the rest of the system:
-
-- Manages loading data from sources
-- Handles data splitting for train/test
-- Implements iteration through data bars
-- Provides methods for retrieving specific data subsets
-
-```python
-# Example: Using DataHandler
-from data.data_handler import DataHandler
-from data.data_sources import CSVDataSource
-
-# Create data source and handler
-data_source = CSVDataSource("data/csv")
-handler = DataHandler(data_source, train_fraction=0.8)
-
-# Load data
-handler.load_data(
-    symbols=["AAPL", "MSFT"],
-    start_date=datetime(2020, 1, 1),
-    end_date=datetime(2022, 12, 31),
-    timeframe="1d"
-)
-
-# Iterate through training data
-for bar in handler.iter_train():
-    # Process bar...
-    pass
-
-# Iterate through testing data
-for bar in handler.iter_test():
-    # Process bar...
-    pass
-
-# Get data for specific symbol
-apple_data = handler.get_symbol_data("AAPL")
-```
-
-## Important Notes on File Naming and Data Loading
+This is a common source of errors. The error message `Data file not found: ./['SYNTHETIC']_1d.csv` indicates that a list is being passed where a string is expected, or vice versa.
 
 ### File Naming Conventions
 
@@ -131,202 +75,166 @@ For example:
 - `MSFT_1h.csv` - Hourly MSFT data
 - `BTC_1m.csv` - Minute BTC data
 
+For testing with synthetic data, make sure your CSV file is named correctly:
+```
+SYNTHETIC_1d.csv
+```
+
 You can customize this pattern using the `filename_pattern` parameter when initializing the CSVDataSource:
 
 ```python
 csv_source = CSVDataSource("data/csv", filename_pattern="{symbol}-{timeframe}.csv")
 ```
 
-If your files don't follow a specific pattern, you might need to rename them or create a custom DataSource.
+### Full Working Example
 
-### Symbol Parameter Format
-
-When using the `load_data` method in the DataHandler, always pass the symbols as a list, even if you only have one symbol:
-
-```python
-# CORRECT - symbols as a list
-handler.load_data(symbols=["AAPL"], start_date=start_date, end_date=end_date)
-
-# INCORRECT - will cause errors
-handler.load_data(symbols="AAPL", start_date=start_date, end_date=end_date)
-```
-
-### Timezone Handling
-
-#### Timezone-Aware vs Timezone-Naive Datetimes
-
-A common source of errors is mismatched timezone information between your data and filtering parameters. 
-
-If your data contains timezone-aware datetimes, your filter dates must also be timezone-aware:
+Here's a complete working example showing how to:
+1. Create a synthetic dataset
+2. Save it with the correct filename
+3. Load it properly
 
 ```python
-# For timezone-aware data
 import pandas as pd
+import os
+from datetime import datetime, timedelta
+from src.data.data_sources import CSVDataSource
+from src.data.data_handler import DataHandler
 
-# Create timezone-aware timestamps
-start_date = pd.Timestamp('2020-01-01').tz_localize('UTC')
-end_date = pd.Timestamp('2022-12-31').tz_localize('UTC')
+# 1. Create a synthetic dataset
+dates = pd.date_range(start='2022-01-01', end='2022-01-31', freq='D')
+prices = list(range(100, 100 + len(dates)))
 
-data_handler.load_data(
-    symbols=["AAPL"],
-    start_date=start_date,
-    end_date=end_date,
-    timeframe="1d"
-)
+data = {
+    'timestamp': dates,
+    'Open': prices,
+    'High': [p + 1 for p in prices],
+    'Low': [p - 1 for p in prices],
+    'Close': [p + 0.5 for p in prices],
+    'Volume': [10000 for _ in prices]
+}
+
+df = pd.DataFrame(data)
+
+# 2. Save it with the CORRECT filename pattern - VERY IMPORTANT
+symbol = "SYNTHETIC"
+timeframe = "1d"
+filename = f"{symbol}_{timeframe}.csv"
+df.to_csv(filename, index=False)
+print(f"Saved data to {os.path.abspath(filename)}")
+
+# 3. Create a data source pointing to the current directory
+data_source = CSVDataSource(".")  # "." means current directory
+
+# 4. Directly test the data source's get_data method
+try:
+    # Notice this uses a single symbol string, not a list
+    test_data = data_source.get_data(
+        symbol=symbol,  # Single string here
+        start_date=dates[0],
+        end_date=dates[-1],
+        timeframe=timeframe
+    )
+    print(f"Successfully loaded data directly from data source: {len(test_data)} rows")
+except Exception as e:
+    print(f"Error loading data directly from data source: {str(e)}")
+
+# 5. Create a data handler
+data_handler = DataHandler(data_source)
+
+# 6. Now properly load the data using load_data with a symbol LIST
+try:
+    data_handler.load_data(
+        symbols=[symbol],  # LIST with one symbol
+        start_date=dates[0],
+        end_date=dates[-1],
+        timeframe=timeframe
+    )
+    print(f"Successfully loaded data via data handler: {len(data_handler.full_data)} rows")
+except Exception as e:
+    print(f"Error loading data via data handler: {str(e)}")
 ```
 
-You can check if your data has timezone information:
+## Troubleshooting Data Loading Issues
 
-```python
-# Load a small sample first
-data = data_handler.data_source.get_data(symbol, None, None, timeframe)
-first_date = data['Date'].iloc[0]
+### Common Errors and Solutions
 
-# Check if it has timezone info
-if hasattr(first_date, 'tzinfo') and first_date.tzinfo is not None:
-    print("Data has timezone information")
-    # Make your filter dates timezone-aware too
-    import pytz
-    start_date = start_date.tz_localize('UTC')
-    end_date = end_date.tz_localize('UTC')
-```
+1. **FileNotFoundError: Data file not found: ./['SYNTHETIC']_1d.csv**
+   - **Cause**: Passing a list of symbols to `data_source.get_data()` instead of a single string
+   - **Solution**: Use a single string with `data_source.get_data()` or use `data_handler.load_data()` with a list
 
-#### Recommended Approach
+2. **TypeError: DataHandler.load_data() got an unexpected keyword argument 'filename'**
+   - **Cause**: The `DataHandler.load_data()` method doesn't accept a filename parameter
+   - **Solution**: DataHandler loads files based on the symbol and timeframe parameters. Remove the filename parameter.
 
-To avoid timezone issues, consider:
+3. **TypeError: CSVDataSource.get_data() missing 1 required positional argument: 'timeframe'**
+   - **Cause**: The timeframe parameter is required but missing
+   - **Solution**: Always include the timeframe parameter (e.g., '1d', '1h', '5m')
 
-1. Standardizing to UTC timezone consistently throughout your system
-2. Explicitly converting all datetimes to timezone-aware or timezone-naive format
-3. Using pandas Timestamp objects for consistency rather than Python datetime
-
-```python
-# Standardizing approach
-import pandas as pd
-import pytz
-
-# Convert string to timezone-aware timestamp
-def to_utc_timestamp(date_string):
-    if isinstance(date_string, str):
-        timestamp = pd.to_datetime(date_string)
-        if timestamp.tzinfo is None:
-            return timestamp.tz_localize('UTC')
-        return timestamp.tz_convert('UTC')
-    return date_string
-
-# Use in data filtering
-start_date = to_utc_timestamp('2020-01-01')
-end_date = to_utc_timestamp('2022-12-31')
-```
-
-### CSV Format Requirements
+### Data File Format Requirements
 
 CSVs should have the following columns:
-- **Date** or **Timestamp**: The datetime column (required)
+- **timestamp** or **Date**: The datetime column (required)
 - **Open**: Opening price (required)
 - **High**: High price (required)
 - **Low**: Low price (required)
 - **Close**: Closing price (required)
 - **Volume**: Volume (optional)
 
-The date/timestamp column name can be customized with the `date_column` parameter in CSVDataSource.
+Here's a sample CSV file format:
 
-### Troubleshooting Data Loading
+```
+timestamp,Open,High,Low,Close,Volume
+2022-01-01,100.0,101.0,99.0,100.5,10000
+2022-01-02,101.0,102.0,100.0,101.5,12000
+```
 
-If you encounter data loading issues:
+### Step-by-Step Debugging Guide
 
-1. **Verify the file exists and follows the expected naming convention**:
+If you're having issues loading data:
+
+1. **Check if the file exists with the expected name**:
    ```python
    import os
-   expected_file = f"data/{symbol}_{timeframe}.csv"
+   symbol = "SYNTHETIC"
+   timeframe = "1d"
+   expected_file = f"{symbol}_{timeframe}.csv"
    print(f"Looking for file: {expected_file}")
    print(f"File exists: {os.path.exists(expected_file)}")
    ```
 
-2. **Check the data format by reading directly with pandas**:
+2. **Look at the internal implementation** - The most common error is confusion between single string and list of symbols:
+   ```python
+   # DataSource.get_data() expects a single symbol string:
+   data = data_source.get_data(symbol="AAPL", ...)  # CORRECT
+   
+   # DataHandler.load_data() expects a list of symbols:
+   data_handler.load_data(symbols=["AAPL"], ...)  # CORRECT
+   ```
+
+3. **Check the columns in your CSV file**:
    ```python
    import pandas as pd
-   df = pd.read_csv(f"data/{symbol}_{timeframe}.csv")
-   print(f"Columns: {df.columns.tolist()}")
-   print(f"Date format: {type(df['Date'].iloc[0])}")
+   df = pd.read_csv("SYNTHETIC_1d.csv")
+   print(f"Columns in CSV: {df.columns.tolist()}")
+   print(f"First few rows:\n{df.head()}")
    ```
 
-3. **Test timezone compatibility**:
+4. **Verify the date format**:
    ```python
-   # If you have timezone-aware dates in your CSV
-   dates = pd.to_datetime(df['Date'])
-   if any(d.tzinfo is not None for d in dates):
-       print("CSV contains timezone-aware dates")
-       # Make your filtering dates timezone-aware too
-       start_date = pd.Timestamp('2020-01-01').tz_localize('UTC')
-       end_date = pd.Timestamp('2022-12-31').tz_localize('UTC')
+   df = pd.read_csv("SYNTHETIC_1d.csv")
+   if 'timestamp' in df.columns:
+       print(f"First timestamp: {df['timestamp'].iloc[0]}")
+       # Convert to datetime if needed
+       df['timestamp'] = pd.to_datetime(df['timestamp'])
+       df.to_csv("SYNTHETIC_1d.csv", index=False)  # Save back
    ```
-
-4. **Try loading without date filtering first**:
-   ```python
-   # Load without date filtering
-   data_handler.load_data(
-       symbols=[symbol],
-       start_date=None,
-       end_date=None,
-       timeframe=timeframe
-   )
-   ```
-
-## Event Integration
-
-The Data module integrates with the Events module, allowing market data to be emitted as events through the system:
-
-- `CSVDataHandler` implements the `EventEmitter` interface
-- Market data bars are emitted as `BAR` events
-- WebSocket connectors emit real-time market data events
-
-```python
-# Example: Using a data handler as an event emitter
-from data.data_handler import DataHandler
-from events.event_bus import EventBus
-from events.event_types import EventType
-
-# Create components
-event_bus = EventBus()
-data_handler = DataHandler(data_source, event_bus=event_bus)
-
-# Register a handler for bar events
-event_bus.register(EventType.BAR, bar_handler)
-
-# Load and process data
-data_handler.load_data(symbols=["AAPL"], start_date=start_date, end_date=end_date)
-
-# Process data bars as events
-for bar in data_handler.iter_train():
-    # Bar events are automatically emitted to the event bus
-    pass
-```
-
-## Caching
-
-The module implements caching mechanisms to improve performance:
-
-- **DataCache** - For caching market data to avoid repeated disk reads
-- **APIResponseCache** - For caching API responses to reduce API calls
-
-```python
-# Example: Setting up data cache
-from data.data_sources import DataCache
-
-# Configure cache size
-DataCache.set_max_size(50)  # Cache up to 50 datasets
-
-# Clear cache
-DataCache.clear()
-```
 
 ## Best Practices
 
-1. **Use the highest-level interface** - In most cases, use `DataHandler` rather than working directly with sources
-2. **Apply transformations consistently** - Create standard transformation pipelines for your data
-3. **Implement caching** - Use caching for better performance with large datasets
-4. **Handle missing values** - Always handle missing values properly to avoid issues in analysis
-5. **Emit events efficiently** - When integrating with the event system, be mindful of event volume
-6. **Be consistent with timezones** - Either use timezone-aware timestamps throughout or timezone-naive throughout
-7. **Validate data format** - Check that your CSV files have the expected columns and formats
-8. **Pass symbols as lists** - Always pass symbols as a list to the data_handler, even for a single symbol
+1. **Understand the API differences** - Be clear about when to use a single symbol string vs. a list of symbols
+2. **Use consistent file naming** - Follow the "{symbol}_{timeframe}.csv" convention
+3. **Check file paths** - Verify that files are in the directory you expect
+4. **Use absolute paths when in doubt** - Replace relative paths like "." with full absolute paths
+5. **Parse dates consistently** - Ensure timestamps are properly parsed as datetime objects
+6. **Validate CSV columns** - Make sure your CSV has all required columns (timestamp, OHLC)
+7. **Keep the timeframe consistent** - Use the same timeframe string in filenames and method calls

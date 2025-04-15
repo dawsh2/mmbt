@@ -231,24 +231,31 @@ class DataHandler:
         self.test_data = None
         self.current_train_index = 0
         self.current_test_index = 0
-        
-    def load_data(self, symbols: List[str], start_date: datetime, 
-                 end_date: datetime, timeframe: str) -> None:
+
+
+    def load_data(self, symbols: List[str], start_date: datetime, end_date: datetime, timeframe: str):
         """
-        Load data and prepare train/test splits.
-        
+        Load data for multiple symbols.
+
         Args:
-            symbols: List of symbol identifiers to fetch
-            start_date: Start date for the data
-            end_date: End date for the data
+            symbols: List of symbols to load
+            start_date: Start date for data
+            end_date: End date for data
             timeframe: Data timeframe (e.g., '1d', '1h', '5m')
         """
-        # Load full dataset
-        self.full_data = self.data_source.get_data(symbols, start_date, end_date, timeframe)
-        
-        if self.full_data.empty:
-            raise ValueError("No data loaded. Check symbols and date range.")
-            
+        all_data = []
+
+        for symbol in symbols:
+            # Get data for a single symbol
+            symbol_data = self.data_source.get_data(symbol, start_date, end_date, timeframe)
+            all_data.append(symbol_data)
+
+        # Combine data from all symbols
+        if all_data:
+            self.full_data = pd.concat(all_data, ignore_index=True)
+        else:
+            self.full_data = pd.DataFrame()
+
         # Create train/test split
         split_idx = int(len(self.full_data) * self.train_fraction)
         
