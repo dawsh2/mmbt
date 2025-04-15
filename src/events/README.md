@@ -1,14 +1,12 @@
-# Event System Documentation
+# Event System
 
-## Overview
-
-The event system provides a robust event-driven architecture for the backtesting system. It enables decoupled communication between components through a central event bus, ensuring flexibility and maintainability in the trading system architecture.
+The Event System provides a robust event-driven architecture for the trading platform, enabling decoupled communication between components through a central event bus.
 
 ## Core Components
 
 ### Event Types
 
-The system defines standard event types in `EventType` enumeration, including:
+The system defines standard event types in the `EventType` enumeration:
 
 - **Market Data Events**: `BAR`, `TICK`, `MARKET_OPEN`, `MARKET_CLOSE`
 - **Signal Events**: `SIGNAL`
@@ -18,14 +16,45 @@ The system defines standard event types in `EventType` enumeration, including:
 - **System Events**: `START`, `STOP`, `PAUSE`, `RESUME`, `ERROR`
 - **Analysis Events**: `METRIC_CALCULATED`, `ANALYSIS_COMPLETE`
 
+### Event Bus
+
+The `EventBus` acts as a central message broker that:
+- Maintains a registry of handlers for event types
+- Dispatches events to registered handlers
+- Supports both synchronous and asynchronous processing
+- Provides event history tracking and filtering
+
 ### Event Handlers
 
-Event handlers process specific types of events. The system includes specialized handlers:
+The system includes various event handlers:
 
-- **MarketDataHandler**: Processes market data events
-- **SignalHandler**: Processes signal events
-- **OrderHandler**: Processes order events
-- **FillHandler**: Processes fill events to update the portfolio
+- **EventHandler (Base Class)**: Abstract base class for all event handlers
+- **FunctionEventHandler**: Delegates to a specified callback function
+- **LoggingHandler**: Logs events at configurable levels
+- **FilterHandler**: Filters events based on criteria
+- **DebounceHandler**: Prevents processing events too frequently
+- **AsyncEventHandler**: Processes events in a separate thread
+- **CompositeHandler**: Delegates to multiple handlers
+
+### Event Emitters
+
+Event emitters generate standardized events:
+
+- **EventEmitter (Base Class)**: Mixin for components that emit events
+- **MarketDataEmitter**: Emits bar, tick, and market open/close events
+- **SignalEmitter**: Emits trading signals from strategies
+- **OrderEmitter**: Emits order, cancel, and modify events
+- **FillEmitter**: Emits fill and partial fill events
+- **PortfolioEmitter**: Emits position-related events
+- **SystemEmitter**: Emits system-related events
+
+### Event Manager
+
+The `EventManager` orchestrates event flow between components:
+- Sets up and manages event handlers
+- Facilitates proper event transformation between components
+- Processes market data and creates appropriate events
+- Maintains system state and status metrics
 
 ## Event Flow
 
@@ -34,69 +63,61 @@ The typical event flow in the system is:
 1. `BAR` events → Strategy → `SIGNAL` events
 2. `SIGNAL` events → Position Manager → `ORDER` events
 3. `ORDER` events → Execution Engine → `FILL` events
-4. `FILL` events → Fill Handler → Position Manager
+4. `FILL` events → Position Manager / Portfolio
 
 ## Setting Up Event Handlers
 
-To properly connect components through the event system, you need to register the appropriate handlers for each event type:
+To connect components through the event system:
 
 ```python
-# Strategy handles bar events and emits signals
-event_bus.register(EventType.BAR, lambda event: event_bus.emit(
-    Event(EventType.SIGNAL, strategy.on_bar(BarEvent(event.data)))
-))
+# Create event bus
+event_bus = EventBus()
 
-# Position manager handles signal events and emits orders
-event_bus.register(EventType.SIGNAL, position_manager.on_signal)
+# Create event manager
+event_manager = EventManager(
+    event_bus=event_bus,
+    strategy=strategy,
+    position_manager=position_manager,
+    execution_engine=execution_engine,
+    portfolio=portfolio
+)
 
-# Execution engine handles order events
-event_bus.register(EventType.ORDER, execution_engine.on_order)
+# Initialize the system (registers handlers automatically)
+event_manager.initialize()
+```
 
-# Create and register a FillHandler to handle fill events
-from events.event_handlers import FillHandler
-fill_handler = FillHandler(position_manager)
-event_bus.register(EventType.FILL, fill_handler)
-event_bus.register(EventType.PARTIAL_FILL, fill_handler)
+## Processing Market Data
+
+To process market data through the event-driven system:
+
+```python
+# Initialize the system
+event_manager.initialize()
+
+# Emit market open event
+market_open_event = Event(EventType.MARKET_OPEN, {'timestamp': datetime.now()})
+event_bus.emit(market_open_event)
+
+# Process each bar of data
+for bar in data_handler.iter_train():
+    event_manager.process_market_data(bar)
+    
+# Emit market close event
+market_close_event = Event(EventType.MARKET_CLOSE, {'timestamp': datetime.now()})
+event_bus.emit(market_close_event)
 ```
 
 ## Important Notes
 
-- **Do not register the Portfolio directly**: The Portfolio class doesn't have event handler methods. Instead, use the Position Manager through the FillHandler.
-- **Use specialized handlers**: For each event type, use the appropriate specialized handler class rather than attempting to register components directly.
-- **Component relationships**: The Position Manager updates the Portfolio based on fill information, so the FillHandler should be connected to the Position Manager, not directly to the Portfolio.
+- **Use EventManager**: Always use the EventManager to set up event handlers rather than manually connecting components.
+- **Correct Event Transformation**: The EventManager ensures proper transformation of events between components.
+- **Proper Event Flow**: Follow the established event flow pattern to ensure consistent system behavior.
+- **Error Handling**: All EventHandlers include built-in error handling to prevent exceptions from disrupting the event loop.
 
-## Common Pitfalls
+## Best Practices
 
-1. **Incorrect handler registration**: Registering components that don't implement the necessary handler methods (e.g., trying to register Portfolio or ExecutionEngine for FILL events)
-   
-   ```python
-   # INCORRECT
-   event_bus.register(EventType.FILL, portfolio.on_fill)  # Portfolio has no on_fill method
-   event_bus.register(EventType.FILL, execution_engine.on_fill)  # ExecutionEngine has no on_fill method
-   
-   # CORRECT
-   fill_handler = FillHandler(position_manager)
-   event_bus.register(EventType.FILL, fill_handler)
-   ```
-
-2. **Missing handler registration**: Not registering any handler for an important event type
-
-3. **Wrong component relationships**: Using the wrong components to handle certain event types
-
-## Event Handler Implementation
-
-If you need to create a custom event handler, you should extend the EventHandler base class:
-
-```python
-from events.event_handlers import EventHandler
-from events.event_types import EventType
-
-class MyCustomHandler(EventHandler):
-    def __init__(self, target_component):
-        super().__init__([EventType.CUSTOM])  # Register for CUSTOM events
-        self.target_component = target_component
-    
-    def _process_event(self, event):
-        # Process the event and update the target component
-        self.target_component.process_custom_event(event.data)
-```
+1. **Use the EventManager**: Let it handle the complexities of event routing and transformation.
+2. **Emit Standardized Events**: Use the provided emitter classes to ensure consistent event format.
+3. **Handle Events Appropriately**: Process events in ways that maintain the integrity of the event flow.
+4. **Add Context to Events**: Include relevant metadata in events to provide context for handlers.
+5. **Monitor Event Flow**: Use the LoggingHandler to track events for debugging and analysis.
