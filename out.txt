@@ -1,0 +1,34 @@
+2025-04-15 12:39:34 [INFO] [__main__] Starting the trading system
+2025-04-15 12:39:34 [INFO] [__main__] Initializing event system
+2025-04-15 12:39:34 [INFO] [__main__] Loading configuration
+2025-04-15 12:39:34 [INFO] [__main__] Setting up data handler
+2025-04-15 12:39:34 [INFO] [__main__] Setting up trading strategy
+2025-04-15 12:39:34 [INFO] [__main__] Setting up portfolio and position management
+2025-04-15 12:39:34 [INFO] [src.position_management.portfolio] Portfolio initialized: Portfolio_f1a7d1bd with 100000 USD
+2025-04-15 12:39:34 [INFO] [__main__] Setting up execution engine
+2025-04-15 12:39:34 [INFO] [src.engine.execution_engine] Portfolio initialized with 100000.00 cash
+2025-04-15 12:39:34 [INFO] [src.engine.execution_engine] Execution engine initialized
+2025-04-15 12:39:34 [INFO] [__main__] Creating events manager
+2025-04-15 12:39:34 [INFO] [src.events.event_manager] Event handlers registered
+2025-04-15 12:39:34 [INFO] [src.events.event_manager] Events manager initialized
+2025-04-15 12:39:34 [INFO] [__main__] Loading market data
+Loaded 365 bars from 2022-01-01 00:00:00 to 2022-12-31 00:00:00
+Training data: 293 bars
+Testing data: 72 bars
+2025-04-15 12:39:34 [INFO] [__main__] Successfully loaded 293 bars of data
+2025-04-15 12:39:34 [INFO] [__main__] Processing market data
+2025-04-15 12:39:34 [ERROR] [__main__] Error during backtest: EventBus.emit() takes 2 positional arguments but 3 were given
+Traceback (most recent call last):
+  File "/Users/daws/mmbt/main.py", line 217, in main
+    event_bus.emit(EventType.MARKET_OPEN, {'timestamp': start_date})
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+TypeError: EventBus.emit() takes 2 positional arguments but 3 were given
+
+Script executed successfully!
+Status: error
+Bars processed: 0
+Signals generated: 0
+Orders generated: 0
+Fills processed: 0
+Final equity: $0.00
+Total return: 0.00%

@@ -128,6 +128,72 @@ class PositionManager:
         print(f"Generated actions: {actions}")
         
         return actions
+
+    def on_fill(self, fill_event):
+        """
+        Handle fill events and update the portfolio accordingly.
+
+        Args:
+            fill_event: Fill event data containing order execution details
+
+        Returns:
+            Dictionary with updated position information or None if fill cannot be processed
+        """
+
+        print("\n==== POSITION MANAGER FILL HANDLER CALLED ====")
+        print(f"Fill event type: {fill_event.event_type}")
+        if not hasattr(fill_event, 'data'):
+            logger.warning("Fill event has no data attribute")
+            return None
+
+        fill_data = fill_event.data
+        logger.info(f"Processing fill: {fill_data}")
+
+        # Extract fill data
+        symbol = fill_data.get('symbol')
+        direction = fill_data.get('direction')
+        quantity = fill_data.get('quantity')
+        fill_price = fill_data.get('fill_price')
+        order_id = fill_data.get('order_id')
+        timestamp = fill_data.get('timestamp', datetime.datetime.now())
+        commission = fill_data.get('commission', 0.0)
+
+        # Ensure we have the required data
+        if not all([symbol, direction, quantity, fill_price]):
+            logger.warning(f"Fill missing required fields: {fill_data}")
+            return None
+
+        # Check if this is an entry or exit
+        # For now, we'll treat it as a new position (entry)
+        try:
+            # Create a new position in the portfolio
+            position = self.portfolio.open_position(
+                symbol=symbol,
+                direction=direction,
+                quantity=quantity,
+                entry_price=fill_price,
+                entry_time=timestamp,
+                entry_order_id=order_id,
+                transaction_cost=commission
+            )
+
+            logger.info(f"New position created from fill: {position.position_id}")
+            print("==== POSITION MANAGER FILL HANDLER COMPLETED ====")
+            return {
+                "action": "entry",
+                "position_id": position.position_id,
+                "symbol": symbol,
+                "direction": direction,
+                "quantity": quantity,
+                "price": fill_price,
+                "timestamp": timestamp,
+                "commission": commission
+            }
+        except Exception as e:
+            logger.error(f"Error processing fill: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return None
             
     def _process_signals(self, signals: Dict[str, Dict[str, Any]], 
                        current_prices: Dict[str, float]) -> List[Dict[str, Any]]:

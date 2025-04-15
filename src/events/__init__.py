@@ -5,7 +5,8 @@ This module provides the event-driven architecture components for the trading sy
 
 # Import core event components
 from src.events.event_bus import Event, EventBus, EventCacheManager
-from src.events.event_types import EventType
+from src.events.event_types import EventType, BarEvent
+from src.events.event_manager import EventManager
 
 # Import event handlers
 from src.events.event_handlers import (
@@ -36,11 +37,15 @@ from src.events.event_emitters import (
 
 # Make common classes available directly from events module
 __all__ = [
+    # Manager
+    'EventsManager',
+    
     # Core components
     'Event',
     'EventBus',
     'EventType',
     'EventCacheManager',
+    'BarEvent',
     
     # Handlers
     'EventHandler',

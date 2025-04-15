@@ -160,6 +160,10 @@ class Portfolio:
         
         logger.info(f"Position opened: {position.position_id} {symbol} "
                     f"{'LONG' if direction > 0 else 'SHORT'} {quantity} @ {entry_price}")
+        print(f"==== PORTFOLIO UPDATED ====")
+        print(f"New position created: {position}")
+        print(f"Updated portfolio cash: ${self.cash:.2f}")
+        print(f"Total positions: {len(self.positions)}")
         
         return position
     

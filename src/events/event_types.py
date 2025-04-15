@@ -9,6 +9,8 @@ from enum import Enum, auto
 from typing import Dict, List, Optional, Union, Set
 
 
+
+
 class EventType(Enum):
     """
     Enumeration of event types in the trading system.
@@ -113,6 +115,24 @@ class EventType(Enum):
             return cls[name.upper()]
         except KeyError:
             raise ValueError(f"No event type with name: {name}")
+
+        
+
+class BarEvent:
+    """
+    Event wrapper for bar data.
+    
+    This class wraps raw bar data dictionaries to provide a consistent
+    interface for strategy components that expect a bar attribute.
+    """
+    def __init__(self, bar_data):
+        self.bar = bar_data
+        
+    def __repr__(self):
+        # Optional: add a nice string representation for debugging
+        symbol = self.bar.get('symbol', 'unknown')
+        timestamp = self.bar.get('timestamp', 'unknown')
+        return f"BarEvent({symbol} @ {timestamp})"        
 
 
 # Event type categories with descriptions

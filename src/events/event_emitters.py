@@ -9,8 +9,9 @@ import uuid
 import datetime
 from typing import Dict, List, Optional, Union, Any, Set
 
-from src.events.event_types import EventType
+from src.events.event_types import EventType, BarEvent
 from src.events.event_bus import Event, EventBus
+
 
 
 class EventEmitter:
@@ -56,24 +57,52 @@ class EventEmitter:
         self.event_bus.emit(event)
 
 
+
+
 class MarketDataEmitter(EventEmitter):
     """
     Event emitter for market data.
     
     This class emits bar, tick, and market open/close events.
+    
+    Attributes:
+        default_symbol (str, optional): Default symbol to use when bar data doesn't include one
     """
+    
+    def __init__(self, event_bus, default_symbol=None):
+        """
+        Initialize the MarketDataEmitter.
+        
+        Args:
+            event_bus (EventBus): Event bus to emit events to
+            default_symbol (str, optional): Default symbol to use if not present in bar data
+        """
+        super().__init__(event_bus)
+        self.default_symbol = default_symbol
     
     def emit_bar(self, bar_data: Dict[str, Any]) -> Event:
         """
         Emit a bar event.
         
+        Creates a BarEvent that wraps the raw bar data dictionary.
+        This ensures proper formatting for strategy components that
+        expect a BarEvent with a 'bar' attribute.
+        
         Args:
-            bar_data: Dictionary containing bar data
+            bar_data: Dictionary containing bar data (OHLCV, timestamp, etc.)
             
         Returns:
             The emitted event
         """
-        return self.emit(EventType.BAR, bar_data)
+        # Ensure bar has symbol if not present
+        if 'symbol' not in bar_data and self.default_symbol:
+            bar_data['symbol'] = self.default_symbol
+        
+        # Wrap in BarEvent
+        bar_event = BarEvent(bar_data)
+        
+        # Emit the event
+        return self.emit(EventType.BAR, bar_event)
     
     def emit_tick(self, tick_data: Dict[str, Any]) -> Event:
         """
@@ -117,8 +146,7 @@ class MarketDataEmitter(EventEmitter):
         """
         data = additional_data or {}
         data['timestamp'] = timestamp or datetime.datetime.now()
-        return self.emit(EventType.MARKET_CLOSE, data)
-
+        return self.emit(EventType.MARKET_CLOSE, data)        
 
 class SignalEmitter(EventEmitter):
     """
