@@ -1,150 +1,330 @@
-# Event System
+# Events Module
 
-The Event System provides a robust event-driven architecture for the trading platform, enabling decoupled communication between components through a central event bus.
+The Events module provides the foundation for the trading system's event-driven architecture, enabling decoupled communication between components through standardized event objects.
+
+## Event Flow Diagram:
+
+
+┌───────────┐    BarEvent    ┌──────────┐    SignalEvent    ┌─────────────────┐
+│  Data     │─────────────►  │ Strategy │──────────────────►│ Position        │
+│  Handler  │                │          │                   │ Manager         │
+└───────────┘                └──────────┘                   └─────────────────┘
+                                                                     │
+                                                                     │ PositionActionEvent
+                                                                     │
+                                                                     ▼
+┌───────────┐    FillEvent    ┌──────────┐    OrderEvent    ┌─────────────────┐
+│           │◄───────────────┤ Execution │◄─────────────────│ EventPortfolio  │
+│ Analytics │                │ Engine    │                  │                 │
+└───────────┘                └──────────┘                  └─────────────────┘
+      ▲                                                           │
+      │                                                           │
+      └───────────────────────────────────────────────────────────┘
+                           PortfolioUpdateEvent
+
+
+
+The complete event flow in the system:
+
+1. Data Handler emits `BarEvent` → Strategy processes it
+2. Strategy emits `SignalEvent` → Position Manager processes it
+3. Position Manager emits `PositionActionEvent` → Portfolio processes it
+4. Portfolio emits `PortfolioUpdateEvent` → Analytics processes it
+
+This event-driven approach decouples components and standardizes communication throughout the system.
 
 ## Core Components
 
 ### Event Types
 
-The system defines standard event types in the `EventType` enumeration:
+```python
+class EventType(Enum):
+    # Market data events
+    BAR = auto()
+    TICK = auto()
+    MARKET_OPEN = auto()
+    MARKET_CLOSE = auto()
+    
+    # Signal events
+    SIGNAL = auto()
+    
+    # Order events
+    ORDER = auto()
+    CANCEL = auto()
+    MODIFY = auto()
+    
+    # Execution events
+    FILL = auto()
+    PARTIAL_FILL = auto()
+    REJECT = auto()
+    
+    # Position events
+    POSITION_ACTION = auto()
+    POSITION_OPENED = auto()
+    POSITION_CLOSED = auto()
+    POSITION_MODIFIED = auto()
+    
+    # Portfolio events
+    PORTFOLIO_UPDATE = auto()
+    EQUITY_UPDATE = auto()
+    
+    # System events
+    START = auto()
+    STOP = auto()
+    ERROR = auto()
+```
 
-- **Market Data Events**: `BAR`, `TICK`, `MARKET_OPEN`, `MARKET_CLOSE`
-- **Signal Events**: `SIGNAL`
-- **Order Events**: `ORDER`, `CANCEL`, `MODIFY`
-- **Execution Events**: `FILL`, `PARTIAL_FILL`, `REJECT`
-- **Portfolio Events**: `POSITION_OPENED`, `POSITION_CLOSED`, `POSITION_MODIFIED`
-- **System Events**: `START`, `STOP`, `PAUSE`, `RESUME`, `ERROR`
-- **Analysis Events**: `METRIC_CALCULATED`, `ANALYSIS_COMPLETE`
+### Event Class
+
+```python
+class Event:
+    def __init__(self, event_type: EventType, data: Any = None, 
+                timestamp: Optional[datetime.datetime] = None):
+        self.event_type = event_type
+        self.data = data
+        self.timestamp = timestamp or datetime.datetime.now()
+        self.id = str(uuid.uuid4())
+```
 
 ### Event Bus
 
-The `EventBus` acts as a central message broker that:
-- Maintains a registry of handlers for event types
-- Dispatches events to registered handlers
-- Supports both synchronous and asynchronous processing
-- Provides event history tracking and filtering
+```python
+class EventBus:
+    def __init__(self, async_mode: bool = False):
+        self.handlers = {event_type: [] for event_type in EventType}
+        self.async_mode = async_mode
+        self.history = []
+        
+    def register(self, event_type: EventType, handler) -> None:
+        """Register a handler for an event type."""
+        
+    def unregister(self, event_type: EventType, handler) -> bool:
+        """Unregister a handler for an event type."""
+        
+    def emit(self, event: Event) -> None:
+        """Emit an event to all registered handlers."""
+        
+    def get_history(self, event_type: Optional[EventType] = None,
+                   start_time: Optional[datetime.datetime] = None,
+                   end_time: Optional[datetime.datetime] = None) -> List[Event]:
+        """Get event history, optionally filtered."""
+```
 
 ### Event Handlers
 
-The system includes various event handlers:
+```python
+class EventHandler(ABC):
+    def __init__(self, event_types: Union[EventType, List[EventType]]):
+        self.event_types = set(event_types) if isinstance(event_types, list) else {event_types}
+        self.enabled = True
+        
+    def handle(self, event: Event) -> None:
+        """Process an event."""
+        
+    @abstractmethod
+    def _process_event(self, event: Event) -> None:
+        """Internal method to process an event."""
+```
 
-- **EventHandler (Base Class)**: Abstract base class for all event handlers
-- **FunctionEventHandler**: Delegates to a specified callback function
-- **LoggingHandler**: Logs events at configurable levels
-- **FilterHandler**: Filters events based on criteria
-- **DebounceHandler**: Prevents processing events too frequently
-- **AsyncEventHandler**: Processes events in a separate thread
-- **CompositeHandler**: Delegates to multiple handlers
+### Specialized Event Classes
 
-### Event Emitters
+#### BarEvent
 
-Event emitters generate standardized events:
+```python
+class BarEvent(Event):
+    """Specialized event for bar data."""
+    
+    def __init__(self, bar_data):
+        """Initialize with bar data."""
+        super().__init__(EventType.BAR, bar_data)
 
-- **EventEmitter (Base Class)**: Mixin for components that emit events
-- **MarketDataEmitter**: Emits bar, tick, and market open/close events
-- **SignalEmitter**: Emits trading signals from strategies
-- **OrderEmitter**: Emits order, cancel, and modify events
-- **FillEmitter**: Emits fill and partial fill events
-- **PortfolioEmitter**: Emits position-related events
-- **SystemEmitter**: Emits system-related events
+    @property
+    def timestamp(self):
+        """Get the bar timestamp."""
+        return self.bar.get('timestamp')
 
-### Event Manager
+    @property
+    def open(self):
+        """Get the opening price."""
+        return self.data.get('Open')
+    
+    @property
+    def high(self):
+        """Get the high price."""
+        return self.data.get('High')
+    
+    @property
+    def low(self):
+        """Get the low price."""
+        return self.data.get('Low')
+    
+    @property
+    def close(self):
+        """Get the closing price."""
+        return self.data.get('Close')
+    
+    @property
+    def volume(self):
+        """Get the volume."""
+        return self.data.get('Volume')
+    
+    @property
+    def symbol(self):
+        """Get the symbol."""
+        return self.data.get('symbol')
 
-The `EventManager` orchestrates event flow between components:
-- Sets up and manages event handlers
-- Facilitates proper event transformation between components
-- Processes market data and creates appropriate events
-- Maintains system state and status metrics
+## potentially include VWAP or trade_count 		
+```
 
-## Event Flow
+#### SignalEvent
 
-The typical event flow in the system is:
+```python
+class SignalEvent(Event):
+    def __init__(self, signal_type, price, symbol="default", rule_id=None, 
+                confidence=1.0, metadata=None, timestamp=None):
+        # Create signal data
+        data = {...}  # Signal data dictionary
+        super().__init__(EventType.SIGNAL, data, timestamp)
+    
+    @property
+    def signal_type(self):
+        """Get the signal type."""
+        
+    @property
+    def price(self):
+        """Get the price at signal generation."""
+        
+    @property
+    def direction(self):
+        """Get the numeric direction of this signal."""
+        
+    def is_active(self):
+        """Determine if this signal is actionable."""
+```
 
-1. `BAR` events → Strategy → `SIGNAL` events
-2. `SIGNAL` events → Position Manager → `ORDER` events
-3. `ORDER` events → Execution Engine → `FILL` events
-4. `FILL` events → Position Manager / Portfolio
+#### PositionActionEvent
 
-## Setting Up Event Handlers
+```python
+class PositionActionEvent(Event):
+    def __init__(self, action_type, **kwargs):
+        data = {'action_type': action_type, **kwargs}
+        super().__init__(EventType.POSITION_ACTION, data)
+    
+    @property
+    def action_type(self):
+        """Get the action type."""
+        
+    @property
+    def symbol(self):
+        """Get the symbol."""
+        
+    @property
+    def direction(self):
+        """Get the direction."""
+```
 
-To connect components through the event system:
+#### PortfolioUpdateEvent
+
+```python
+class PortfolioUpdateEvent(Event):
+    def __init__(self, portfolio_state, timestamp=None):
+        super().__init__(EventType.PORTFOLIO_UPDATE, portfolio_state, timestamp)
+    
+    @property
+    def equity(self):
+        """Get the portfolio equity."""
+        
+    @property
+    def cash(self):
+        """Get the portfolio cash."""
+```
+
+## Event Utility Functions
+
+```python
+def create_signal_event(signal_type, price, symbol="default", rule_id=None, 
+                       confidence=1.0, metadata=None, timestamp=None):
+    """Create a standardized signal event."""
+    
+def unpack_bar_event(event):
+    """Extract bar data from an event safely."""
+    
+def get_signal_direction(event):
+    """Extract direction from a signal event."""
+    
+def create_position_action(action, **kwargs):
+    """Create a standardized position action dictionary."""
+```
+
+## Integration Examples
+
+### Creating a New Strategy
+
+```python
+class MyStrategy(StrategyBase):
+    def generate_signals(self, event):
+        # Extract bar data
+        bar_data = extract_bar_data(event)
+        
+        # Strategy logic
+        if some_condition:
+            # Create and return signal event
+            return SignalEvent(
+                signal_type=SignalType.BUY,
+                price=bar_data.get('Close'),
+                symbol=bar_data.get('symbol'),
+                rule_id=self.name
+            )
+        
+        return None  # No signal
+```
+
+### Setting Up Event Flow
 
 ```python
 # Create event bus
 event_bus = EventBus()
 
-# Create event manager
-event_manager = EventManager(
-    event_bus=event_bus,
-    strategy=strategy,
-    position_manager=position_manager,
-    execution_engine=execution_engine,
-    portfolio=portfolio
-)
+# Create components
+strategy = MyStrategy('my_strategy', event_bus)
+position_manager = PositionManager(event_bus)
+portfolio = EventPortfolio(100000, event_bus)
 
-# Initialize the system (registers handlers automatically)
-event_manager.initialize()
+# Register event handlers
+event_bus.register(EventType.BAR, strategy.on_bar)
+event_bus.register(EventType.SIGNAL, position_manager.on_signal)
+event_bus.register(EventType.POSITION_ACTION, portfolio.handle)
+
+# Create and emit bar event
+bar_data = {...}  # OHLCV data
+bar_event = BarEvent(bar_data)
+event = Event(EventType.BAR, bar_event)
+event_bus.emit(event)
 ```
 
-## Processing Market Data
-
-To process market data through the event-driven system:
+### Creating an Event Handler
 
 ```python
-# Initialize the system
-event_manager.initialize()
-
-# Emit market open event
-market_open_event = Event(EventType.MARKET_OPEN, {'timestamp': datetime.now()})
-event_bus.emit(market_open_event)
-
-# Process each bar of data
-for bar in data_handler.iter_train():
-    event_manager.process_market_data(bar)
+class MyAnalytics(EventHandler):
+    def __init__(self):
+        super().__init__([EventType.PORTFOLIO_UPDATE, EventType.POSITION_CLOSED])
+        self.portfolio_history = []
+        self.trade_history = []
     
-# Emit market close event
-market_close_event = Event(EventType.MARKET_CLOSE, {'timestamp': datetime.now()})
-event_bus.emit(market_close_event)
+    def _process_event(self, event):
+        if event.event_type == EventType.PORTFOLIO_UPDATE:
+            self.portfolio_history.append({
+                'timestamp': event.timestamp,
+                'equity': event.data.get('equity'),
+                'cash': event.data.get('cash')
+            })
+        elif event.event_type == EventType.POSITION_CLOSED:
+            self.trade_history.append({
+                'symbol': event.data.get('symbol'),
+                'pnl': event.data.get('realized_pnl')
+            })
 ```
 
-## Important: Event Handler Requirements
+### Add Integration Examples as Needed Here
 
-When registering event handlers, all handlers must accept an event parameter:
 
-```python
-# CORRECT
-def handle_bar(event):
-    # Process event.data
-    bar_data = event.data
-    # Process bar data...
-
-# INCORRECT - will cause errors
-def handle_bar(bar_data):
-    # Direct processing without event wrapper
-    # This will fail!
-```
-
-All handlers must expect to receive an Event object, not just the data. Event handlers are responsible for extracting the data from the event:
-
-```python
-def on_bar(self, event):
-    bar_data = event.data
-    # Process bar_data...
-```
-
-When emitting events, always wrap data in an Event object:
-
-```python
-event_bus.emit(Event(EventType.BAR, bar_data))
-```
-
-## Best Practices
-
-1. **Use the EventManager**: Let it handle the complexities of event routing and transformation.
-2. **Emit Standardized Events**: Use the provided emitter classes to ensure consistent event format.
-3. **Handle Events Appropriately**: Process events in ways that maintain the integrity of the event flow.
-4. **Add Context to Events**: Include relevant metadata in events to provide context for handlers.
-5. **Monitor Event Flow**: Use the LoggingHandler to track events for debugging and analysis.
-6. **Always Wrap Data in Events**: When emitting events, always create proper Event objects.
-7. **Extract Data in Handlers**: In handlers, always extract data from the event before processing.
-8. **Use Consistent Event Types**: Use the standardized EventType enumeration values.
