@@ -156,46 +156,58 @@ class BarEvent(Event):
         """Get the symbol."""
         return self.data.get('symbol')
         
-        
-class BarEvent:
-    """
-    Event wrapper for bar data.
+
+
+class BarEvent(Event):
+    """Event specifically for market data bars."""
     
-    This class wraps raw bar data dictionaries to provide a consistent
-    interface for strategy components that process market data.
-    
-    Components should always access data through the methods provided by this class
-    rather than accessing the underlying dictionary directly.
-    """
-    def __init__(self, bar_data):
-        self.bar = bar_data
-        
-    def get(self, key, default=None):
+    def __init__(self, bar_data, timestamp=None):
         """
-        Get a value from the bar data.
+        Initialize a bar event.
         
         Args:
-            key: Dictionary key to retrieve
-            default: Default value if key is not found
-            
-        Returns:
-            Value for the key or default
+            bar_data: Dictionary containing OHLCV data
+            timestamp: Optional explicit timestamp (defaults to bar_data's timestamp)
         """
-        return self.bar.get(key, default)
-        
+        # Use bar's timestamp if not explicitly provided
+        if timestamp is None and isinstance(bar_data, dict):
+            timestamp = bar_data.get('timestamp')
+            
+        super().__init__(EventType.BAR, bar_data, timestamp)
+    
     def get_symbol(self):
         """Get the instrument symbol."""
-        return self.bar.get('symbol', 'default')
-        
+        return self.get('symbol', 'default')
+    
     def get_price(self):
         """Get the close price."""
-        return self.bar.get('Close')
-        
-        
+        return self.get('Close')
+    
+    def get_timestamp(self):
+        """Get the bar timestamp."""
+        return self.get('timestamp', self.timestamp)
+    
+    def get_open(self):
+        """Get the opening price."""
+        return self.get('Open')
+    
+    def get_high(self):
+        """Get the high price."""
+        return self.get('High')
+    
+    def get_low(self):
+        """Get the low price."""
+        return self.get('Low')
+    
+    def get_volume(self):
+        """Get the volume."""
+        return self.get('Volume')
+    
     def __repr__(self):
-        symbol = self.bar.get('symbol', 'unknown')
-        timestamp = self.bar.get('timestamp', 'unknown')
-        return f"BarEvent({symbol} @ {timestamp})"
+        """String representation of the bar event."""
+        symbol = self.get_symbol()
+        timestamp = self.get_timestamp()
+        return f"BarEvent({symbol} @ {timestamp})"    
 
 
 # Event type categories with descriptions

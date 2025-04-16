@@ -1,4 +1,3 @@
-# In src/events/portfolio_events.py
 """
 Portfolio Event Classes
 
@@ -26,20 +25,17 @@ class PositionActionEvent(Event):
         data = {'action_type': action_type, **kwargs}
         super().__init__(EventType.POSITION_ACTION, data)
     
-    @property
-    def action_type(self) -> str:
+    def get_action_type(self) -> str:
         """Get the action type."""
-        return self.data['action_type']
+        return self.get('action_type')
     
-    @property
-    def symbol(self) -> str:
+    def get_symbol(self) -> str:
         """Get the symbol."""
-        return self.data.get('symbol', '')
+        return self.get('symbol', '')
     
-    @property
-    def direction(self) -> int:
+    def get_direction(self) -> int:
         """Get the direction."""
-        return self.data.get('direction', 0)
+        return self.get('direction', 0)
 
 
 class PortfolioUpdateEvent(Event):
@@ -55,20 +51,17 @@ class PortfolioUpdateEvent(Event):
         """
         super().__init__(EventType.PORTFOLIO_UPDATE, portfolio_state, timestamp)
     
-    @property
-    def equity(self) -> float:
+    def get_equity(self) -> float:
         """Get the portfolio equity."""
-        return self.data.get('equity', 0.0)
+        return self.get('equity', 0.0)
     
-    @property
-    def cash(self) -> float:
+    def get_cash(self) -> float:
         """Get the portfolio cash."""
-        return self.data.get('cash', 0.0)
+        return self.get('cash', 0.0)
     
-    @property
-    def positions_count(self) -> int:
+    def get_positions_count(self) -> int:
         """Get the number of open positions."""
-        return self.data.get('positions_count', 0)
+        return self.get('positions_count', 0)
 
 
 class PositionOpenedEvent(Event):
@@ -84,25 +77,21 @@ class PositionOpenedEvent(Event):
         """
         super().__init__(EventType.POSITION_OPENED, position_data, timestamp)
     
-    @property
-    def position_id(self) -> str:
+    def get_position_id(self) -> str:
         """Get the position ID."""
-        return self.data.get('position_id', '')
+        return self.get('position_id', '')
     
-    @property
-    def symbol(self) -> str:
+    def get_symbol(self) -> str:
         """Get the symbol."""
-        return self.data.get('symbol', '')
+        return self.get('symbol', '')
     
-    @property
-    def direction(self) -> int:
+    def get_direction(self) -> int:
         """Get the direction."""
-        return self.data.get('direction', 0)
+        return self.get('direction', 0)
     
-    @property
-    def quantity(self) -> float:
+    def get_quantity(self) -> float:
         """Get the position quantity."""
-        return self.data.get('quantity', 0.0)
+        return self.get('quantity', 0.0)
 
 
 class PositionClosedEvent(Event):
@@ -118,17 +107,15 @@ class PositionClosedEvent(Event):
         """
         super().__init__(EventType.POSITION_CLOSED, position_data, timestamp)
     
-    @property
-    def position_id(self) -> str:
+    def get_position_id(self) -> str:
         """Get the position ID."""
-        return self.data.get('position_id', '')
+        return self.get('position_id', '')
     
-    @property
-    def symbol(self) -> str:
+    def get_symbol(self) -> str:
         """Get the symbol."""
-        return self.data.get('symbol', '')
+        return self.get('symbol', '')
     
-    @property
-    def realized_pnl(self) -> float:
+    def get_realized_pnl(self) -> float:
         """Get the realized P&L."""
-        return self.data.get('realized_pnl', 0.0)
+        return self.get('realized_pnl', 0.0)
+

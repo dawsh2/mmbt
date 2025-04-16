@@ -20,19 +20,12 @@ from src.events.event_types import EventType
 logger = logging.getLogger(__name__)
 
 
-
-
+# For consistency across codebase, should this be refactored to event_base.py?
 class Event:
-
     """
     Base class for all events in the trading system.
 
     Events contain a type, timestamp, unique ID, and data payload.
-    The data payload should be a standard object type based on the event type:
-    - BAR events: BarEvent object
-    - SIGNAL events: Signal object
-    - ORDER events: Order object or dictionary with standard keys
-    - FILL events: Fill object or dictionary with standard keys
     """
 
     def __init__(self, event_type: EventType, data: Any = None, 
@@ -50,66 +43,26 @@ class Event:
         self.timestamp = timestamp or datetime.datetime.now()
         self.id = str(uuid.uuid4())
     
+    def get(self, key, default=None):
+        """
+        Get a value from the event data.
+        
+        Args:
+            key: Dictionary key to retrieve
+            default: Default value if key is not found
+            
+        Returns:
+            Value for the key or default
+        """
+        if isinstance(self.data, dict):
+            return self.data.get(key, default)
+        return default
+    
     def __str__(self) -> str:
         """String representation of the event."""
         return f"Event(type={self.event_type.name}, id={self.id}, timestamp={self.timestamp})"
+
     
-    def to_dict(self) -> Dict[str, Any]:
-        """
-        Convert event to dictionary representation.
-        
-        Returns:
-            Dictionary representation of the event
-        """
-        return {
-            'event_type': self.event_type.name,
-            'data': self.data,
-            'timestamp': self.timestamp.isoformat(),
-            'id': self.id
-        }
-    
-    @classmethod
-    def from_dict(cls, event_dict: Dict[str, Any]) -> 'Event':
-        """
-        Create an event from a dictionary representation.
-        
-        Args:
-            event_dict: Dictionary representation of the event
-            
-        Returns:
-            Event instance
-            
-        Raises:
-            ValueError: If the event type is not recognized
-        """
-        # Get event type from string
-        event_type_str = event_dict['event_type']
-        try:
-            event_type = EventType[event_type_str]
-        except KeyError:
-            raise ValueError(f"Unknown event type: {event_type_str}")
-        
-        # Parse timestamp
-        timestamp_str = event_dict['timestamp']
-        timestamp = datetime.datetime.fromisoformat(timestamp_str)
-        
-        # Create event
-        event = cls(event_type, event_dict['data'], timestamp)
-        event.id = event_dict['id']
-        
-
-        return event
-
-    def get_data(self):
-        """
-        Get the event's data payload.
-        
-        Returns:
-            The event data payload
-        """
-        return self.data
-
-
 class EventBus:
     """
     Central event bus for routing events between system components.

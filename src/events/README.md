@@ -26,10 +26,22 @@ The Events module provides the foundation for the trading system's event-driven 
 
 The complete event flow in the system:
 
-1. Data Handler emits `BarEvent` → Strategy processes it
-2. Strategy emits `SignalEvent` → Position Manager processes it
-3. Position Manager emits `PositionActionEvent` → Portfolio processes it
-4. Portfolio emits `PortfolioUpdateEvent` → Analytics processes it
+## Event Flow
+
+The event flow in the system is managed by the EventManager, which:
+
+1. Receives raw market data and wraps it in BarEvent objects
+2. Routes bar events to Strategy components, which produce Signal events
+3. Transforms raw Signal objects into standardized event format
+4. Routes signal events to Position Manager, which produces Order events
+5. Routes order events to Execution Engine, which produces Fill events
+6. Routes fill events to Portfolio for position and equity tracking
+
+The EventManager adds additional functionality:
+- Maintains tracking information (price history, signal history, etc.)
+- Handles data conversion between different formats
+- Provides error handling and logging
+- Ensures proper event sequencing
 
 This event-driven approach decouples components and standardizes communication throughout the system.
 
@@ -175,6 +187,43 @@ class BarEvent(Event):
 
 ## potentially include VWAP or trade_count 		
 ```
+
+## Bar Data Standardization
+
+The system uses a standardized `BarEvent` class from the events module to encapsulate bar data consistently across all components.
+
+### Using BarEvent Objects
+
+```python
+from src.events.event_types import BarEvent
+from src.events.event_bus import Event
+from src.events.event_types import EventType
+
+# Create a BarEvent from dictionary data
+bar_data = {
+    "timestamp": datetime.now(),
+    "Open": 100.0,
+    "High": 101.0,
+    "Low": 99.0,
+    "Close": 100.5,
+    "Volume": 1000,
+    "symbol": "AAPL"
+}
+bar_event = BarEvent(bar_data)
+
+# Create and emit a BAR event
+event = Event(EventType.BAR, bar_event)
+event_bus.emit(event)
+
+# Accessing bar data in event handlers
+def on_bar(self, event):
+    bar_event = event.data
+    if isinstance(bar_event, BarEvent):
+        bar_data = bar_event.bar
+        symbol = bar_event.get_symbol()
+        close_price = bar_event.get_price()
+        timestamp = bar_event.get_timestamp()
+        # Process the bar data...
 
 #### SignalEvent
 

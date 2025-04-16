@@ -10,6 +10,9 @@ from enum import Enum
 from datetime import datetime
 from typing import Dict, Any, Optional, Union, List, Callable
 
+from src.events.event_types import EventType
+from src.events.signal_event import SignalEvent
+
 
 class EventSchema:
     """Base class for event data schemas."""
@@ -129,12 +132,8 @@ BAR_SCHEMA = EventSchema({
     }
 })
 
+# Updated to match SignalEvent structure
 SIGNAL_SCHEMA = EventSchema({
-    'timestamp': {
-        'type': datetime,
-        'required': True,
-        'description': 'Signal timestamp'
-    },
     'signal_type': {
         'required': True,
         'description': 'Signal type (BUY, SELL, NEUTRAL)'
@@ -143,6 +142,11 @@ SIGNAL_SCHEMA = EventSchema({
         'type': float,
         'required': True,
         'description': 'Price at signal generation'
+    },
+    'symbol': {
+        'type': str,
+        'required': False,  # Default value will be 'default'
+        'description': 'Instrument symbol'
     },
     'rule_id': {
         'type': str,
@@ -160,10 +164,10 @@ SIGNAL_SCHEMA = EventSchema({
         'required': False,
         'description': 'Additional signal metadata'
     },
-    'symbol': {
-        'type': str,
-        'required': False,
-        'description': 'Instrument symbol'
+    'timestamp': {
+        'type': datetime,
+        'required': False,  # Will default to now if not provided
+        'description': 'Signal timestamp'
     }
 })
 
@@ -259,9 +263,19 @@ MARKET_CLOSE_SCHEMA = EventSchema({
     }
 })
 
+# Add a schema for BarEvent
+BAR_EVENT_SCHEMA = EventSchema({
+    'bar': {
+        'type': dict,
+        'required': True,
+        'description': 'Raw bar data dictionary'
+    }
+})
+
 # Schema registry for easy access
 EVENT_SCHEMAS = {
     'BAR': BAR_SCHEMA,
+    'BAR_EVENT': BAR_EVENT_SCHEMA,
     'SIGNAL': SIGNAL_SCHEMA,
     'ORDER': ORDER_SCHEMA,
     'FILL': FILL_SCHEMA,
@@ -288,6 +302,53 @@ def validate_event_data(event_type: str, data: Dict[str, Any]) -> Dict[str, Any]
         raise ValueError(f"Unknown event type: {event_type}")
     
     return schema.validate(data)
+
+
+def validate_signal_event(signal_event: SignalEvent) -> bool:
+    """
+    Validate a SignalEvent object against the SIGNAL schema.
+    
+    Args:
+        signal_event: SignalEvent object to validate
+        
+    Returns:
+        True if valid, raises ValueError otherwise
+    """
+    try:
+        # Extract data from SignalEvent to validate against schema
+        signal_data = {
+            'signal_type': signal_event.signal_type,
+            'price': signal_event.price,
+            'symbol': signal_event.symbol,
+            'rule_id': signal_event.rule_id,
+            'confidence': signal_event.confidence,
+            'metadata': signal_event.metadata,
+            'timestamp': signal_event.timestamp
+        }
+        
+        # Validate against schema
+        SIGNAL_SCHEMA.validate(signal_data)
+        return True
+    except ValueError as e:
+        raise ValueError(f"Invalid SignalEvent: {str(e)}")
+
+
+def validate_bar_event(bar_event) -> bool:
+    """
+    Validate a BarEvent object.
+    
+    Args:
+        bar_event: BarEvent object to validate
+        
+    Returns:
+        True if valid, raises ValueError otherwise
+    """
+    try:
+        # Validate the underlying bar data
+        BAR_SCHEMA.validate(bar_event.data)
+        return True
+    except ValueError as e:
+        raise ValueError(f"Invalid BarEvent: {str(e)}")    
 
 
 def get_schema_documentation(event_type: Optional[str] = None) -> str:

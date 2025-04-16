@@ -149,7 +149,8 @@ CSVs should have the following columns:
 To emit market data events using the data handler:
 
 ```python
-from src.events.event_bus import EventBus
+from src.events.event_bus import EventBus, Event
+from src.events.event_types import EventType, BarEvent
 from src.events.event_emitters import MarketDataEmitter
 
 # Create event bus and emitter
@@ -158,11 +159,50 @@ market_data_emitter = MarketDataEmitter(event_bus)
 
 # Process bars from the data handler
 for bar in data_handler.iter_train():
-    # Create an event object with the bar data
-    bar_event = Event(EventType.BAR, bar)
+    # Create a BarEvent object
+    bar_event = BarEvent(bar)
     
-    # Emit the event
-    event_bus.emit(bar_event)
+    # Create and emit an event with the bar event
+    event = Event(EventType.BAR, bar_event)
+    event_bus.emit(event)
+```
+
+## Bar Data Standardization
+
+The system uses a standardized `BarEvent` class from the events module to encapsulate bar data consistently across all components.
+
+### Using BarEvent Objects
+
+```python
+from src.events.event_types import BarEvent
+from src.events.event_bus import Event
+from src.events.event_types import EventType
+
+# Create a BarEvent from dictionary data
+bar_data = {
+    "timestamp": datetime.now(),
+    "Open": 100.0,
+    "High": 101.0,
+    "Low": 99.0,
+    "Close": 100.5,
+    "Volume": 1000,
+    "symbol": "AAPL"
+}
+bar_event = BarEvent(bar_data)
+
+# Create and emit a BAR event
+event = Event(EventType.BAR, bar_event)
+event_bus.emit(event)
+
+# Accessing bar data in event handlers
+def on_bar(self, event):
+    bar_event = event.data
+    if isinstance(bar_event, BarEvent):
+        bar_data = bar_event.bar
+        symbol = bar_event.get_symbol()
+        close_price = bar_event.get_price()
+        timestamp = bar_event.get_timestamp()
+        # Process the bar data...
 ```
 
 ## Testing with Synthetic Data
@@ -188,42 +228,6 @@ data_handler.load_data(
     timeframe="1d"
 )
 ```
-
-## 2. Update the BarEvent standardization in `src/data/README.md`
-
-```markdown
-# Bar Data Standardization
-
-## BarEvent Objects
-
-To improve consistency, all components now use standardized `BarEvent` objects to contain bar data, rather than raw dictionaries.
-
-### Key Changes:
-- Data handlers now emit `BarEvent` objects with `bar` attribute
-- Strategies, rules, and other components handle `BarEvent` objects properly
-- Component methods extract bar data from events in a consistent way
-
-### Using BarEvent Objects
-
-To process bar data consistently:
-
-```python
-def on_bar(self, event_or_data):
-    """Process a bar event and generate a signal."""
-    # Extract bar data from different potential sources
-    if hasattr(event_or_data, 'bar'):
-        # It's a BarEvent
-        bar = event_or_data.bar
-    elif isinstance(event_or_data, dict):
-        # It's raw bar data
-        bar = event_or_data
-    else:
-        # Handle other cases
-        bar = {}
-        
-    # Now process the bar data
-    close = bar.get('Close', None)
-    # ...
 
 ## Best Practices
 
