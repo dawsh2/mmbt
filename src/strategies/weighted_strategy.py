@@ -13,8 +13,7 @@ from signals import Signal, SignalType
 from src.log_system import TradeLogger
 
 
-logger = TradeLogger.get_logger('trading.strategy')
-
+# logger = TradeLogger.get_logger('trading.strategy')
 
 
 @StrategyRegistry.register(category="core")
@@ -59,64 +58,88 @@ class WeightedStrategy(Strategy):
         self.buy_threshold = buy_threshold
         self.sell_threshold = sell_threshold
         self.last_signal = None
+        
+    def generate_signals(self, bar, bar_event=None):
+        """
+        Generate weighted trading signals.
 
+        Args:
+            bar: Dictionary containing bar data
+            bar_event: Original bar event (optional)
 
-    def on_bar(self, event):
-        bar = event.bar
-
+        Returns:
+            Signal object representing the weighted decision
+        """
         # Get signals from all components
-        combined_signals = []
-        component_signals = {}  # For metadata
+        component_signals = []
+        
+        # We pass the original bar_event to maintain the interface
+        for component in self.components:
+            signal = component.on_bar(bar_event)
+            if signal is not None:
+                component_signals.append(signal)
 
-        for i, component in enumerate(self.components):
-            signal_object = component.on_bar(bar)
+        if not component_signals:
+            # No signals generated, return neutral
+            return Signal(
+                timestamp=bar.get('timestamp', datetime.now()),
+                signal_type=SignalType.NEUTRAL,
+                price=bar.get('Close', None),
+                rule_id=self.name,
+                confidence=0.0,
+                metadata={'component_count': 0}
+            )
 
-            if signal_object and hasattr(signal_object, 'signal_type'):
-                # Extract signal value (-1, 0, 1) and weight it
-                signal_value = signal_object.signal_type.value
-                weighted_signal = signal_value * self.weights[i]
+        # Calculate weighted signal
+        weighted_sum = 0.0
+        total_weight = sum(self.weights)
+        signal_weights = {}
 
-                # Store weighted signal
-                combined_signals.append(weighted_signal)
+        for i, signal in enumerate(component_signals):
+            # Get weight for this component
+            weight = self.weights[i] if i < len(self.weights) else 1.0/len(component_signals)
 
-                # Store raw signal value for debugging
-                component_signals[getattr(component, 'name', f'component_{i}')] = signal_value
-            else:
-                combined_signals.append(0)
-                component_signals[getattr(component, 'name', f'component_{i}')] = 0
+            # Get direction from signal_type
+            direction = signal.signal_type.value
 
-        # Calculate weighted sum
-        weighted_sum = sum(combined_signals)
+            # Apply weight
+            weighted_sum += direction * weight * signal.confidence
 
-        # Print for debugging
-        logger.info(f"Weighted sum: {weighted_sum}, Thresholds: buy={self.buy_threshold}, sell={self.sell_threshold}")
+            # Store for metadata
+            signal_weights[signal.rule_id] = {
+                'weight': weight,
+                'direction': direction,
+                'confidence': signal.confidence,
+                'contribution': direction * weight * signal.confidence
+            }
 
-        # Determine final signal
-        if weighted_sum >= self.buy_threshold:  # Changed > to >=
-            final_signal_type = SignalType.BUY
-        elif weighted_sum <= self.sell_threshold:  # Changed < to <=
-            final_signal_type = SignalType.SELL
+        # Normalize weighted sum
+        if total_weight > 0:
+            normalized_sum = weighted_sum / total_weight
         else:
-            final_signal_type = SignalType.NEUTRAL
+            normalized_sum = 0.0
 
-        # Set confidence based on weighted sum magnitude
-        confidence = min(abs(weighted_sum), 1.0)
+        # Determine final signal type based on weighted sum
+        if normalized_sum > self.buy_threshold:
+            signal_type = SignalType.BUY
+        elif normalized_sum < self.sell_threshold:
+            signal_type = SignalType.SELL
+        else:
+            signal_type = SignalType.NEUTRAL
 
-        # Create signal object
-        self.last_signal = Signal(
-            timestamp=bar["timestamp"],
-            signal_type=final_signal_type,
-            price=bar["Close"],
+        # Create the combined signal
+        return Signal(
+            timestamp=bar.get('timestamp', datetime.now()),
+            signal_type=signal_type,
+            price=bar.get('Close', None),
             rule_id=self.name,
-            confidence=confidence,  # Use the calculated confidence
+            confidence=abs(normalized_sum),
             metadata={
-                "weighted_sum": weighted_sum,
-                "component_signals": component_signals
+                'weighted_sum': normalized_sum,
+                'component_signals': signal_weights,
+                'component_count': len(component_signals)
             }
         )
-
-        return self.last_signal
-        
 
     def reset(self):
         """Reset all components in the strategy."""

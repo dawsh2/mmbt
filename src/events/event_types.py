@@ -117,22 +117,48 @@ class EventType(Enum):
             raise ValueError(f"No event type with name: {name}")
 
         
-
 class BarEvent:
     """
     Event wrapper for bar data.
     
     This class wraps raw bar data dictionaries to provide a consistent
-    interface for strategy components that expect a bar attribute.
+    interface for strategy components that process market data.
+    
+    Components should always access data through the methods provided by this class
+    rather than accessing the underlying dictionary directly.
     """
     def __init__(self, bar_data):
         self.bar = bar_data
         
+    def get(self, key, default=None):
+        """
+        Get a value from the bar data.
+        
+        Args:
+            key: Dictionary key to retrieve
+            default: Default value if key is not found
+            
+        Returns:
+            Value for the key or default
+        """
+        return self.bar.get(key, default)
+        
+    def get_symbol(self):
+        """Get the instrument symbol."""
+        return self.bar.get('symbol', 'default')
+        
+    def get_price(self):
+        """Get the close price."""
+        return self.bar.get('Close')
+        
+    def get_timestamp(self):
+        """Get the bar timestamp."""
+        return self.bar.get('timestamp')
+        
     def __repr__(self):
-        # Optional: add a nice string representation for debugging
         symbol = self.bar.get('symbol', 'unknown')
         timestamp = self.bar.get('timestamp', 'unknown')
-        return f"BarEvent({symbol} @ {timestamp})"        
+        return f"BarEvent({symbol} @ {timestamp})"
 
 
 # Event type categories with descriptions

@@ -57,6 +57,7 @@ class FixedSizeSizer(PositionSizer):
             fixed_size: Number of units to trade
         """
         self.fixed_size = fixed_size
+
         
     def calculate_position_size(self, signal: Dict[str, Any], 
                                portfolio: Any, 
@@ -98,41 +99,44 @@ class PercentOfEquitySizer(PositionSizer):
         """
         self.percent = percent
         self.max_pct = max_pct
-        
-    def calculate_position_size(self, signal: Dict[str, Any], 
-                               portfolio: Any, 
-                               current_price: float) -> float:
-        """
-        Calculate position size for a signal.
-        
-        Args:
-            signal: Trading signal
-            portfolio: Current portfolio state
-            current_price: Current market price
-            
-        Returns:
-            Position size based on percentage of equity
-        """
-        # Get portfolio equity
-        equity = getattr(portfolio, 'equity', 0)
-        if equity <= 0:
-            return 0
-            
-        # Calculate dollar amount to allocate
-        allocation = equity * min(self.percent, self.max_pct)
-        
-        # Calculate units based on price
-        if current_price <= 0:
-            return 0
-            
-        units = allocation / current_price
-        
-        # Apply direction
-        direction = signal.get('direction', 1)
-        if isinstance(direction, str):
-            direction = 1 if direction.upper() in ['BUY', 'LONG'] else -1
-            
-        return units * direction
+
+    def calculate_position_size(self, signal, portfolio, price=None):
+            """
+            Calculate position size based on a percentage of equity.
+
+            Args:
+                signal: Signal object
+                portfolio: Portfolio instance
+                price: Current price (optional)
+
+            Returns:
+                float: Position size (positive for buy, negative for sell)
+            """
+            # Get equity from portfolio
+            equity = portfolio.equity if hasattr(portfolio, 'equity') else 10000
+
+            # Get direction directly from signal_type
+            direction = signal.signal_type.value
+
+            # Skip neutral signals
+            if direction == 0:
+                return 0
+
+            # Calculate position size
+            size = equity * self.percent / 100
+
+            # If price is not provided, use signal price
+            if price is None and hasattr(signal, 'price') and signal.price is not None:
+                price = signal.price
+
+            if price and price > 0:
+                size = size / price
+
+            # Apply direction
+            return size * direction
+
+
+ 
 
 
 class VolatilityPositionSizer(PositionSizer):

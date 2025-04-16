@@ -58,6 +58,48 @@ print(f"Filtered: {processed_signal.metadata.get('filtered', False)}")
 
 ## API Reference
 
+
+# Signal Standardization
+
+## Signal Objects
+
+All components in the trading system now exclusively use standardized `Signal` objects rather than dictionaries or fallback methods. This ensures consistency across the system and makes signal handling more reliable and maintainable.
+
+### Key Changes:
+- All rules and strategies always return `Signal` objects
+- Components like `ExecutionEngine`, `Backtester`, and `PositionSizer` expect proper `Signal` objects
+- Fallback logic for dictionary signals has been removed
+
+### Signal Class Enhancements
+
+The `Signal` class includes these helpful properties for easier integration:
+
+```python
+@property
+def direction(self):
+    """Get the numeric direction of this signal (1, -1, or 0)."""
+    return self.signal_type.value if hasattr(self.signal_type, 'value') else 0
+    
+def is_active(self):
+    """Determine if this signal is actionable (not neutral)."""
+    return self.signal_type != SignalType.NEUTRAL
+
+Using Signal Objects
+When implementing new components, always use proper Signal objects:
+python# Create a signal
+signal = Signal(
+    timestamp=datetime.now(),
+    signal_type=SignalType.BUY,
+    price=100.50,
+    rule_id="my_rule",
+    confidence=0.8,
+    metadata={"key": "value"}
+)
+
+# Access signal properties
+direction = signal.direction  # 1 (for BUY)
+is_actionable = signal.is_active()  # True
+
 ### Signal
 
 Class representing a trading signal.

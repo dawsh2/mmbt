@@ -315,3 +315,88 @@ Guidelines for contributing to the project would go here.
 ## License
 
 Information about the project license would go here.
+
+
+## Recent Improvements
+
+### Signal and BarEvent Standardization
+
+The system has been updated to use standardized objects across all components:
+
+- **Signal Objects**: All components now use proper `Signal` objects with consistent access patterns, improving reliability and type safety throughout the system. Dictionary signals and fallback methods have been removed.
+
+- **BarEvent Objects**: Bar data is now consistently wrapped in `BarEvent` objects, making it easier to process market data across different components.
+
+These improvements reduce the need for defensive programming and make the system more maintainable and less error-prone. See the respective module READMEs for detailed usage information.
+
+## Signal Handling
+
+The engine module has been updated to handle standardized Signal objects:
+
+### ExecutionEngine
+
+The `ExecutionEngine` now expects proper `Signal` objects and processes them directly:
+
+```python
+def on_signal(self, signal):
+    """Process a Signal object and convert to an order."""
+    # Skip neutral signals
+    if signal.signal_type == SignalType.NEUTRAL:
+        return None
+        
+    # Extract attributes directly from signal
+    direction = signal.signal_type.value
+    symbol = getattr(signal, 'symbol', 'default')
+    # ...
+
+
+## 5. Update `src/rules/README.md` for Signal object creation
+
+```markdown
+## Signal Generation
+
+All rules now consistently return standardized `Signal` objects:
+
+```python
+def generate_signal(self, data):
+    """Generate a trading signal from the provided data."""
+    # Rule logic to determine signal type
+    # ...
+    
+    # Always return a Signal object
+    return Signal(
+        timestamp=data.get('timestamp', None),
+        signal_type=signal_type_enum,
+        price=close,
+        rule_id=self.name,
+        confidence=confidence,
+        metadata={
+            'fast_sma': current_fast,
+            'slow_sma': current_slow,
+            'symbol': symbol
+        }
+    )
+
+## 6. Update `src/position_management/README.md` for position sizing with Signal objects
+
+```markdown
+## Position Sizing with Signal Objects
+
+Position sizing components have been updated to work directly with standardized Signal objects:
+
+```python
+def calculate_position_size(self, signal, portfolio, price=None):
+    """Calculate position size based on a Signal object."""
+    # Get direction directly from signal
+    direction = signal.signal_type.value
+    
+    # Skip neutral signals
+    if direction == 0:
+        return 0
+        
+    # Use price from signal if not provided
+    if price is None and hasattr(signal, 'price') and signal.price is not None:
+        price = signal.price
+    
+    # Calculate and return sized position
+    # ...

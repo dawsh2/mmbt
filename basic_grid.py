@@ -37,6 +37,34 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+def enable_debug_logging():
+    """Enable debug logging for the entire system."""
+    # Configure root logger
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
+    
+    # Configure specific loggers
+    loggers = [
+        'src.events.event_bus',
+        'src.events.event_manager',
+        'src.engine.backtester',
+        'src.strategies',  # Your strategy module
+        'src.rules',       # Your rules module
+        'src.signals'      # Your signals module
+    ]
+    
+    for logger_name in loggers:
+        logger = logging.getLogger(logger_name)
+        logger.setLevel(logging.DEBUG)
+        
+    print("Debug logging enabled for all components")
+
+# Call this at the start of your main script
+enable_debug_logging()
+
 def create_synthetic_data(symbol="SYNTHETIC", timeframe="1d", filename=None, days=365):
     """Create synthetic price data for testing with more realistic patterns."""
     # Create a synthetic dataset with realistic patterns
@@ -219,13 +247,13 @@ def main():
                 'smooth_signals': [True, False]
             }
         },
-        {
-            'rule_class': BollingerBandRule,  # Actual class, not string
+                {
+            'rule_class': BollingerBandRule,
             'param_grid': {
                 'period': [10, 20, 30],
                 'std_dev': [1.5, 2.0, 2.5],
-                # Fix: Use breakout_type instead of signal_type for BollingerBandRule
-                'breakout_type': ['upper', 'lower', 'both']
+                'breakout_type': ['upper', 'lower', 'both'],
+                'use_confirmations': [True, False]  # Add the missing parameter
             }
         }
     ]

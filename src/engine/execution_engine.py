@@ -354,6 +354,8 @@ class ExecutionEngine:
         
         return None
 
+    
+
     def on_signal(self, signal):
         """
         Process a signal and convert to an order if appropriate.
@@ -365,8 +367,9 @@ class ExecutionEngine:
             Order object if order was created, None otherwise
         """
         logger.debug(f"ExecutionEngine received signal: {signal.signal_type}")
-        # Skip neutral signals
-        if hasattr(signal, 'signal_type') and signal.signal_type == SignalType.NEUTRAL:
+
+        # Skip neutral signals - simplified check
+        if signal.signal_type == SignalType.NEUTRAL:
             logger.debug(f"Skipping neutral signal: {signal}")
             return None
 
@@ -376,14 +379,8 @@ class ExecutionEngine:
         # Extract symbol from signal
         symbol = getattr(signal, 'symbol', 'default')
 
-        # Set direction based on signal type
-        if hasattr(signal, 'signal_type'):
-            if hasattr(signal.signal_type, 'value'):
-                direction = signal.signal_type.value
-            else:
-                direction = signal.signal_type
-        else:
-            direction = getattr(signal, 'direction', 0)
+        # Get direction directly from signal_type
+        direction = signal.signal_type.value
 
         # Validate direction
         if direction not in [1, -1]:
@@ -412,6 +409,7 @@ class ExecutionEngine:
         logger.info(f"Created order from signal: {order}")
 
         return order
+    
 
     def execute_pending_orders(self, bar, market_simulator=None):
         """
@@ -531,6 +529,8 @@ class ExecutionEngine:
             self.event_bus.emit(fill_event)
         else:
             logger.warning("No event bus available to emit FILL event")
+
+            
 
     def _execute_order(self, order, price, timestamp, commission=0.0):
         """

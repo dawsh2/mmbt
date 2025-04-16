@@ -594,3 +594,82 @@ class FillHandler(EventHandler):
                 self.portfolio_manager.on_fill(event.data)
             else:
                 logger.warning("Portfolio manager does not have on_fill method")
+
+
+class EventProcessor:
+    """
+    Interface for components that process events.
+    
+    All components in the system that need to handle events should implement
+    this interface or inherit from a class that implements it.
+    """
+    
+    def on_event(self, event):
+        """
+        Process any event based on its type.
+        
+        Args:
+            event: Event to process
+            
+        Returns:
+            Result of event processing (varies by event type)
+        """
+        # Dispatch based on event type
+        if event.event_type == EventType.BAR:
+            return self.on_bar(event)
+        elif event.event_type == EventType.SIGNAL:
+            return self.on_signal(event)
+        elif event.event_type == EventType.ORDER:
+            return self.on_order(event)
+        elif event.event_type == EventType.FILL:
+            return self.on_fill(event)
+        else:
+            return None
+    
+    def on_bar(self, event):
+        """
+        Process a bar event (market data).
+        
+        Args:
+            event: Event with a BarEvent data payload
+            
+        Returns:
+            Depends on the component
+        """
+        raise NotImplementedError("Subclasses must implement on_bar")
+    
+    def on_signal(self, event):
+        """
+        Process a signal event.
+        
+        Args:
+            event: Event with a Signal data payload
+            
+        Returns:
+            Depends on the component
+        """
+        raise NotImplementedError("Subclasses must implement on_signal")
+    
+    def on_order(self, event):
+        """
+        Process an order event.
+        
+        Args:
+            event: Event with an Order data payload
+            
+        Returns:
+            Depends on the component
+        """
+        raise NotImplementedError("Subclasses must implement on_order")
+    
+    def on_fill(self, event):
+        """
+        Process a fill event.
+        
+        Args:
+            event: Event with a Fill data payload
+            
+        Returns:
+            Depends on the component
+        """
+        raise NotImplementedError("Subclasses must implement on_fill")                

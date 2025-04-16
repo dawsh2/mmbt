@@ -93,7 +93,8 @@ class EventManager:
                               lambda e: logger.info(f"Market close: {e.timestamp if hasattr(e, 'timestamp') else datetime.datetime.now()}"))
                               
         logger.info("Event handlers registered")
-        
+
+
     def _create_bar_handler(self):
         """Create a handler for BAR events."""
         def handle_bar_event(event):
@@ -101,44 +102,51 @@ class EventManager:
             try:
                 # Extract bar data from various event structures
                 bar_data = None
-                
+
                 # Case 1: Event has bar data directly in data attribute
                 if hasattr(event, 'data') and isinstance(event.data, dict) and 'Close' in event.data:
                     bar_data = event.data
-                    
+
                 # Case 2: Event data is a BarEvent with a bar attribute
                 elif hasattr(event, 'data') and hasattr(event.data, 'bar'):
                     bar_data = event.data.bar
-                    
+
                 # Case 3: Event is a BarEvent itself
                 elif hasattr(event, 'bar'):
                     bar_data = event.bar
-                    
+
                 if bar_data is None:
                     logger.warning(f"Could not extract bar data from event: {event}")
                     return
-                
+
                 # Update price history
                 symbol = bar_data.get('symbol', 'UNKNOWN')
                 if symbol not in self.price_history:
                     self.price_history[symbol] = []
-                
+
                 self.price_history[symbol].append(bar_data)
-                
-                # Create a proper BarEvent for strategy consumption
-                wrapped_event = BarEvent(bar_data)
-                
+
+                # Always wrap in a standard BarEvent
+                if not isinstance(event.data, BarEvent):
+                    bar_event = BarEvent(bar_data)
+                    event_to_pass = Event(EventType.BAR, bar_event, event.timestamp)
+                else:
+                    event_to_pass = event
+
                 # Process through strategy
                 if hasattr(self.strategy, 'on_bar'):
-                    self.strategy.on_bar(wrapped_event)
-                
+                    self.strategy.on_bar(event_to_pass)
+                elif hasattr(self.strategy, 'handle_event'):
+                    self.strategy.handle_event(event_to_pass)
+
                 logger.debug(f"Processed bar: {symbol} at {bar_data.get('timestamp')}")
-                
+
             except Exception as e:
                 logger.error(f"Error processing bar event: {str(e)}", exc_info=True)
-        
+
         return handle_bar_event
-    
+
+
     def _create_signal_handler(self):
         """Create a handler for SIGNAL events."""
         def handle_signal_event(event):

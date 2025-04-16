@@ -204,7 +204,6 @@ class Backtester:
         # Register fill handler
         self.event_bus.register(EventType.FILL, self._on_fill)
 
-
     def run(self, use_test_data=False):
         """
         Run the backtest.
@@ -224,29 +223,27 @@ class Backtester:
             iterator = self.data_handler.iter_test() if use_test_data else self.data_handler.iter_train()
 
             # Process each bar
-            for bar_event in iterator:
-                # Get the bar data - handle both raw dict and BarEvent
-                if hasattr(bar_event, 'bar'):
-                    bar = bar_event.bar  # It's already a BarEvent
+            for bar_data in iterator:
+                # Ensure bar_data is properly wrapped in a BarEvent
+                from src.events.event_types import BarEvent
+                if not isinstance(bar_data, BarEvent):
+                    # It's raw data, wrap it
+                    bar_event = BarEvent(bar_data)
                 else:
-                    bar = bar_event  # It's a raw dict
-                    bar_event = BarEvent(bar)  # Wrap it
-
-                # Log some bars for debugging
-                # if isinstance(bar, dict) and 'timestamp' in bar:
-                    # logger.info(f"Processing bar for {bar['timestamp']} - Close: {bar.get('Close')}")
+                    # It's already a BarEvent
+                    bar_event = bar_data
 
                 # Process bar through strategy to get signals
                 signal_or_signals = self.strategy.on_bar(bar_event)
 
                 # Handle signals from strategy
-                self._process_signals(signal_or_signals, bar)
+                self._process_signals(signal_or_signals, bar_data)
 
                 # Update portfolio with current bar data
-                self.execution_engine.update(bar)
+                self.execution_engine.update(bar_data)
 
                 # Execute any pending orders
-                self.execution_engine.execute_pending_orders(bar, self.market_simulator)
+                self.execution_engine.execute_pending_orders(bar_data, self.market_simulator)
 
             logger.info("Backtest completed. Collecting results...")
 
@@ -269,6 +266,8 @@ class Backtester:
                 'average_return': 0,
                 'portfolio_history': []
             }
+
+
 
 
     def _on_signal(self, event):
@@ -578,26 +577,16 @@ class Backtester:
             # Store signal for debugging
             self.signals.append(signal)
 
-            # Debug log the raw signal details
-            logger.debug(f"Raw signal: {signal}")
-            if hasattr(signal, 'signal_type'):
-                logger.debug(f"Signal type: {signal.signal_type}")
-            if hasattr(signal, 'confidence'):
-                logger.debug(f"Signal confidence: {signal.confidence}")
+            # Debug log the signal
+            logger.debug(f"Processing signal: {signal.signal_type}, confidence={signal.confidence}")
 
-            # Skip neutral signals
-            if hasattr(signal, 'signal_type') and (
-                signal.signal_type == SignalType.NEUTRAL or 
-                getattr(signal.signal_type, 'value', 0) == 0
-            ):
+            # Skip neutral signals - simplified check
+            if signal.signal_type == SignalType.NEUTRAL:
                 logger.debug("Skipping neutral signal")
                 continue
 
-            # Calculate position size - FIXED PART
-            # Instead of calling calculate_position_size on the position_manager,
-            # we need to use the position_sizer if available
+            # Calculate position size using position_sizer
             if hasattr(self.position_manager, 'position_sizer') and self.position_manager.position_sizer is not None:
-                # Use the position_sizer from the position_manager
                 position_size = self.position_manager.position_sizer.calculate_position_size(
                     signal, 
                     self.position_manager.portfolio, 
@@ -612,25 +601,13 @@ class Backtester:
                 logger.debug("Position size is zero, skipping order generation")
                 continue
 
-            # Determine direction
-            direction = 1  # Default to buy
-            if hasattr(signal, 'signal_type'):
-                if hasattr(signal.signal_type, 'value'):
-                    direction = 1 if signal.signal_type.value > 0 else -1
-                elif isinstance(signal.signal_type, str):
-                    if signal.signal_type in ['SELL', 'SHORT']:
-                        direction = -1
-            elif hasattr(signal, 'direction'):
-                direction = signal.direction
+            # Get direction directly from signal_type
+            direction = signal.signal_type.value
 
-            # Extract timestamp
-            timestamp = getattr(signal, 'timestamp', datetime.now())
-
-            # Extract price
-            price = getattr(signal, 'price', bar.get('Close', 0))
-
-            # Extract symbol
-            symbol = getattr(signal, 'symbol', 'default')
+            # Extract metadata from signal
+            timestamp = signal.timestamp if hasattr(signal, 'timestamp') else datetime.now()
+            price = signal.price if hasattr(signal, 'price') else bar.get('Close', 0)
+            symbol = signal.symbol if hasattr(signal, 'symbol') else 'default'
 
             logger.info(f"Creating order from signal: direction={direction}, size={abs(position_size)}")
 

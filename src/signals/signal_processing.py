@@ -90,6 +90,19 @@ class Signal:
             
         return cls(timestamp, signal_type, price, rule_id, 1.0, metadata, symbol)
 
+    @property
+    def direction(self):
+        """Get the numeric direction of this signal (1, -1, or 0)."""
+        return self.signal_type.value if hasattr(self.signal_type, 'value') else 0
+    
+    def is_active(self):
+        """Determine if this signal is actionable (not neutral)."""
+        return self.signal_type != SignalType.NEUTRAL
+    
+    def __str__(self):
+        """String representation of the signal."""
+        return f"Signal({self.signal_type}, rule={self.rule_id}, confidence={self.confidence:.2f}, price={self.price})"
+
 
 class SignalFilter(ABC):
     """Base class for signal filters."""

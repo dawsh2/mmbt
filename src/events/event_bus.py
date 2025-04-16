@@ -20,14 +20,21 @@ from src.events.event_types import EventType
 logger = logging.getLogger(__name__)
 
 
+
+
 class Event:
+
     """
     Base class for all events in the trading system.
-    
-    Events contain a type, timestamp, unique ID, and optional data payload.
-    They are emitted by components and handled by registered handlers.
+
+    Events contain a type, timestamp, unique ID, and data payload.
+    The data payload should be a standard object type based on the event type:
+    - BAR events: BarEvent object
+    - SIGNAL events: Signal object
+    - ORDER events: Order object or dictionary with standard keys
+    - FILL events: Fill object or dictionary with standard keys
     """
-    
+
     def __init__(self, event_type: EventType, data: Any = None, 
                timestamp: Optional[datetime.datetime] = None):
         """
@@ -90,7 +97,17 @@ class Event:
         event = cls(event_type, event_dict['data'], timestamp)
         event.id = event_dict['id']
         
+
         return event
+
+    def get_data(self):
+        """
+        Get the event's data payload.
+        
+        Returns:
+            The event data payload
+        """
+        return self.data
 
 
 class EventBus:

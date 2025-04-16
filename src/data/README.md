@@ -189,6 +189,42 @@ data_handler.load_data(
 )
 ```
 
+## 2. Update the BarEvent standardization in `src/data/README.md`
+
+```markdown
+# Bar Data Standardization
+
+## BarEvent Objects
+
+To improve consistency, all components now use standardized `BarEvent` objects to contain bar data, rather than raw dictionaries.
+
+### Key Changes:
+- Data handlers now emit `BarEvent` objects with `bar` attribute
+- Strategies, rules, and other components handle `BarEvent` objects properly
+- Component methods extract bar data from events in a consistent way
+
+### Using BarEvent Objects
+
+To process bar data consistently:
+
+```python
+def on_bar(self, event_or_data):
+    """Process a bar event and generate a signal."""
+    # Extract bar data from different potential sources
+    if hasattr(event_or_data, 'bar'):
+        # It's a BarEvent
+        bar = event_or_data.bar
+    elif isinstance(event_or_data, dict):
+        # It's raw bar data
+        bar = event_or_data
+    else:
+        # Handle other cases
+        bar = {}
+        
+    # Now process the bar data
+    close = bar.get('Close', None)
+    # ...
+
 ## Best Practices
 
 1. **Follow the naming convention** for data files to work seamlessly with CSVDataSource
