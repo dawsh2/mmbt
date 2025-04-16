@@ -161,55 +161,68 @@ class SMACrossoverRule:
             # Check for bullish crossover (fast crosses above slow)
             if self.last_fast_ma <= self.last_slow_ma and fast_ma > slow_ma:
                 print(f"  BULLISH CROSSOVER DETECTED: {self.last_fast_ma} -> {fast_ma}, {self.last_slow_ma} -> {slow_ma}")
-                signal = self._create_signal(SignalType.BUY, bar_event, fast_ma, slow_ma)
+                
+                # Calculate confidence based on the distance between MAs
+                ma_diff = abs(fast_ma - slow_ma)
+                avg_price = (fast_ma + slow_ma) / 2
+                confidence = min(1.0, ma_diff / (avg_price * 0.01))  # Max confidence at 1% difference
+                
+                # Create metadata with relevant information
+                metadata = {
+                    'fast_ma': fast_ma,
+                    'slow_ma': slow_ma,
+                    'price': bar_event.get_price(),
+                    'fast_window': self.fast_window,
+                    'slow_window': self.slow_window,
+                    'symbol': bar_event.get_symbol(),
+                    'confidence': confidence  # Include confidence in metadata
+                }
+                
+                # Create the signal directly with correct parameters
+                signal = SignalEvent(
+                    signal_value=SignalEvent.BUY,  # Using signal_value, not signal_type
+                    price=bar_event.get_price(),
+                    symbol=bar_event.get_symbol(),
+                    rule_id=self.name,
+                    metadata=metadata,
+                    timestamp=bar_event.get_timestamp()
+                )
+                
             # Check for bearish crossover (fast crosses below slow)
             elif self.last_fast_ma >= self.last_slow_ma and fast_ma < slow_ma:
                 print(f"  BEARISH CROSSOVER DETECTED: {self.last_fast_ma} -> {fast_ma}, {self.last_slow_ma} -> {slow_ma}")
-                signal = self._create_signal(SignalType.SELL, bar_event, fast_ma, slow_ma)
+                
+                # Calculate confidence based on the distance between MAs
+                ma_diff = abs(fast_ma - slow_ma)
+                avg_price = (fast_ma + slow_ma) / 2
+                confidence = min(1.0, ma_diff / (avg_price * 0.01))  # Max confidence at 1% difference
+                
+                # Create metadata with relevant information
+                metadata = {
+                    'fast_ma': fast_ma,
+                    'slow_ma': slow_ma,
+                    'price': bar_event.get_price(),
+                    'fast_window': self.fast_window,
+                    'slow_window': self.slow_window,
+                    'symbol': bar_event.get_symbol(),
+                    'confidence': confidence  # Include confidence in metadata
+                }
+                
+                # Create the signal directly with correct parameters
+                signal = SignalEvent(
+                    signal_value=SignalEvent.SELL,  # Using signal_value, not signal_type
+                    price=bar_event.get_price(),
+                    symbol=bar_event.get_symbol(),
+                    rule_id=self.name,
+                    metadata=metadata,
+                    timestamp=bar_event.get_timestamp()
+                )
 
         # Store current values for the next time
         self.last_fast_ma = fast_ma
         self.last_slow_ma = slow_ma
 
         return signal
-
-    def _create_signal(self, signal_type, bar_event, fast_ma, slow_ma):
-        """
-        Create a signal event.
-
-        Args:
-            signal_type: Type of signal to create
-            bar_event: The bar event that triggered the signal
-            fast_ma: Current fast moving average value
-            slow_ma: Current slow moving average value
-
-        Returns:
-            SignalEvent object
-        """
-        # Create metadata with relevant information
-        metadata = {
-            'fast_ma': fast_ma,
-            'slow_ma': slow_ma,
-            'price': bar_event.get_price(),
-            'fast_window': self.fast_window,
-            'slow_window': self.slow_window,
-            'symbol': bar_event.get_symbol(),
-            'confidence': min(1.0, abs(fast_ma - slow_ma) / ((fast_ma + slow_ma) / 2 * 0.01))
-        }
-
-        # Create and return the signal
-        return SignalEvent(
-            signal_value=signal_type.value,  # Changed from signal_type to signal_value
-            price=bar_event.get_price(),
-            symbol=bar_event.get_symbol(),
-            rule_id=self.name,
-            metadata=metadata,  # Move confidence into metadata
-            timestamp=bar_event.get_timestamp()
-        )
-    
-
-
-
         
     def reset(self):
         """Reset the rule's state."""
@@ -218,6 +231,7 @@ class SMACrossoverRule:
         self.prices.clear()
         self.last_fast_ma = None
         self.last_slow_ma = None
+
 
 
 class TestSMACrossoverRule(unittest.TestCase):

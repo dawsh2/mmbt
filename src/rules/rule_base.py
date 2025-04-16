@@ -69,19 +69,29 @@ class Rule(ABC):
     @abstractmethod
     def generate_signal(self, bar_event: BarEvent) -> Optional[SignalEvent]:
         """
-        Generate a trading signal from the provided bar event.
+        Analyze market data and generate a complete trading signal.
+        
+        This method is responsible for the entire signal generation process:
+        1. Analyzing the bar data 
+        2. Determining if a signal should be generated
+        3. Creating and returning the proper SignalEvent
+        
+        Subclasses must implement this method with their specific trading logic.
         
         Args:
             bar_event: BarEvent containing market data
                  
         Returns:
-            SignalEvent object representing the trading decision, or None if no signal
+            Complete SignalEvent if conditions warrant a signal, None otherwise
         """
         pass
 
     def on_bar(self, event: Event) -> Optional[SignalEvent]:
         """
         Process a bar event and generate a trading signal.
+        
+        This method extracts the bar data from the event and passes it to
+        generate_signal() for the actual signal generation logic.
         
         Args:
             event: Event containing a BarEvent in its data attribute
@@ -106,7 +116,7 @@ class Rule(ABC):
             logger.error(f"Rule {self.name}: Unable to extract BarEvent from {type(event.data).__name__}")
             return None
         
-        # Generate signal
+        # Generate signal by delegating to the subclass implementation
         try:
             signal = self.generate_signal(bar_event)
             
