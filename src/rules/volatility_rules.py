@@ -14,37 +14,40 @@ from src.rules.rule_base import Rule
 from src.rules.rule_registry import register_rule
 
 
+
 @register_rule(category="volatility")
-class BollingerBandRule(Rule):
+class BollingerBandRule(Rule): # BollingerBreakout
     """
-    Bollinger Bands Rule.
+    Bollinger Bands Breakout Rule.
     
-    This rule generates signals based on price interaction with Bollinger Bands,
-    which adapt to market volatility by using standard deviations from a moving average.
+    This rule generates signals when price breaks out of Bollinger Bands,
+    indicating potential trend reversals or continuation based on volatility.
     """
     
     def __init__(self, 
-                 name: str = "bollinger_band_rule", 
+                 name: str = "bollinger_breakout", 
                  params: Optional[Dict[str, Any]] = None,
-                 description: str = "Bollinger Bands volatility rule"):
+                 description: str = "Bollinger Bands breakout rule"):
         """
-        Initialize the Bollinger Bands rule.
+        Initialize the Bollinger Bands Breakout rule.
         
         Args:
             name: Rule name
             params: Dictionary containing:
                 - period: Period for SMA calculation (default: 20)
                 - std_dev: Number of standard deviations for bands (default: 2.0)
-                - signal_type: Signal generation method ('band_touch', 'band_cross', 'squeeze') (default: 'band_cross')
+                - breakout_type: Type of breakout to monitor ('upper', 'lower', 'both') (default: 'both')
+                - use_confirmations: Whether to require confirmation (default: True)
             description: Rule description
         """
         super().__init__(name, params or self.default_params(), description)
         self.prices = deque(maxlen=self.params['period'] * 3)
-        self.sma_history = deque(maxlen=10)
         self.upper_band_history = deque(maxlen=10)
+        self.middle_band_history = deque(maxlen=10)
         self.lower_band_history = deque(maxlen=10)
-        self.bandwidth_history = deque(maxlen=50)  # For squeeze detection
-        self.position = 0  # Track position: 0=none, 1=long, -1=short
+        self.breakout_detected = False
+        self.breakout_direction = 0  # 1 for upper, -1 for lower
+        self.confirmation_bar = False
         self.current_signal_type = SignalType.NEUTRAL
     
     @classmethod
@@ -53,24 +56,25 @@ class BollingerBandRule(Rule):
         return {
             'period': 20,
             'std_dev': 2.0,
-            'signal_type': 'band_cross'  # 'band_touch', 'band_cross', or 'squeeze'
+            'breakout_type': 'both',  # 'upper', 'lower', or 'both'
+            'use_confirmations': True
         }
     
     def _validate_params(self) -> None:
         """Validate the parameters for this rule."""
         if self.params['period'] <= 0:
             raise ValueError("Period must be positive")
-            
+        
         if self.params['std_dev'] <= 0:
-            raise ValueError("Standard deviation multiplier must be positive")
+            raise ValueError("Standard deviation must be positive")
             
-        valid_signal_types = ['band_touch', 'band_cross', 'squeeze']
-        if self.params['signal_type'] not in valid_signal_types:
-            raise ValueError(f"signal_type must be one of {valid_signal_types}")
+        valid_breakout_types = ['upper', 'lower', 'both']
+        if self.params['breakout_type'] not in valid_breakout_types:
+            raise ValueError(f"Breakout type must be one of {valid_breakout_types}")
     
     def generate_signal(self, data: Dict[str, Any]) -> Signal:
         """
-        Generate a trading signal based on Bollinger Bands.
+        Generate a trading signal based on Bollinger Bands breakout.
         
         Args:
             data: Dictionary containing price data
@@ -79,26 +83,28 @@ class BollingerBandRule(Rule):
             Signal object representing the trading decision
         """
         # Check for required data
-        if 'Close' not in data:
+        if not all(k in data for k in ['Close', 'High', 'Low']):
             return Signal(
                 timestamp=data.get('timestamp', None),
                 signal_type=SignalType.NEUTRAL,
                 price=None,
                 rule_id=self.name,
                 confidence=0.0,
-                metadata={'error': 'Missing Close price data'}
+                metadata={'error': 'Missing required price data'}
             )
             
         # Get parameters
         period = self.params['period']
         std_dev = self.params['std_dev']
-        signal_type = self.params['signal_type']
+        breakout_type = self.params['breakout_type']
+        use_confirmations = self.params['use_confirmations']
         
         # Extract price data
         close = data['Close']
-        high = data.get('High', close)
-        low = data.get('Low', close)
+        high = data['High']
+        low = data['Low']
         timestamp = data.get('timestamp', None)
+        symbol = data.get('symbol', 'default')
         
         # Update price history
         self.prices.append(close)
@@ -111,122 +117,101 @@ class BollingerBandRule(Rule):
                 price=close,
                 rule_id=self.name,
                 confidence=0.0,
-                metadata={'status': 'collecting data'}
+                metadata={
+                    'status': 'collecting data',
+                    'symbol': symbol
+                }
             )
         
-        # Calculate SMA
-        sma = sum(list(self.prices)[-period:]) / period
-        self.sma_history.append(sma)
+        # Calculate SMA (middle band)
+        middle_band = sum(list(self.prices)[-period:]) / period
         
         # Calculate standard deviation
-        variance = sum((price - sma) ** 2 for price in list(self.prices)[-period:]) / period
+        variance = sum((price - middle_band) ** 2 for price in list(self.prices)[-period:]) / period
         std = np.sqrt(variance)
         
         # Calculate bands
-        upper_band = sma + (std_dev * std)
-        lower_band = sma - (std_dev * std)
+        upper_band = middle_band + (std_dev * std)
+        lower_band = middle_band - (std_dev * std)
         
+        # Store band history
         self.upper_band_history.append(upper_band)
+        self.middle_band_history.append(middle_band)
         self.lower_band_history.append(lower_band)
         
-        # Calculate bandwidth (for squeeze detection)
-        bandwidth = (upper_band - lower_band) / sma if sma > 0 else 0
-        self.bandwidth_history.append(bandwidth)
-        
-        # Generate signal based on selected method
-        signal_type_enum = self.current_signal_type
+        # Initialize signal variables
+        signal_type_enum = SignalType.NEUTRAL
         confidence = 0.5
+        signal_info = {}
         
-        if signal_type == 'band_cross' and len(self.prices) >= 2 and len(self.upper_band_history) >= 2 and len(self.lower_band_history) >= 2:
-            # Signal on price crossing the bands
-            prev_close = list(self.prices)[-2]
-            prev_upper = self.upper_band_history[-2]
-            prev_lower = self.lower_band_history[-2]
-            
-            # Bullish signal: Price was below lower band and crossed above
-            if prev_close <= prev_lower and close > lower_band:
-                signal_type_enum = SignalType.BUY
-                # Calculate confidence based on how far price moved above the lower band
-                penetration = (close - lower_band) / (sma - lower_band) if (sma - lower_band) > 0 else 0
-                confidence = min(1.0, 0.5 + penetration)
-                self.position = 1
+        # Check for breakouts based on specified type
+        if breakout_type in ['upper', 'both'] and high > upper_band:
+            # Upper band breakout detected
+            if not self.breakout_detected or self.breakout_direction != 1:
+                self.breakout_detected = True
+                self.breakout_direction = 1
+                self.confirmation_bar = use_confirmations
+                signal_info['breakout'] = 'upper'
                 
-            # Bearish signal: Price was above upper band and crossed below
-            elif prev_close >= prev_upper and close < upper_band:
-                signal_type_enum = SignalType.SELL
-                # Calculate confidence based on how far price moved below the upper band
-                penetration = (upper_band - close) / (upper_band - sma) if (upper_band - sma) > 0 else 0
-                confidence = min(1.0, 0.5 + penetration)
-                self.position = -1
+                # Calculate confidence based on breakout strength
+                breakout_strength = (high - upper_band) / upper_band
+                confidence = min(0.9, 0.6 + breakout_strength * 2)
                 
-            # Exit signals: Price crosses back to the middle band
-            elif self.position == 1 and close > sma:
-                signal_type_enum = SignalType.NEUTRAL  # Take profit on long
-                confidence = 0.6
-                self.position = 0
-                
-            elif self.position == -1 and close < sma:
-                signal_type_enum = SignalType.NEUTRAL  # Take profit on short
-                confidence = 0.6
-                self.position = 0
-                
-        elif signal_type == 'band_touch':
-            # Signal on price touching the bands
-            
-            # Bearish signal: Price touches or exceeds upper band
-            if high >= upper_band:
-                signal_type_enum = SignalType.SELL
-                # Calculate confidence based on how far price penetrated the upper band
-                penetration = (high - upper_band) / (upper_band - sma) if (upper_band - sma) > 0 else 0
-                confidence = min(1.0, 0.6 + penetration)
-                
-            # Bullish signal: Price touches or exceeds lower band
-            elif low <= lower_band:
-                signal_type_enum = SignalType.BUY
-                # Calculate confidence based on how far price penetrated the lower band
-                penetration = (lower_band - low) / (sma - lower_band) if (sma - lower_band) > 0 else 0
-                confidence = min(1.0, 0.6 + penetration)
-                
-            # Neutral when price is between bands
-            else:
-                signal_type_enum = SignalType.NEUTRAL
-                # Calculate confidence based on position within the bands
-                relative_position = (close - lower_band) / (upper_band - lower_band) if (upper_band - lower_band) > 0 else 0.5
-                confidence = 0.3  # Lower confidence when not at extremes
-                
-        elif signal_type == 'squeeze' and len(self.bandwidth_history) >= 20:
-            # Signal on Bollinger Band squeeze
-            
-            # Calculate average and recent bandwidth
-            avg_bandwidth = sum(list(self.bandwidth_history)[-20:-5]) / 15  # Skip most recent for comparison
-            recent_bandwidth = sum(list(self.bandwidth_history)[-5:]) / 5
-            
-            # Check for squeeze (narrowing bands) and subsequent expansion
-            is_squeeze = recent_bandwidth < avg_bandwidth * 0.85  # 15% narrower than average
-            is_expanding = len(self.bandwidth_history) >= 3 and self.bandwidth_history[-1] > self.bandwidth_history[-2] > self.bandwidth_history[-3]
-            
-            if is_squeeze and is_expanding:
-                # Bands are starting to expand after a squeeze
-                # Direction depends on price relative to SMA
-                if close > sma:
-                    signal_type_enum = SignalType.BUY
-                    confidence = min(1.0, 0.6 + (avg_bandwidth / recent_bandwidth - 1))
-                elif close < sma:
+                if not use_confirmations:
                     signal_type_enum = SignalType.SELL
-                    confidence = min(1.0, 0.6 + (avg_bandwidth / recent_bandwidth - 1))
-                else:
-                    signal_type_enum = SignalType.NEUTRAL
-                    confidence = 0.3
-            else:
-                # No squeeze or not expanding yet
-                signal_type_enum = SignalType.NEUTRAL
-                confidence = 0.3
                 
-        # Update current signal
-        self.current_signal_type = signal_type_enum
+        elif breakout_type in ['lower', 'both'] and low < lower_band:
+            # Lower band breakout detected
+            if not self.breakout_detected or self.breakout_direction != -1:
+                self.breakout_detected = True
+                self.breakout_direction = -1
+                self.confirmation_bar = use_confirmations
+                signal_info['breakout'] = 'lower'
+                
+                # Calculate confidence based on breakout strength
+                breakout_strength = (lower_band - low) / lower_band
+                confidence = min(0.9, 0.6 + breakout_strength * 2)
+                
+                if not use_confirmations:
+                    signal_type_enum = SignalType.BUY
+                
+        # Handle confirmation if needed
+        if self.confirmation_bar:
+            if self.breakout_direction == 1:
+                # Confirm upper breakout - check if price closes above middle band
+                if close > middle_band:
+                    signal_type_enum = SignalType.SELL
+                    signal_info['confirmation'] = 'confirmed_upper'
+                else:
+                    # Failed confirmation
+                    signal_info['confirmation'] = 'failed_upper'
+                    self.breakout_detected = False
+                    
+            elif self.breakout_direction == -1:
+                # Confirm lower breakout - check if price closes below middle band
+                if close < middle_band:
+                    signal_type_enum = SignalType.BUY
+                    signal_info['confirmation'] = 'confirmed_lower'
+                else:
+                    # Failed confirmation
+                    signal_info['confirmation'] = 'failed_lower'
+                    self.breakout_detected = False
+                    
+            # Reset confirmation flag
+            self.confirmation_bar = False
         
-        # Calculate %B (position within the bands)
-        percent_b = (close - lower_band) / (upper_band - lower_band) if (upper_band - lower_band) > 0 else 0.5
+        # Reset breakout if price returns to within bands
+        if self.breakout_detected and lower_band < close < upper_band:
+            signal_info['status'] = 'returned_to_bands'
+            self.breakout_detected = False
+            
+        # Calculate relative position within bands (percent B)
+        band_width = upper_band - lower_band
+        if band_width > 0:
+            percent_b = (close - lower_band) / band_width
+            signal_info['percent_b'] = percent_b
+        
+        self.current_signal_type = signal_type_enum
         
         return Signal(
             timestamp=timestamp,
@@ -235,12 +220,12 @@ class BollingerBandRule(Rule):
             rule_id=self.name,
             confidence=confidence,
             metadata={
-                'sma': sma,
                 'upper_band': upper_band,
+                'middle_band': middle_band,
                 'lower_band': lower_band,
-                'percent_b': percent_b,
-                'bandwidth': bandwidth,
-                'status': 'squeeze' if bandwidth < np.mean(list(self.bandwidth_history)[-20:]) * 0.85 else 'normal'
+                'std_dev': std,
+                'symbol': symbol,  # Add symbol to metadata
+                **signal_info
             }
         )
     
@@ -248,13 +233,13 @@ class BollingerBandRule(Rule):
         """Reset the rule's internal state."""
         super().reset()
         self.prices = deque(maxlen=self.params['period'] * 3)
-        self.sma_history = deque(maxlen=10)
         self.upper_band_history = deque(maxlen=10)
+        self.middle_band_history = deque(maxlen=10)
         self.lower_band_history = deque(maxlen=10)
-        self.bandwidth_history = deque(maxlen=50)
-        self.position = 0
+        self.breakout_detected = False
+        self.breakout_direction = 0
+        self.confirmation_bar = False
         self.current_signal_type = SignalType.NEUTRAL
-
 
 @register_rule(category="volatility")
 class ATRTrailingStopRule(Rule):

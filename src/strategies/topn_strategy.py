@@ -38,32 +38,38 @@ class TopNStrategy(Strategy):
 
 
     def on_bar(self, event):
-        """Process a bar and generate a consensus signal.
-
-        Args:
-            event: Bar event containing market data
-
-        Returns:
-            Signal: Consensus signal from all rules
-        """
+        """Process a bar and generate a consensus signal."""
         logger.debug(f"TopNStrategy received bar event")
         router_output = self.router.on_bar(event)
         signal_collection = router_output["signals"]
         consensus_signal_type = signal_collection.get_weighted_consensus()
 
-        # Instead of trying to use len() on the SignalCollection, just log the result
-        logger.info(f"Strategy processed signals and got consensus: {consensus_signal_type}")
+        # Get the symbol from the bar data
+        symbol = 'default'
+        if hasattr(event, 'data') and hasattr(event.data, 'get'):
+            symbol = event.data.get('symbol', 'default')
+        elif isinstance(event, dict):
+            symbol = event.get('symbol', 'default')
+        elif hasattr(event, 'bar') and hasattr(event.bar, 'get'):
+            symbol = event.bar.get('symbol', 'default')
 
-        self.last_signal = Signal(
+        # Create signal with symbol in both the object and metadata
+        signal = Signal(
             timestamp=router_output["timestamp"],
             signal_type=consensus_signal_type,
             price=router_output["price"],
             rule_id=self.name,
-            confidence=0.8  # Add reasonable confidence value
+            confidence=0.8,
+            metadata={'symbol': symbol}  # Add symbol to metadata
         )
 
+        # Also add symbol as an attribute for convenience
+        setattr(signal, 'symbol', symbol)
+
+        self.last_signal = signal
+
         if consensus_signal_type != SignalType.NEUTRAL:
-            logger.info(f"Generated non-neutral signal: {consensus_signal_type}")
+            logger.info(f"Generated non-neutral signal: {consensus_signal_type} for {symbol}")
 
         return self.last_signal
         

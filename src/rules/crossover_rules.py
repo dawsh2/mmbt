@@ -14,6 +14,7 @@ from src.rules.rule_base import Rule
 from src.rules.rule_registry import register_rule
 
 
+
 @register_rule(category="crossover")
 class SMAcrossoverRule(Rule):
     """
@@ -79,7 +80,10 @@ class SMAcrossoverRule(Rule):
                 price=None,
                 rule_id=self.name,
                 confidence=0.0,
-                metadata={'error': 'Missing Close price data'}
+                metadata={
+                    'error': 'Missing Close price data',
+                    'symbol': data.get('symbol', 'default')
+                }
             )
             
         # Get parameters
@@ -90,63 +94,92 @@ class SMAcrossoverRule(Rule):
         # Extract price data
         close = data['Close']
         timestamp = data.get('timestamp', None)
+
+        # Extract symbol
+        symbol = data.get('symbol', 'default')
         
         # Update price history
         self.prices.append(close)
         
         # Calculate SMAs
         if len(self.prices) >= slow_window:
-            fast_sma = sum(list(self.prices)[-fast_window:]) / fast_window
-            slow_sma = sum(list(self.prices)[-slow_window:]) / slow_window
-            
-            # Store in history
-            self.fast_sma_history.append(fast_sma)
-            self.slow_sma_history.append(slow_sma)
-            
-            # Generate signals
-            if len(self.fast_sma_history) >= 2 and len(self.slow_sma_history) >= 2:
-                current_fast = self.fast_sma_history[-1]
-                current_slow = self.slow_sma_history[-1]
-                prev_fast = self.fast_sma_history[-2]
-                prev_slow = self.slow_sma_history[-2]
+            try:
+                fast_sma = sum(list(self.prices)[-fast_window:]) / fast_window
+                slow_sma = sum(list(self.prices)[-slow_window:]) / slow_window
                 
-                # Check for crossover
-                if prev_fast <= prev_slow and current_fast > current_slow:
-                    self.current_signal_type = SignalType.BUY
-                elif prev_fast >= prev_slow and current_fast < current_slow:
-                    self.current_signal_type = SignalType.SELL
-                elif smooth_signals:
-                    # If smooth signals are enabled, maintain signal based on MA relationship
-                    if current_fast > current_slow:
+                # Store in history
+                self.fast_sma_history.append(fast_sma)
+                self.slow_sma_history.append(slow_sma)
+                
+                # Generate signals
+                if len(self.fast_sma_history) >= 2 and len(self.slow_sma_history) >= 2:
+                    current_fast = self.fast_sma_history[-1]
+                    current_slow = self.slow_sma_history[-1]
+                    prev_fast = self.fast_sma_history[-2]
+                    prev_slow = self.slow_sma_history[-2]
+                    
+                    # Log current values for debugging
+                    if hasattr(self, 'logger'):
+                        self.logger.debug(f"Symbol: {symbol}, Fast SMA: {current_fast:.2f}, Slow SMA: {current_slow:.2f}")
+                        self.logger.debug(f"Previous Fast: {prev_fast:.2f}, Previous Slow: {prev_slow:.2f}")
+                    
+                    # Check for crossover
+                    if prev_fast <= prev_slow and current_fast > current_slow:
                         self.current_signal_type = SignalType.BUY
-                    elif current_fast < current_slow:
+                        if hasattr(self, 'logger'):
+                            self.logger.info(f"Bullish crossover detected for {symbol}")
+                    elif prev_fast >= prev_slow and current_fast < current_slow:
                         self.current_signal_type = SignalType.SELL
+                        if hasattr(self, 'logger'):
+                            self.logger.info(f"Bearish crossover detected for {symbol}")
+                    elif smooth_signals:
+                        # If smooth signals are enabled, maintain signal based on MA relationship
+                        if current_fast > current_slow:
+                            self.current_signal_type = SignalType.BUY
+                        elif current_fast < current_slow:
+                            self.current_signal_type = SignalType.SELL
+                        else:
+                            self.current_signal_type = SignalType.NEUTRAL
                     else:
+                        # Otherwise, revert to neutral after crossover
                         self.current_signal_type = SignalType.NEUTRAL
-                else:
-                    # Otherwise, revert to neutral after crossover
-                    self.current_signal_type = SignalType.NEUTRAL
-                
-                # Calculate confidence based on distance between MAs
-                if current_slow != 0:
-                    distance = abs(current_fast - current_slow) / current_slow
-                    confidence = min(1.0, distance * 10)  # Scale distance for confidence
-                else:
-                    confidence = 0.5
-                
+                    
+                    # Calculate confidence based on distance between MAs
+                    if current_slow != 0:
+                        distance = abs(current_fast - current_slow) / current_slow
+                        confidence = min(1.0, distance * 10)  # Scale distance for confidence
+                    else:
+                        confidence = 0.5
+
+                    return Signal(
+                        timestamp=timestamp,
+                        signal_type=self.current_signal_type,
+                        price=close,
+                        rule_id=self.name,
+                        confidence=confidence,
+                        metadata={
+                            'fast_sma': current_fast,
+                            'slow_sma': current_slow,
+                            'distance': current_fast - current_slow,
+                            'symbol': symbol  # Add symbol to metadata
+                        }
+                    )
+            except Exception as e:
+                # Handle any unexpected errors during calculation
+                if hasattr(self, 'logger'):
+                    self.logger.error(f"Error calculating SMA: {e}")
                 return Signal(
                     timestamp=timestamp,
-                    signal_type=self.current_signal_type,
+                    signal_type=SignalType.NEUTRAL,
                     price=close,
                     rule_id=self.name,
-                    confidence=confidence,
+                    confidence=0.0,
                     metadata={
-                        'fast_sma': current_fast,
-                        'slow_sma': current_slow,
-                        'distance': current_fast - current_slow
+                        'error': f"Calculation error: {str(e)}",
+                        'symbol': symbol
                     }
                 )
-        
+
         # Not enough data yet, return neutral signal
         return Signal(
             timestamp=timestamp,
@@ -154,7 +187,10 @@ class SMAcrossoverRule(Rule):
             price=close,
             rule_id=self.name,
             confidence=0.0,
-            metadata={'status': 'initializing'}
+            metadata={
+                'status': 'initializing',
+                'symbol': symbol  # Add symbol to metadata
+            }
         )
     
     def reset(self) -> None:
@@ -164,7 +200,10 @@ class SMAcrossoverRule(Rule):
         self.fast_sma_history = deque(maxlen=10)
         self.slow_sma_history = deque(maxlen=10)
         self.current_signal_type = SignalType.NEUTRAL
-
+        
+    def __str__(self) -> str:
+        """String representation of the rule."""
+        return f"{self.name} (Fast: {self.params['fast_window']}, Slow: {self.params['slow_window']})"
 
 @register_rule(category="crossover")
 class ExponentialMACrossoverRule(Rule):
@@ -695,6 +734,8 @@ class PriceMACrossoverRule(Rule):
         self.current_signal_type = SignalType.NEUTRAL
 
 
+
+        
 @register_rule(category="crossover")
 class BollingerBandsCrossoverRule(Rule):
     """
