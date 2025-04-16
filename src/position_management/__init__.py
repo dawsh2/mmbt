@@ -13,6 +13,12 @@ from .position import (
 
 # Import portfolio components
 from .portfolio import Portfolio
+from src.events.portfolio_events import (
+    PositionActionEvent,
+    PortfolioUpdateEvent,
+    PositionOpenedEvent,
+    PositionClosedEvent
+)
 
 # Import position manager components
 from .position_manager import PositionManager
@@ -199,4 +205,14 @@ __all__ = [
     
     # Utility functions
     'convert_dict_to_signal', 'create_test_portfolio'
+]
+
+
+
+# Add to __all__ list
+__all__ += [
+    'PositionActionEvent',
+    'PortfolioUpdateEvent', 
+    'PositionOpenedEvent',
+    'PositionClosedEvent'
 ]

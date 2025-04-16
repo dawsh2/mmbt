@@ -10,52 +10,51 @@ from typing import Dict, List, Optional, Union, Set
 
 
 
-
 class EventType(Enum):
-    """
-    Enumeration of event types in the trading system.
-    
-    Each event type represents a specific kind of notification or action
-    within the system that components can emit or listen for.
-    """
-    
     # Market data events
-    BAR = auto()             # New price bar (e.g., 1-min, 1-hour, daily)
-    TICK = auto()            # New tick data
-    MARKET_OPEN = auto()     # Market opening
-    MARKET_CLOSE = auto()    # Market closing
+    BAR = auto()
+    TICK = auto()
+    MARKET_OPEN = auto()
+    MARKET_CLOSE = auto()
     
     # Signal events
-    SIGNAL = auto()          # Trading signal from strategy
+    SIGNAL = auto()
     
     # Order events
-    ORDER = auto()           # Order request
-    CANCEL = auto()          # Order cancellation
-    MODIFY = auto()          # Order modification
+    ORDER = auto()
+    CANCEL = auto()
+    MODIFY = auto()
     
     # Execution events
-    FILL = auto()            # Order fill (complete execution)
-    PARTIAL_FILL = auto()    # Partial order fill
-    REJECT = auto()          # Order rejection
+    FILL = auto()
+    PARTIAL_FILL = auto()
+    REJECT = auto()
+    
+    # Position events
+    POSITION_ACTION = auto()  # New event type for position actions
+    POSITION_OPENED = auto()
+    POSITION_CLOSED = auto()
+    POSITION_MODIFIED = auto()
+    POSITION_STOPPED = auto()  # For stop-loss/take-profit events
     
     # Portfolio events
-    POSITION_OPENED = auto() # Position opened
-    POSITION_CLOSED = auto() # Position closed
-    POSITION_MODIFIED = auto() # Position modified
+    PORTFOLIO_UPDATE = auto()  # For general portfolio state updates
+    EQUITY_UPDATE = auto()     # For equity/PnL updates
+    MARGIN_UPDATE = auto()     # For margin requirement updates
     
     # System events
-    START = auto()           # System start
-    STOP = auto()            # System stop
-    PAUSE = auto()           # System pause
-    RESUME = auto()          # System resume
-    ERROR = auto()           # System error
+    START = auto()
+    STOP = auto()
+    PAUSE = auto()
+    RESUME = auto()
+    ERROR = auto()
     
     # Analysis events
-    METRIC_CALCULATED = auto()  # Performance metric calculated
-    ANALYSIS_COMPLETE = auto()  # Analysis process completed
+    METRIC_CALCULATED = auto()
+    ANALYSIS_COMPLETE = auto()
     
     # Custom event type
-    CUSTOM = auto()          # Custom event
+    CUSTOM = auto()
     
     @classmethod
     def market_data_events(cls) -> Set['EventType']:

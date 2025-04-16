@@ -1,87 +1,80 @@
 """
 Strategy Utilities Module
 
-This module provides utility functions for working with strategy components,
-particularly for handling events and creating standardized signals.
+This module provides utility functions for working with strategies and signals
+in the trading system. It standardizes signal generation and strategy operations.
 """
 
-from typing import Tuple, Dict, Any, Optional, Union
 import datetime
-from src.signals import Signal, SignalType
+from typing import Dict, List, Any, Optional, Union, Callable
+import numpy as np
+
+from src.events.signal_event import SignalEvent
+from src.signals.signal_processing import SignalType
+from src.events.event_bus import Event
+from src.events.event_types import EventType
+from src.events.event_utils import unpack_bar_event, get_event_timestamp, get_event_symbol
 
 
-# this (and the following function) should be imported from src/events/event_utils instead
-def unpack_bar_event(event) -> Tuple[Dict[str, Any], str, float, datetime.datetime]:
+def create_signal_event(signal_type: SignalType, price: float, 
+                       symbol: str = "default", rule_id: Optional[str] = None,
+                       confidence: float = 1.0, 
+                       metadata: Optional[Dict[str, Any]] = None,
+                       timestamp: Optional[datetime.datetime] = None) -> SignalEvent:
     """
-    Extract bar data from an event object.
+    Create a standardized SignalEvent.
     
     Args:
-        event: Event object containing bar data
-        
-    Returns:
-        tuple: (bar_dict, symbol, price, timestamp)
-    """
-    if not hasattr(event, 'data'):
-        raise TypeError(f"Expected Event object with data attribute")
-        
-    bar_event = event.data
-    if not hasattr(bar_event, 'bar'):
-        raise TypeError(f"Expected BarEvent object in event.data")
-        
-    bar = bar_event.bar
-    symbol = bar.get('symbol', 'unknown')
-    price = bar.get('Close')
-    timestamp = bar.get('timestamp')
-    
-    return bar, symbol, price, timestamp
-
-
-def create_signal(
-    timestamp: datetime.datetime, 
-    signal_type: SignalType, 
-    price: float, 
-    rule_id: Optional[str] = None, 
-    confidence: float = 1.0, 
-    symbol: Optional[str] = None, 
-    metadata: Optional[Dict[str, Any]] = None
-) -> Signal:
-    """
-    Create a standardized Signal object.
-    
-    Args:
-        timestamp: Signal timestamp
         signal_type: Type of signal (BUY, SELL, NEUTRAL)
         price: Price at signal generation
-        rule_id: Optional rule identifier
-        confidence: Signal confidence (0-1)
         symbol: Instrument symbol
+        rule_id: ID of the rule that generated the signal
+        confidence: Signal confidence (0-1)
         metadata: Additional signal metadata
+        timestamp: Signal timestamp
         
     Returns:
-        Signal: Standardized signal object
+        SignalEvent object
     """
-    return Signal(
-        timestamp=timestamp,
+    return SignalEvent(
         signal_type=signal_type,
         price=price,
+        symbol=symbol,
         rule_id=rule_id,
         confidence=confidence,
-        symbol=symbol,
-        metadata=metadata or {}
+        metadata=metadata,
+        timestamp=timestamp
     )
+
+
+def extract_bar_data(event: Event) -> Dict[str, Any]:
+    """
+    Extract bar data from an event for strategy processing.
+    
+    Args:
+        event: Event object
+        
+    Returns:
+        Bar data dictionary
+    """
+    try:
+        return unpack_bar_event(event)
+    except ValueError:
+        # Fallback to empty dict if extraction fails
+        return {}
 
 
 def get_indicator_value(indicators: Dict[str, Any], name: str, default: Any = None) -> Any:
     """
-    Safely get an indicator value from an indicators dictionary.
+    Safely get indicator value with fallback.
     
     Args:
-        indicators: Dictionary of indicator values
-        name: Name of the indicator to get
-        default: Default value if indicator not found
+        indicators: Dictionary of indicators
+        name: Indicator name to retrieve
+        default: Default value if not found
         
     Returns:
-        The indicator value or default
+        Indicator value or default
     """
     if not indicators:
         return default
@@ -89,82 +82,89 @@ def get_indicator_value(indicators: Dict[str, Any], name: str, default: Any = No
     return indicators.get(name, default)
 
 
-def analyze_bar_pattern(
-    bars: list, 
-    window: int = 3
-) -> Dict[str, Any]:
+def analyze_bar_pattern(bars: List[Dict[str, Any]], window: int = 5) -> Dict[str, Any]:
     """
-    Analyze a pattern in recent bars.
+    Analyze a pattern in a series of bars.
     
     Args:
-        bars: List of bar dictionaries
-        window: Number of bars to consider
+        bars: List of bar data dictionaries
+        window: Analysis window size
         
     Returns:
-        Dictionary with pattern analysis
+        Dictionary with pattern analysis results
     """
-    if len(bars) < window:
+    if not bars or len(bars) < window:
         return {'valid': False, 'reason': 'Not enough bars'}
-        
-    # Take the most recent bars
-    recent_bars = bars[-window:]
     
     # Extract close prices
-    closes = [bar.get('Close', 0) for bar in recent_bars]
+    closes = [bar.get('Close', 0) for bar in bars[-window:]]
     
-    # Calculate trend
-    trend = 'up' if closes[-1] > closes[0] else 'down' if closes[-1] < closes[0] else 'sideways'
+    # Calculate basic metrics
+    price_change = (closes[-1] - closes[0]) / closes[0] if closes[0] else 0
+    volatility = np.std(closes) / np.mean(closes) if np.mean(closes) else 0
     
-    # Calculate volatility (simple range measure)
-    high = max(closes)
-    low = min(closes)
-    volatility = (high - low) / low if low > 0 else 0
+    # Detect trend
+    trend = 'up' if price_change > 0 else 'down' if price_change < 0 else 'neutral'
+    trend_strength = abs(price_change)
     
-    # Detect specific patterns
-    is_higher_highs = all(closes[i] > closes[i-1] for i in range(1, len(closes)))
-    is_lower_lows = all(closes[i] < closes[i-1] for i in range(1, len(closes)))
+    # Check for pattern
+    is_higher_highs = all(closes[i] >= closes[i-1] for i in range(1, len(closes)))
+    is_lower_lows = all(closes[i] <= closes[i-1] for i in range(1, len(closes)))
     
     return {
         'valid': True,
         'trend': trend,
+        'trend_strength': trend_strength,
         'volatility': volatility,
-        'higher_highs': is_higher_highs,
-        'lower_lows': is_lower_lows,
-        'bars_analyzed': window
+        'price_change_pct': price_change * 100,
+        'is_higher_highs': is_higher_highs,
+        'is_lower_lows': is_lower_lows
     }
 
 
-def calculate_signal_confidence(
-    indicators: Dict[str, Any], 
-    trend_strength: float = 0.5
-) -> float:
+def calculate_signal_confidence(indicators: Dict[str, Any], 
+                              trend_strength: float = 0.5) -> float:
     """
-    Calculate a signal confidence score based on indicators.
+    Calculate confidence score for a signal based on indicators.
     
     Args:
         indicators: Dictionary of indicator values
         trend_strength: Strength of the current trend (0-1)
         
     Returns:
-        Confidence score between 0 and 1
+        Confidence score (0-1)
     """
-    # Start with a base confidence of 0.5
+    # Start with base confidence
     confidence = 0.5
+    factors = []
     
-    # Adjust based on trend strength
-    confidence += (trend_strength - 0.5) * 0.2
+    # Add confidence based on RSI
+    if 'rsi' in indicators:
+        rsi = indicators['rsi']
+        if rsi < 30:  # Oversold
+            factors.append(0.7)  # Strong buy confidence
+        elif rsi > 70:  # Overbought
+            factors.append(0.7)  # Strong sell confidence
+        else:
+            factors.append(0.5)  # Neutral confidence
     
-    # Adjust based on indicator agreement if available
-    if 'indicator_agreement' in indicators:
-        agreement = indicators['indicator_agreement']
-        confidence += (agreement - 0.5) * 0.4
+    # Add confidence based on MACD
+    if 'macd' in indicators and 'macd_signal' in indicators:
+        macd = indicators['macd']
+        macd_signal = indicators['macd_signal']
+        macd_hist = macd - macd_signal
+        
+        if abs(macd_hist) > 0.5:  # Strong MACD signal
+            factors.append(0.8)
+        else:
+            factors.append(0.5)
     
-    # Adjust based on volatility if available
-    if 'volatility' in indicators:
-        volatility = indicators['volatility']
-        # Lower confidence in high volatility
-        if volatility > 0.02:  # 2% volatility threshold
-            confidence -= min(volatility * 5, 0.2)  # Max reduction of 0.2
+    # Add confidence based on trend strength
+    factors.append(trend_strength)
+    
+    # Combine factors
+    if factors:
+        confidence = sum(factors) / len(factors)
     
     # Ensure confidence is between 0 and 1
-    return max(0.0, min(1.0, confidence))
+    return min(max(confidence, 0.0), 1.0)
