@@ -12,198 +12,356 @@ from collections import deque
 from src.signals import Signal, SignalType
 from src.rules.rule_base import Rule
 from src.rules.rule_registry import register_rule
-
+from src.events.event_types import EventType, BarEvent
+from src.events.event_base import Event
+from src.events.signal_event import SignalEvent
 
 
 @register_rule(category="crossover")
-class SMAcrossoverRule(Rule):
+class SMACrossoverRule(Rule):
     """
-    Simple Moving Average (SMA) Crossover Rule.
+    Simple Moving Average crossover rule.
     
-    This rule generates buy signals when a faster SMA crosses above a slower SMA,
-    and sell signals when the faster SMA crosses below the slower SMA.
+    Generates buy signals when the fast SMA crosses above the slow SMA,
+    and sell signals when it crosses below.
     """
     
-    def __init__(self, 
-                 name: str = "sma_crossover", 
-                 params: Optional[Dict[str, Any]] = None,
-                 description: str = "SMA crossover rule"):
+    def __init__(self, name: str, params: Optional[Dict[str, Any]] = None, 
+                description: str = "", enabled: bool = True):
         """
-        Initialize the SMA crossover rule.
+        Initialize SMA crossover rule.
         
         Args:
             name: Rule name
-            params: Dictionary containing:
-                - fast_window: Window size for fast SMA (default: 5)
-                - slow_window: Window size for slow SMA (default: 20)
-                - smooth_signals: Whether to generate signals when MAs are aligned (default: False)
+            params: Rule parameters including:
+                - fast_window: Window size for fast SMA (default: 10)
+                - slow_window: Window size for slow SMA (default: 30)
             description: Rule description
+            enabled: Whether the rule is enabled
         """
-        super().__init__(name, params or self.default_params(), description)
-        self.prices = deque(maxlen=max(self.params['fast_window'], self.params['slow_window']) + 10)
-        self.fast_sma_history = deque(maxlen=10)
-        self.slow_sma_history = deque(maxlen=10)
-        self.current_signal_type = SignalType.NEUTRAL
-    
-    @classmethod
-    def default_params(cls) -> Dict[str, Any]:
-        """Default parameters for the rule."""
-        return {
-            'fast_window': 5,
-            'slow_window': 20,
-            'smooth_signals': False
+        # Set default parameters
+        default_params = {
+            'fast_window': 10,
+            'slow_window': 30
+        }
+        
+        # Merge with provided parameters
+        if params:
+            default_params.update(params)
+            
+        super().__init__(name, default_params, description, enabled)
+        
+        # Initialize state
+        self.state = {
+            'prices': [],
+            'fast_sma': None,
+            'slow_sma': None,
+            'previous_fast_sma': None,
+            'previous_slow_sma': None,
+            'signals_generated': 0,
+            'last_signal_time': None,
+            'last_signal_price': None
         }
     
-    def _validate_params(self) -> None:
-        """Validate the parameters for this rule."""
-        if self.params['fast_window'] >= self.params['slow_window']:
-            raise ValueError("Fast window must be smaller than slow window")
-        
-        if self.params['fast_window'] <= 0 or self.params['slow_window'] <= 0:
-            raise ValueError("Window sizes must be positive")
-    
-    def generate_signal(self, data: Dict[str, Any]) -> Signal:
+    def generate_signal(self, bar_event: BarEvent) -> Optional[SignalEvent]:
         """
-        Generate a trading signal based on SMA crossover.
+        Generate a signal based on SMA crossover.
         
         Args:
-            data: Dictionary containing price data
-                 
-        Returns:
-            Signal object representing the trading decision
-        """
-        # Check for required data
-        if 'Close' not in data:
-            return Signal(
-                timestamp=data.get('timestamp', None),
-                signal_type=SignalType.NEUTRAL,
-                price=None,
-                rule_id=self.name,
-                confidence=0.0,
-                metadata={
-                    'error': 'Missing Close price data',
-                    'symbol': data.get('symbol', 'default')
-                }
-            )
+            bar_event: BarEvent containing market data
             
+        Returns:
+            SignalEvent if crossover occurs, None otherwise
+        """
+        # Extract data from bar event
+        close_price = bar_event.get_price()
+        timestamp = bar_event.get_timestamp()
+        symbol = bar_event.get_symbol()
+        
         # Get parameters
         fast_window = self.params['fast_window']
         slow_window = self.params['slow_window']
-        smooth_signals = self.params['smooth_signals']
-        
-        # Extract price data
-        close = data['Close']
-        timestamp = data.get('timestamp', None)
-
-        # Extract symbol
-        symbol = data.get('symbol', 'default')
         
         # Update price history
-        self.prices.append(close)
+        self.state['prices'].append(close_price)
         
-        # Calculate SMAs
-        if len(self.prices) >= slow_window:
-            try:
-                fast_sma = sum(list(self.prices)[-fast_window:]) / fast_window
-                slow_sma = sum(list(self.prices)[-slow_window:]) / slow_window
+        # Keep only the necessary price history
+        max_window = max(fast_window, slow_window)
+        if len(self.state['prices']) > max_window + 10:  # Keep a few extra points
+            self.state['prices'] = self.state['prices'][-(max_window + 10):]
+            
+        # Calculate SMAs if we have enough data
+        if len(self.state['prices']) >= slow_window:
+            # Store previous SMAs
+            self.state['previous_fast_sma'] = self.state['fast_sma']
+            self.state['previous_slow_sma'] = self.state['slow_sma']
+            
+            # Calculate current SMAs
+            prices = np.array(self.state['prices'])
+            self.state['fast_sma'] = np.mean(prices[-fast_window:])
+            self.state['slow_sma'] = np.mean(prices[-slow_window:])
+            
+            # Check for crossover
+            if (self.state['previous_fast_sma'] is not None and 
+                self.state['previous_slow_sma'] is not None):
                 
-                # Store in history
-                self.fast_sma_history.append(fast_sma)
-                self.slow_sma_history.append(slow_sma)
+                # Check for crossover conditions
+                previous_diff = self.state['previous_fast_sma'] - self.state['previous_slow_sma']
+                current_diff = self.state['fast_sma'] - self.state['slow_sma']
                 
-                # Generate signals
-                if len(self.fast_sma_history) >= 2 and len(self.slow_sma_history) >= 2:
-                    current_fast = self.fast_sma_history[-1]
-                    current_slow = self.slow_sma_history[-1]
-                    prev_fast = self.fast_sma_history[-2]
-                    prev_slow = self.slow_sma_history[-2]
+                # Generate signal on crossover
+                if previous_diff <= 0 and current_diff > 0:
+                    # Bullish crossover (fast SMA crosses above slow SMA)
+                    self.state['signals_generated'] += 1
+                    self.state['last_signal_time'] = timestamp
+                    self.state['last_signal_price'] = close_price
                     
-                    # Log current values for debugging
-                    if hasattr(self, 'logger'):
-                        self.logger.debug(f"Symbol: {symbol}, Fast SMA: {current_fast:.2f}, Slow SMA: {current_slow:.2f}")
-                        self.logger.debug(f"Previous Fast: {prev_fast:.2f}, Previous Slow: {prev_slow:.2f}")
-                    
-                    # Check for crossover
-                    if prev_fast <= prev_slow and current_fast > current_slow:
-                        self.current_signal_type = SignalType.BUY
-                        if hasattr(self, 'logger'):
-                            self.logger.info(f"Bullish crossover detected for {symbol}")
-                    elif prev_fast >= prev_slow and current_fast < current_slow:
-                        self.current_signal_type = SignalType.SELL
-                        if hasattr(self, 'logger'):
-                            self.logger.info(f"Bearish crossover detected for {symbol}")
-                    elif smooth_signals:
-                        # If smooth signals are enabled, maintain signal based on MA relationship
-                        if current_fast > current_slow:
-                            self.current_signal_type = SignalType.BUY
-                        elif current_fast < current_slow:
-                            self.current_signal_type = SignalType.SELL
-                        else:
-                            self.current_signal_type = SignalType.NEUTRAL
-                    else:
-                        # Otherwise, revert to neutral after crossover
-                        self.current_signal_type = SignalType.NEUTRAL
-                    
-                    # Calculate confidence based on distance between MAs
-                    if current_slow != 0:
-                        distance = abs(current_fast - current_slow) / current_slow
-                        confidence = min(1.0, distance * 10)  # Scale distance for confidence
-                    else:
-                        confidence = 0.5
-
-                    return Signal(
-                        timestamp=timestamp,
-                        signal_type=self.current_signal_type,
-                        price=close,
-                        rule_id=self.name,
-                        confidence=confidence,
-                        metadata={
-                            'fast_sma': current_fast,
-                            'slow_sma': current_slow,
-                            'distance': current_fast - current_slow,
-                            'symbol': symbol  # Add symbol to metadata
-                        }
-                    )
-            except Exception as e:
-                # Handle any unexpected errors during calculation
-                if hasattr(self, 'logger'):
-                    self.logger.error(f"Error calculating SMA: {e}")
-                return Signal(
-                    timestamp=timestamp,
-                    signal_type=SignalType.NEUTRAL,
-                    price=close,
-                    rule_id=self.name,
-                    confidence=0.0,
-                    metadata={
-                        'error': f"Calculation error: {str(e)}",
-                        'symbol': symbol
+                    # Create metadata
+                    metadata = {
+                        'rule': self.name,
+                        'fast_sma': self.state['fast_sma'],
+                        'slow_sma': self.state['slow_sma'],
+                        'reason': 'bullish_crossover'
                     }
-                )
-
-        # Not enough data yet, return neutral signal
-        return Signal(
-            timestamp=timestamp,
-            signal_type=SignalType.NEUTRAL,
-            price=close,
-            rule_id=self.name,
-            confidence=0.0,
-            metadata={
-                'status': 'initializing',
-                'symbol': symbol  # Add symbol to metadata
-            }
-        )
+                    
+                    # Create and return a proper SignalEvent
+                    return self.create_signal(
+                        signal_type=SignalEvent.BUY,
+                        price=close_price,
+                        symbol=symbol,
+                        metadata=metadata,
+                        timestamp=timestamp
+                    )
+                    
+                elif previous_diff >= 0 and current_diff < 0:
+                    # Bearish crossover (fast SMA crosses below slow SMA)
+                    self.state['signals_generated'] += 1
+                    self.state['last_signal_time'] = timestamp
+                    self.state['last_signal_price'] = close_price
+                    
+                    # Create metadata
+                    metadata = {
+                        'rule': self.name,
+                        'fast_sma': self.state['fast_sma'],
+                        'slow_sma': self.state['slow_sma'],
+                        'reason': 'bearish_crossover'
+                    }
+                    
+                    # Create and return a proper SignalEvent
+                    return self.create_signal(
+                        signal_type=SignalEvent.SELL,
+                        price=close_price,
+                        symbol=symbol,
+                        metadata=metadata,
+                        timestamp=timestamp
+                    )
+                    
+        # No signal
+        return None
     
     def reset(self) -> None:
         """Reset the rule's internal state."""
-        super().reset()
-        self.prices = deque(maxlen=max(self.params['fast_window'], self.params['slow_window']) + 10)
-        self.fast_sma_history = deque(maxlen=10)
-        self.slow_sma_history = deque(maxlen=10)
-        self.current_signal_type = SignalType.NEUTRAL
+        self.state = {
+            'prices': [],
+            'fast_sma': None,
+            'slow_sma': None,
+            'previous_fast_sma': None,
+            'previous_slow_sma': None,
+            'signals_generated': 0,
+            'last_signal_time': None,
+            'last_signal_price': None
+        }
+
+# Previous version kept for reference 
+# @register_rule(category="crossover")
+# class SMAcrossoverRule(Rule):
+#     """
+#     Simple Moving Average (SMA) Crossover Rule.
+    
+#     This rule generates buy signals when a faster SMA crosses above a slower SMA,
+#     and sell signals when the faster SMA crosses below the slower SMA.
+#     """
+    
+#     def __init__(self, 
+#                  name: str = "sma_crossover", 
+#                  params: Optional[Dict[str, Any]] = None,
+#                  description: str = "SMA crossover rule"):
+#         """
+#         Initialize the SMA crossover rule.
         
-    def __str__(self) -> str:
-        """String representation of the rule."""
-        return f"{self.name} (Fast: {self.params['fast_window']}, Slow: {self.params['slow_window']})"
+#         Args:
+#             name: Rule name
+#             params: Dictionary containing:
+#                 - fast_window: Window size for fast SMA (default: 5)
+#                 - slow_window: Window size for slow SMA (default: 20)
+#                 - smooth_signals: Whether to generate signals when MAs are aligned (default: False)
+#             description: Rule description
+#         """
+#         super().__init__(name, params or self.default_params(), description)
+#         self.prices = deque(maxlen=max(self.params['fast_window'], self.params['slow_window']) + 10)
+#         self.fast_sma_history = deque(maxlen=10)
+#         self.slow_sma_history = deque(maxlen=10)
+#         self.current_signal_type = SignalType.NEUTRAL
+    
+#     @classmethod
+#     def default_params(cls) -> Dict[str, Any]:
+#         """Default parameters for the rule."""
+#         return {
+#             'fast_window': 5,
+#             'slow_window': 20,
+#             'smooth_signals': False
+#         }
+    
+#     def _validate_params(self) -> None:
+#         """Validate the parameters for this rule."""
+#         if self.params['fast_window'] >= self.params['slow_window']:
+#             raise ValueError("Fast window must be smaller than slow window")
+        
+#         if self.params['fast_window'] <= 0 or self.params['slow_window'] <= 0:
+#             raise ValueError("Window sizes must be positive")
+    
+#     def generate_signal(self, data: Dict[str, Any]) -> Signal:
+#         """
+#         Generate a trading signal based on SMA crossover.
+        
+#         Args:
+#             data: Dictionary containing price data
+                 
+#         Returns:
+#             Signal object representing the trading decision
+#         """
+#         # Check for required data
+#         if 'Close' not in data:
+#             return Signal(
+#                 timestamp=data.get('timestamp', None),
+#                 signal_type=SignalType.NEUTRAL,
+#                 price=None,
+#                 rule_id=self.name,
+#                 confidence=0.0,
+#                 metadata={
+#                     'error': 'Missing Close price data',
+#                     'symbol': data.get('symbol', 'default')
+#                 }
+#             )
+            
+#         # Get parameters
+#         fast_window = self.params['fast_window']
+#         slow_window = self.params['slow_window']
+#         smooth_signals = self.params['smooth_signals']
+        
+#         # Extract price data
+#         close = data['Close']
+#         timestamp = data.get('timestamp', None)
+
+#         # Extract symbol
+#         symbol = data.get('symbol', 'default')
+        
+#         # Update price history
+#         self.prices.append(close)
+        
+#         # Calculate SMAs
+#         if len(self.prices) >= slow_window:
+#             try:
+#                 fast_sma = sum(list(self.prices)[-fast_window:]) / fast_window
+#                 slow_sma = sum(list(self.prices)[-slow_window:]) / slow_window
+                
+#                 # Store in history
+#                 self.fast_sma_history.append(fast_sma)
+#                 self.slow_sma_history.append(slow_sma)
+                
+#                 # Generate signals
+#                 if len(self.fast_sma_history) >= 2 and len(self.slow_sma_history) >= 2:
+#                     current_fast = self.fast_sma_history[-1]
+#                     current_slow = self.slow_sma_history[-1]
+#                     prev_fast = self.fast_sma_history[-2]
+#                     prev_slow = self.slow_sma_history[-2]
+                    
+#                     # Log current values for debugging
+#                     if hasattr(self, 'logger'):
+#                         self.logger.debug(f"Symbol: {symbol}, Fast SMA: {current_fast:.2f}, Slow SMA: {current_slow:.2f}")
+#                         self.logger.debug(f"Previous Fast: {prev_fast:.2f}, Previous Slow: {prev_slow:.2f}")
+                    
+#                     # Check for crossover
+#                     if prev_fast <= prev_slow and current_fast > current_slow:
+#                         self.current_signal_type = SignalType.BUY
+#                         if hasattr(self, 'logger'):
+#                             self.logger.info(f"Bullish crossover detected for {symbol}")
+#                     elif prev_fast >= prev_slow and current_fast < current_slow:
+#                         self.current_signal_type = SignalType.SELL
+#                         if hasattr(self, 'logger'):
+#                             self.logger.info(f"Bearish crossover detected for {symbol}")
+#                     elif smooth_signals:
+#                         # If smooth signals are enabled, maintain signal based on MA relationship
+#                         if current_fast > current_slow:
+#                             self.current_signal_type = SignalType.BUY
+#                         elif current_fast < current_slow:
+#                             self.current_signal_type = SignalType.SELL
+#                         else:
+#                             self.current_signal_type = SignalType.NEUTRAL
+#                     else:
+#                         # Otherwise, revert to neutral after crossover
+#                         self.current_signal_type = SignalType.NEUTRAL
+                    
+#                     # Calculate confidence based on distance between MAs
+#                     if current_slow != 0:
+#                         distance = abs(current_fast - current_slow) / current_slow
+#                         confidence = min(1.0, distance * 10)  # Scale distance for confidence
+#                     else:
+#                         confidence = 0.5
+
+#                     return Signal(
+#                         timestamp=timestamp,
+#                         signal_type=self.current_signal_type,
+#                         price=close,
+#                         rule_id=self.name,
+#                         confidence=confidence,
+#                         metadata={
+#                             'fast_sma': current_fast,
+#                             'slow_sma': current_slow,
+#                             'distance': current_fast - current_slow,
+#                             'symbol': symbol  # Add symbol to metadata
+#                         }
+#                     )
+#             except Exception as e:
+#                 # Handle any unexpected errors during calculation
+#                 if hasattr(self, 'logger'):
+#                     self.logger.error(f"Error calculating SMA: {e}")
+#                 return Signal(
+#                     timestamp=timestamp,
+#                     signal_type=SignalType.NEUTRAL,
+#                     price=close,
+#                     rule_id=self.name,
+#                     confidence=0.0,
+#                     metadata={
+#                         'error': f"Calculation error: {str(e)}",
+#                         'symbol': symbol
+#                     }
+#                 )
+
+#         # Not enough data yet, return neutral signal
+#         return Signal(
+#             timestamp=timestamp,
+#             signal_type=SignalType.NEUTRAL,
+#             price=close,
+#             rule_id=self.name,
+#             confidence=0.0,
+#             metadata={
+#                 'status': 'initializing',
+#                 'symbol': symbol  # Add symbol to metadata
+#             }
+#         )
+    
+#     def reset(self) -> None:
+#         """Reset the rule's internal state."""
+#         super().reset()
+#         self.prices = deque(maxlen=max(self.params['fast_window'], self.params['slow_window']) + 10)
+#         self.fast_sma_history = deque(maxlen=10)
+#         self.slow_sma_history = deque(maxlen=10)
+#         self.current_signal_type = SignalType.NEUTRAL
+        
+#     def __str__(self) -> str:
+#         """String representation of the rule."""
+#         return f"{self.name} (Fast: {self.params['fast_window']}, Slow: {self.params['slow_window']})"
 
 @register_rule(category="crossover")
 class ExponentialMACrossoverRule(Rule):

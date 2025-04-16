@@ -11,7 +11,9 @@ import numpy as np
 import pandas as pd
 from collections import deque
 
-from src.signals import Signal, SignalType
+from src.events.event_types import EventType, BarEvent
+from src.events.event_base import Event
+from src.events.signal_event import SignalEvent
 
 # At the top of the file with other imports
 import logging

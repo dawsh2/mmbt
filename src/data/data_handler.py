@@ -402,6 +402,193 @@ class DataHandler:
         mask = (self.full_data['timestamp'] >= start_date) & (self.full_data['timestamp'] <= end_date)
         return self.full_data.loc[mask].copy()
 
+    def set_event_bus(self, event_bus):
+        """Set the event bus for emitting bar events."""
+        self.event_bus = event_bus
+
+    def get_next_bar_event(self, is_training=True):
+        """
+        Get the next bar from the specified dataset as a BarEvent.
+
+        Args:
+            is_training: If True, get from training data; otherwise testing data
+
+        Returns:
+            BarEvent object or None if no more data
+        """
+        # Get the next bar dictionary
+        if is_training:
+            bar_dict = self.get_next_train_bar()
+        else:
+            bar_dict = self.get_next_test_bar()
+
+        # Return None if no more data
+        if bar_dict is None:
+            return None
+
+        # Convert to BarEvent
+        return BarEvent(bar_dict)
+
+    def emit_bar_event(self, bar_data):
+        """
+        Convert a bar to a BarEvent and emit it.
+
+        Args:
+            bar_data: Dictionary with OHLCV data or BarEvent object
+        """
+        if self.event_bus is None:
+            logger.warning("No event bus set. Cannot emit bar event.")
+            return
+
+        # Convert to BarEvent if necessary
+        if not isinstance(bar_data, BarEvent):
+            bar_event = BarEvent(bar_data)
+        else:
+            bar_event = bar_data
+
+        # Create and emit the event
+        event = Event(EventType.BAR, bar_event)
+        self.event_bus.emit(event)
+
+    def process_data(self, emit_events=False):
+        """
+        Process all data, optionally emitting events.
+
+        Args:
+            emit_events: If True, emit bar events for each bar
+        """
+        # Skip if no event bus and events should be emitted
+        if emit_events and self.event_bus is None:
+            logger.warning("No event bus set. Cannot emit events.")
+            return
+
+        # Reset indices
+        self.reset()
+
+        # Process training data
+        while True:
+            bar = self.get_next_train_bar()
+            if bar is None:
+                break
+
+            # Emit event if requested
+            if emit_events:
+                self.emit_bar_event(bar)
+
+        # Reset for next use
+        self.reset()
+
+    def set_event_bus(self, event_bus):
+        """
+        Set the event bus for emitting events.
+
+        Args:
+            event_bus: Event bus instance
+        """
+        self.event_bus = event_bus
+
+    def get_bar_event(self, bar_data):
+        """
+        Convert raw bar data to a BarEvent.
+
+        Args:
+            bar_data: Dictionary containing OHLCV data
+
+        Returns:
+            BarEvent object
+        """
+        return BarEvent(bar_data)
+
+    def emit_bar_event(self, bar_data):
+        """
+        Create and emit a bar event.
+
+        Args:
+            bar_data: Dictionary with OHLCV data or BarEvent
+        """
+        if not hasattr(self, 'event_bus') or self.event_bus is None:
+            logger.warning("No event bus set. Cannot emit bar event.")
+            return
+
+        # Convert to BarEvent if necessary
+        if not isinstance(bar_data, BarEvent):
+            bar_event = self.get_bar_event(bar_data)
+        else:
+            bar_event = bar_data
+
+        # Create and emit the event
+        event = Event(EventType.BAR, bar_event)
+        self.event_bus.emit(event)
+
+        return bar_event
+
+    def process_bar(self, bar_data):
+        """
+        Process a bar of market data, potentially emitting an event.
+
+        Args:
+            bar_data: Dictionary with OHLCV data
+
+        Returns:
+            BarEvent if emitted, None otherwise
+        """
+        # Create BarEvent
+        bar_event = self.get_bar_event(bar_data)
+
+        # Update current indices
+        if 'symbol' in bar_data:
+            symbol = bar_data['symbol']
+            # Store latest bar (implementation dependent)
+
+        # Emit event if we have an event bus
+        if hasattr(self, 'event_bus') and self.event_bus is not None:
+            return self.emit_bar_event(bar_event)
+
+        return bar_event
+
+    def iter_bars_as_events(self, use_training=True):
+        """
+        Iterate through bars, returning them as BarEvent objects.
+
+        Args:
+            use_training: If True, use training data; otherwise testing data
+
+        Yields:
+            BarEvent objects
+        """
+        # Reset pointers
+        if use_training:
+            self.reset_train()
+            iterator = self.iter_train
+        else:
+            self.reset_test()
+            iterator = self.iter_test
+
+        # Iterate through data
+        for bar in iterator():
+            yield self.get_bar_event(bar)
+
+    def emit_all_bars(self, use_training=True):
+        """
+        Emit events for all bars in the dataset.
+
+        Args:
+            use_training: If True, use training data; otherwise testing data
+
+        Returns:
+            Number of bars emitted
+        """
+        if not hasattr(self, 'event_bus') or self.event_bus is None:
+            logger.warning("No event bus set. Cannot emit events.")
+            return 0
+
+        count = 0
+        for bar_event in self.iter_bars_as_events(use_training):
+            self.emit_bar_event(bar_event)
+            count += 1
+
+        return count
+
 
 class DataTransformer:
     """

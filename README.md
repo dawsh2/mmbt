@@ -8,6 +8,229 @@ This trading system is a modular, event-driven framework designed for developing
 
 The architecture employs an event-driven design pattern, where components communicate through a central event bus, promoting loose coupling, flexibility, and extensibility. This design makes it easy to add new strategies, data sources, or execution methods without modifying existing code.
 
+## Event System Architecture
+
+The event system is the core of the application, providing a robust communication framework between components:
+
+- **EventBus**: Central message broker that routes events from emitters to handlers
+- **Event**: Base class for all events with type, timestamp, ID, and data payload
+- **EventType**: Enumeration of all system event types (BAR, SIGNAL, ORDER, etc.)
+- **Event Handlers**: Components that process events of specific types
+- **Event Emitters**: Components that generate and emit events
+
+## Key Components
+
+### Event System
+
+The Events module provides a robust event-driven architecture that enables decoupled communication between components through a central event bus. It defines standard event types and provides mechanisms for routing events from producers to consumers.
+
+**Key Classes:**
+- `EventBus`: Central message broker for routing events
+- `Event`: Base class for events with type, payload, and timestamp
+- `EventHandler`: Base class for components that process events
+- `EventEmitter`: Mixin for components that emit events
+- `EventType`: Enumeration of all event types in the system
+
+### Data Module
+
+The Data module handles all aspects of market data, including fetching, transforming, storing, and providing data to other system components. It supports various data sources (CSV, databases, APIs) and provides a unified interface for accessing market data.
+
+**Key Classes:**
+- `DataSource`: Interface for retrieving data from various origins
+- `DataHandler`: Core component that manages data flow
+- `DataTransformer`: Components for preprocessing and transforming raw data
+- `CSVDataSource`, `SQLiteDataSource`, etc.: Specific implementations
+
+### Rules Module
+
+The Rules module provides a framework for creating trading rules that generate signals based on technical indicators. Each rule maintains internal state, processes bar data, and returns standardized Signal objects.
+
+**Key Classes:**
+- `Rule`: Base class for all trading rules
+- `CompositeRule`: Combines multiple rules with aggregation methods
+- `SignalType`: Enumeration of signal types (BUY, SELL, NEUTRAL)
+- Various rule implementations (SMA, RSI, etc.)
+
+### Strategies Module
+
+The Strategies module provides a modular framework for creating and combining trading strategies. It supports weighted combinations, ensemble techniques, and regime-based adaptation.
+
+**Key Classes:**
+- `Strategy`: Base class for all strategies
+- `WeightedStrategy`: Combines multiple components using weights
+- `EnsembleStrategy`: Combines multiple strategies
+- `RegimeStrategy`: Adapts to different market regimes
+
+### Position Management
+
+The Position Management module handles position creation, tracking, sizing, and risk management. It models individual positions and manages the entire portfolio.
+
+**Key Classes:**
+- `Position`: Represents a single trading position
+- `Portfolio`: Manages multiple positions
+- `PositionManager`: Coordinates position sizing and allocation
+- Various position sizers and allocation strategies
+
+### Execution Module
+
+The Engine module is the core execution component, handling backtesting, market simulation, order execution, and portfolio tracking. It transforms trading signals into orders and manages their execution.
+
+**Key Classes:**
+- `Backtester`: Orchestrates the backtesting process
+- `ExecutionEngine`: Handles order execution and position tracking
+- `MarketSimulator`: Simulates market conditions
+
+## Event Types
+
+The system uses a comprehensive set of event types organized into categories:
+
+```
+Market Data Events
+├── BAR
+├── TICK
+├── MARKET_OPEN
+└── MARKET_CLOSE
+
+Signal Events
+└── SIGNAL
+
+Order Events
+├── ORDER
+├── CANCEL
+└── MODIFY
+
+Execution Events
+├── FILL
+├── PARTIAL_FILL
+└── REJECT
+
+Portfolio Events
+├── POSITION_OPENED
+├── POSITION_CLOSED
+└── POSITION_MODIFIED
+└── POSITION_STOPPED
+
+System Events
+├── START
+├── STOP
+├── PAUSE
+├── RESUME
+└── ERROR
+```
+
+## Event Handler Types
+
+The system provides various event handler implementations:
+
+- **BasicHandler**: Standard event handler for simple event processing
+- **LoggingHandler**: Logs events at configurable levels
+- **DebounceHandler**: Prevents processing the same event type too frequently
+- **FilterHandler**: Only processes events that meet specific criteria
+- **AsyncEventHandler**: Processes events in separate threads
+- **CompositeHandler**: Delegates to multiple handlers for the same event
+
+## Event Emitters
+
+Event emitters are specialized for different domain events:
+
+- **MarketDataEmitter**: Emits BAR, TICK, MARKET_OPEN, and MARKET_CLOSE events
+- **SignalEmitter**: Emits SIGNAL events
+- **OrderEmitter**: Emits ORDER, CANCEL, and MODIFY events
+- **FillEmitter**: Emits FILL and PARTIAL_FILL events
+- **PortfolioEmitter**: Emits POSITION_OPENED, POSITION_CLOSED, and POSITION_MODIFIED events
+- **SystemEmitter**: Emits START, STOP, ERROR, and other system events
+
+## Event Flow
+
+The system follows this general data flow:
+
+1. Market data flows from data sources through the DataHandler
+2. Strategy components process market data to generate signals
+3. Position Manager determines position size based on signals
+4. Execution Engine converts position actions into orders
+5. Market Simulator (in backtesting) or broker API (in live trading) executes orders
+6. Fill events update the portfolio and risk metrics
+
+## Validation and Error Handling
+
+The system includes validation for events:
+
+- **EventSchema**: Defines expected fields and types for each event type
+- **EventValidator**: Validates events against their schemas
+- Error events are emitted when validation or processing fails
+- Centralized error handling through the ErrorHandler class
+
+## Recent Improvements
+
+### Standardized Event Objects
+
+The system now uses standardized event objects throughout:
+
+- **Event Base Class**: Foundational class for all events
+- **BarEvent**: Standard representation of market data bars
+- **SignalEvent**: Standard representation of trading signals
+- **OrderEvent**: Standard representation of order instructions
+- **FillEvent**: Standard representation of execution fills
+
+All emitters now strictly enforce type checking to ensure only proper event objects are used throughout the system.
+
+### Fixed Circular Imports
+
+Circular import issues have been resolved by:
+
+- Moving the base Event class to its own module (event_base.py)
+- Ensuring proper import patterns throughout the system
+- Using appropriate type hints and imports
+
+### Improved Error Handling
+
+Error handling improvements include:
+
+- Centralized ErrorHandler for system-wide error management
+- Standardized error event creation
+- Threshold-based system control (auto-stop on repeated errors)
+
+### Metrics Collection
+
+The system now includes metrics collection:
+
+- EventBus tracks event counts, processing times, and rates
+- MetricsCollector aggregates metrics from all components
+- Performance monitoring for system optimization
+
+## TODOs and Improvements
+
+- **Move trade history to Portfolio**: Currently `get_trade_history()` is located in the ExecutionEngine class, but conceptually this data belongs in the Portfolio class. Move this functionality to Portfolio for better encapsulation and more intuitive API.
+- **Fix Portfolio pricing**: The current implementation shows portfolio equity dropping to $0 during backtesting. This needs investigation to ensure proper price updates and position valuation.
+- **Improve cross-component documentation**: Make module interdependencies clearer in documentation, especially which components store what data.
+
+## Best Practices
+
+1. **Use the Event System**: All communication between components should go through the event bus
+2. **Validate Configurations**: Use the schema validation system to ensure correct configuration
+3. **Reset Component State**: Reset internal state when switching symbols or timeframes
+4. **Handle Edge Cases**: Implement proper handling for missing data or extreme market conditions
+5. **Use Factory Methods**: Create components using factory methods for consistency
+6. **Maintain Loose Coupling**: Keep components independent and focused on single responsibilities
+7. **Test Extensively**: Use unit tests for individual components and integration tests for the system
+8. **Document Components**: Clearly document component interfaces and behavior
+9. **Use Proper Event Objects**: Always use properly typed event objects, never dictionaries
+
+
+# !!!: POSSIBLY OUTDATED -- SYSTEM IS GOING THROUGH A REFACTOR
+TO ENSURE CONSISTENT TYPING SYSTEM WIDE WE'RE MOVING TO STRICTLY USING EVENT OBJECTS
+AND THEIR SUBCLASSES, NO SIGNAL OBJECTS OR DICTIONARIES. READ THE FOLLOWING WITH CAUTION.
+
+# Algorithmic Trading System
+
+An event-driven trading system for backtesting and implementing algorithmic trading strategies.
+
+## Overview
+
+This trading system is a modular, event-driven framework designed for developing, testing, and deploying algorithmic trading strategies. The system supports backtesting with historical data, optimization of strategy parameters, and real-time trading through a plugin architecture.
+
+The architecture employs an event-driven design pattern, where components communicate through a central event bus, promoting loose coupling, flexibility, and extensibility. This design makes it easy to add new strategies, data sources, or execution methods without modifying existing code.
+
 ## TODOs and Improvements
 
 - **Move trade history to Portfolio**: Currently `get_trade_history()` is located in the ExecutionEngine class, but conceptually this data belongs in the Portfolio class. Move this functionality to Portfolio for better encapsulation and more intuitive API.

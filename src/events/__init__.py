@@ -1,32 +1,36 @@
 """
-Events module initialization.
-This module provides the event-driven architecture components for the trading system.
+Event System Package
+
+This package provides the event-driven infrastructure for the trading system.
+It includes event definitions, the event bus, handlers, and utilities for event-based communication.
 """
 
-# Import core event components
-from src.events.event_bus import Event, EventBus, EventCacheManager
+# Core event components
+from src.events.event_base import Event
 from src.events.event_types import EventType, BarEvent
-from src.events.event_manager import EventManager
+from src.events.event_bus import EventBus
+from src.events.signal_event import SignalEvent
 
-# Import event handlers
+# Event handlers
 from src.events.event_handlers import (
-    EventHandler, 
+    EventHandler,
     FunctionEventHandler,
     LoggingHandler,
-    FilterHandler,
     DebounceHandler,
+    FilterHandler,
     AsyncEventHandler,
-    EventHandlerGroup,
     CompositeHandler,
+    EventHandlerGroup,
     MarketDataHandler,
     SignalHandler,
     OrderHandler,
-    FillHandler
+    FillHandler,
+    EventProcessor
 )
 
-# Import event emitters
+# Event emitters
 from src.events.event_emitters import (
-    EventEmitter, 
+    EventEmitter,
     MarketDataEmitter,
     SignalEmitter,
     OrderEmitter,
@@ -35,52 +39,42 @@ from src.events.event_emitters import (
     SystemEmitter
 )
 
-# Import event utilities
-from src.events.event_utils import (
-    unpack_bar_event,
-    create_signal,
-    unpack_signal_event,
-    create_position_action
+# Portfolio events
+from src.events.portfolio_events import (
+    PositionActionEvent,
+    PortfolioUpdateEvent,
+    PositionOpenedEvent,
+    PositionClosedEvent
 )
 
-# Make common classes available directly from events module
-__all__ = [
-    # Manager
-    'EventManager',
-    
-    # Core components
-    'Event',
-    'EventBus',
-    'EventType',
-    'EventCacheManager',
-    'BarEvent',
-    
-    # Handlers
-    'EventHandler',
-    'FunctionEventHandler',
-    'LoggingHandler',
-    'FilterHandler',
-    'DebounceHandler',
-    'AsyncEventHandler',
-    'EventHandlerGroup',
-    'CompositeHandler',
-    'MarketDataHandler',
-    'SignalHandler',
-    'OrderHandler',
-    'FillHandler',
-    
-    # Emitters
-    'EventEmitter',
-    'MarketDataEmitter',
-    'SignalEmitter',
-    'OrderEmitter',
-    'FillEmitter',
-    'PortfolioEmitter',
-    'SystemEmitter',
-    
-    # Utilities
-    'unpack_bar_event',
-    'create_signal',
-    'unpack_signal_event',
-    'create_position_action'
-]
+# Event utilities and validation
+from src.events.event_schema import (
+    EventSchema,
+    validate_event_data,
+    validate_signal_event,
+    validate_bar_event,
+    get_schema_documentation,
+    BAR_SCHEMA,
+    SIGNAL_SCHEMA,
+    ORDER_SCHEMA,
+    FILL_SCHEMA
+)
+
+from src.events.event_utils import (
+    unpack_bar_event,
+    create_bar_event,
+    create_signal,
+    create_signal_from_numeric,
+    unpack_signal_event,
+    create_position_action,
+    create_error_event,
+    MetricsCollector,
+    EventValidator,
+    ErrorHandler
+)
+
+# Optional component if present in your codebase
+from src.events.event_manager import EventManager
+
+# Version info
+__version__ = '0.1.0'

@@ -117,10 +117,11 @@ class EventType(Enum):
             raise ValueError(f"No event type with name: {name}")
 
 
+
 class BarEvent(Event):
     """Event specifically for market data bars."""
     
-    def __init__(self, bar_data, timestamp=None):
+    def __init__(self, bar_data: Dict[str, Any], timestamp: Optional[datetime] = None):
         """
         Initialize a bar event.
         
@@ -134,39 +135,45 @@ class BarEvent(Event):
             
         super().__init__(EventType.BAR, bar_data, timestamp)
     
-    def get_symbol(self):
+    def get_symbol(self) -> str:
         """Get the instrument symbol."""
-        return self.get('symbol', 'default')
-    
-    def get_price(self):
+        return self.data.get('symbol', 'default')
+
+    # refactor to get_close
+    def get_price(self) -> float:
         """Get the close price."""
-        return self.get('Close')
+        return self.data.get('Close')
     
-    def get_timestamp(self):
+    def get_timestamp(self) -> datetime:
         """Get the bar timestamp."""
-        return self.get('timestamp', self.timestamp)
+        return self.data.get('timestamp', self.timestamp)
     
-    def get_open(self):
+    def get_open(self) -> float:
         """Get the opening price."""
-        return self.get('Open')
+        return self.data.get('Open')
     
-    def get_high(self):
+    def get_high(self) -> float:
         """Get the high price."""
-        return self.get('High')
+        return self.data.get('High')
     
-    def get_low(self):
+    def get_low(self) -> float:
         """Get the low price."""
-        return self.get('Low')
+        return self.data.get('Low')
     
-    def get_volume(self):
+    def get_volume(self) -> float:
         """Get the volume."""
-        return self.get('Volume')
+        return self.data.get('Volume')
     
-    def __repr__(self):
+    def get_data(self) -> Dict[str, Any]:
+        """Get the complete bar data dictionary."""
+        return self.data
+    
+    def __repr__(self) -> str:
         """String representation of the bar event."""
         symbol = self.get_symbol()
         timestamp = self.get_timestamp()
-        return f"BarEvent({symbol} @ {timestamp})"    
+        return f"BarEvent({symbol} @ {timestamp}, O:{self.get_open():.2f}, H:{self.get_high():.2f}, L:{self.get_low():.2f}, C:{self.get_price():.2f})"        
+
 
 
 # Event type categories with descriptions
@@ -227,6 +234,264 @@ def get_all_event_types_with_descriptions() -> Dict[str, str]:
             for event_type in EventType}
 
 
+class OrderEvent(Event):
+    """Event specifically for trading orders."""
+    
+    # Order type constants
+    MARKET = "MARKET"
+    LIMIT = "LIMIT"
+    STOP = "STOP"
+    STOP_LIMIT = "STOP_LIMIT"
+    
+    def __init__(self, symbol: str, direction: int, quantity: float, 
+                 price: Optional[float] = None, order_type: str = "MARKET",
+                 order_id: Optional[str] = None, timestamp: Optional[datetime.datetime] = None):
+        """
+        Initialize an order event.
+        
+        Args:
+            symbol: Instrument symbol
+            direction: Order direction (1 for buy, -1 for sell)
+            quantity: Order quantity
+            price: Order price (required for LIMIT and STOP_LIMIT orders)
+            order_type: Order type (MARKET, LIMIT, STOP, STOP_LIMIT)
+            order_id: Optional order ID (auto-generated if not provided)
+            timestamp: Optional timestamp (defaults to now)
+        """
+        # Validate direction
+        if direction not in (1, -1):
+            raise ValueError(f"Invalid direction: {direction}. Must be 1 (buy) or -1 (sell).")
+            
+        # Validate order type
+        if order_type not in (self.MARKET, self.LIMIT, self.STOP, self.STOP_LIMIT):
+            raise ValueError(f"Invalid order type: {order_type}")
+            
+        # Ensure price is provided for LIMIT and STOP_LIMIT orders
+        if order_type in (self.LIMIT, self.STOP_LIMIT) and price is None:
+            raise ValueError(f"Price must be provided for {order_type} orders")
+            
+        # Generate order ID if not provided
+        if order_id is None:
+            order_id = str(uuid.uuid4())
+            
+        # Create order data
+        data = {
+            'symbol': symbol,
+            'direction': direction,
+            'quantity': quantity,
+            'price': price,
+            'order_type': order_type,
+            'order_id': order_id
+        }
+        
+        # Initialize base Event
+        super().__init__(EventType.ORDER, data, timestamp)
+    
+    def get_symbol(self) -> str:
+        """Get the order symbol."""
+        return self.data['symbol']
+    
+    def get_direction(self) -> int:
+        """Get the order direction (1 for buy, -1 for sell)."""
+        return self.data['direction']
+    
+    def get_quantity(self) -> float:
+        """Get the order quantity."""
+        return self.data['quantity']
+    
+    def get_price(self) -> Optional[float]:
+        """Get the order price."""
+        return self.data['price']
+    
+    def get_order_type(self) -> str:
+        """Get the order type."""
+        return self.data['order_type']
+    
+    def get_order_id(self) -> str:
+        """Get the order ID."""
+        return self.data['order_id']
+    
+    def __str__(self) -> str:
+        """String representation of the order event."""
+        direction = "BUY" if self.get_direction() == 1 else "SELL"
+        price_str = f"@ {self.get_price()}" if self.get_price() is not None else "@ MARKET"
+        return f"OrderEvent({direction} {self.get_quantity()} {self.get_symbol()} {price_str}, {self.get_order_type()}, ID: {self.get_order_id()})"
+
+
+class FillEvent(Event):
+    """Event specifically for order fills."""
+    
+    def __init__(self, symbol: str, quantity: float, price: float, direction: int,
+                order_id: Optional[str] = None, transaction_cost: float = 0.0,
+                timestamp: Optional[datetime.datetime] = None):
+        """
+        Initialize a fill event.
+        
+        Args:
+            symbol: Instrument symbol
+            quantity: Filled quantity
+            price: Fill price
+            direction: Fill direction (1 for buy, -1 for sell)
+            order_id: Optional order ID that was filled
+            transaction_cost: Optional transaction cost
+            timestamp: Optional timestamp (defaults to now)
+        """
+        # Validate direction
+        if direction not in (1, -1):
+            raise ValueError(f"Invalid direction: {direction}. Must be 1 (buy) or -1 (sell).")
+            
+        # Create fill data
+        data = {
+            'symbol': symbol,
+            'quantity': quantity,
+            'price': price,
+            'direction': direction,
+            'order_id': order_id,
+            'transaction_cost': transaction_cost
+        }
+        
+        # Initialize base Event
+        super().__init__(EventType.FILL, data, timestamp)
+    
+    def get_symbol(self) -> str:
+        """Get the fill symbol."""
+        return self.data['symbol']
+    
+    def get_quantity(self) -> float:
+        """Get the filled quantity."""
+        return self.data['quantity']
+    
+    def get_price(self) -> float:
+        """Get the fill price."""
+        return self.data['price']
+    
+    def get_direction(self) -> int:
+        """Get the fill direction (1 for buy, -1 for sell)."""
+        return self.data['direction']
+    
+    def get_order_id(self) -> Optional[str]:
+        """Get the original order ID."""
+        return self.data['order_id']
+    
+    def get_transaction_cost(self) -> float:
+        """Get the transaction cost."""
+        return self.data['transaction_cost']
+    
+    def get_fill_value(self) -> float:
+        """Get the total value of the fill."""
+        return self.get_quantity() * self.get_price()
+    
+    def __str__(self) -> str:
+        """String representation of the fill event."""
+        direction = "BUY" if self.get_direction() == 1 else "SELL"
+        return f"FillEvent({direction} {self.get_quantity()} {self.get_symbol()} @ {self.get_price()}, cost={self.get_transaction_cost():.2f})"
+
+
+
+class CancelOrderEvent(Event):
+    """Event for order cancellation requests."""
+    
+    def __init__(self, order_id: str, reason: Optional[str] = None, 
+                timestamp: Optional[datetime.datetime] = None):
+        """
+        Initialize a cancel order event.
+        
+        Args:
+            order_id: ID of the order to cancel
+            reason: Optional reason for cancellation
+            timestamp: Optional timestamp (defaults to now)
+        """
+        data = {
+            'order_id': order_id,
+            'reason': reason
+        }
+        
+        super().__init__(EventType.CANCEL, data, timestamp)
+    
+    def get_order_id(self) -> str:
+        """Get the order ID to cancel."""
+        return self.data['order_id']
+    
+    def get_reason(self) -> Optional[str]:
+        """Get the cancellation reason."""
+        return self.data['reason']
+    
+    def __str__(self) -> str:
+        """String representation of the cancel event."""
+        reason_str = f", reason: {self.get_reason()}" if self.get_reason() else ""
+        return f"CancelOrderEvent(order_id: {self.get_order_id()}{reason_str})"
+
+
+class PartialFillEvent(FillEvent):
+    """Event for partial order fills."""
+    
+    def __init__(self, symbol: str, quantity: float, price: float, direction: int,
+                remaining_quantity: float, order_id: Optional[str] = None,
+                transaction_cost: float = 0.0, timestamp: Optional[datetime.datetime] = None):
+        """
+        Initialize a partial fill event.
+        
+        Args:
+            symbol: Instrument symbol
+            quantity: Filled quantity
+            price: Fill price
+            direction: Fill direction (1 for buy, -1 for sell)
+            remaining_quantity: Quantity remaining to be filled
+            order_id: Optional order ID
+            transaction_cost: Optional transaction cost
+            timestamp: Optional timestamp (defaults to now)
+        """
+        # Initialize parent FillEvent
+        super().__init__(symbol, quantity, price, direction, order_id, transaction_cost, timestamp)
+        
+        # Add remaining quantity
+        self.data['remaining_quantity'] = remaining_quantity
+        
+        # Override event type
+        self.event_type = EventType.PARTIAL_FILL
+    
+    def get_remaining_quantity(self) -> float:
+        """Get the remaining quantity to be filled."""
+        return self.data['remaining_quantity']
+    
+    def __str__(self) -> str:
+        """String representation of the partial fill event."""
+        direction = "BUY" if self.get_direction() == 1 else "SELL"
+        return f"PartialFillEvent({direction} {self.get_quantity()}/{self.get_quantity() + self.get_remaining_quantity()} {self.get_symbol()} @ {self.get_price()}, remaining: {self.get_remaining_quantity()})"
+
+
+class RejectEvent(Event):
+    """Event for order rejections."""
+    
+    def __init__(self, order_id: str, reason: str, timestamp: Optional[datetime.datetime] = None):
+        """
+        Initialize a reject event.
+        
+        Args:
+            order_id: ID of the rejected order
+            reason: Reason for rejection
+            timestamp: Optional timestamp (defaults to now)
+        """
+        data = {
+            'order_id': order_id,
+            'reason': reason
+        }
+        
+        super().__init__(EventType.REJECT, data, timestamp)
+    
+    def get_order_id(self) -> str:
+        """Get the rejected order ID."""
+        return self.data['order_id']
+    
+    def get_reason(self) -> str:
+        """Get the rejection reason."""
+        return self.data['reason']
+    
+    def __str__(self) -> str:
+        """String representation of the reject event."""
+        return f"RejectEvent(order_id: {self.get_order_id()}, reason: {self.get_reason()})"
+    
+
 # Example usage
 if __name__ == "__main__":
     # Print all event types with descriptions
@@ -240,3 +505,9 @@ if __name__ == "__main__":
     # Get market data events
     market_data_events = EventType.market_data_events()
     print(f"Market data events: {[e.name for e in market_data_events]}")
+
+
+
+    
+
+
