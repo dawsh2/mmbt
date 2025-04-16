@@ -12,7 +12,7 @@ from .rule_factory import RuleFactory, create_rule, create_composite_rule
 
 # Import Crossover Rules
 from .crossover_rules import (
-    SMAcrossoverRule,
+    SMACrossoverRule,
     ExponentialMACrossoverRule,
     MACDCrossoverRule, 
     PriceMACrossoverRule,
@@ -44,7 +44,7 @@ from .volatility_rules import (
 )
 
 # Create aliases for common rules
-SMARule = SMAcrossoverRule
+SMARule = SMACrossoverRule
 RSIRule = RSIRule
 
 # Register all rules in the registry
@@ -56,7 +56,7 @@ __all__ = [
     'create_rule', 'create_composite_rule',
     
     # Crossover Rules
-    'SMAcrossoverRule', 'SMARule',
+    'SMACrossoverRule', 'SMARule',
     'ExponentialMACrossoverRule',
     'MACDCrossoverRule',
     'PriceMACrossoverRule',

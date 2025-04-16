@@ -14,9 +14,9 @@ This document outlines the step-by-step process for standardizing the event-driv
 ### 2.1 Data Module
 
 #### DataHandler Class
-- [ ] Update `emit_bar` method to create and use `BarEvent` objects
-- [ ] Remove any dictionary-based event creation
-- [ ] Add event validation for market data events
+- [x] Update `emit_bar` method to create and use `BarEvent` objects
+- [x] Remove any dictionary-based event creation
+- [x] Add event validation for market data events
 
 ```python
 # Before
@@ -39,9 +39,9 @@ def process_bar(self, bar_data):
 ### 2.2 Strategy Module
 
 #### Strategy Base Class
-- [ ] Update `on_bar` method to expect `BarEvent` objects
-- [ ] Update `generate_signal` method to create `SignalEvent` objects
-- [ ] Implement proper type checking
+- [x] Update `on_bar` method to expect `BarEvent` objects
+- [x] Update `generate_signal` method to create `SignalEvent` objects
+- [x] Implement proper type checking
 
 ```python
 # Before

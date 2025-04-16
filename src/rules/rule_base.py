@@ -2,23 +2,22 @@
 Rule Base Module
 
 This module defines the base Rule class and related abstractions for the rules layer
-of the trading system. Rules transform features into trading signals.
+of the trading system. Rules transform market data events into trading signals.
 """
 
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional, Union, Tuple
-import numpy as np
-import pandas as pd
+import datetime
+import logging
 from collections import deque
+import uuid
 
+# Import proper event types
 from src.events.event_types import EventType, BarEvent
 from src.events.event_base import Event
 from src.events.signal_event import SignalEvent
 
-# At the top of the file with other imports
-import logging
-
-# Create a logger for this module
+# Set up logging
 logger = logging.getLogger(__name__)
 
 
@@ -26,18 +25,24 @@ class Rule(ABC):
     """
     Base class for all trading rules in the system.
     
-    Rules transform features into trading signals by applying decision logic.
+    Rules transform market data into trading signals by applying decision logic.
     Each rule encapsulates a specific trading strategy or signal generation logic.
     """
     def __init__(self, name: str, params: Optional[Dict[str, Any]] = None, description: str = ""):
+        """
+        Initialize a rule.
+        
+        Args:
+            name: Unique identifier for this rule
+            params: Dictionary of configuration parameters
+            description: Human-readable description of the rule
+        """
         self.name = name
         self.params = params or self.default_params()
         self.description = description
         self.state = {}
         self.signals = []
         self._validate_params()
-        # Add parameter application validation
-        # self._validate_param_application()
         
     def _validate_params(self) -> None:
         """
@@ -62,66 +67,59 @@ class Rule(ABC):
         return {}
     
     @abstractmethod
-    def generate_signal(self, data: Dict[str, Any]) -> Signal:
+    def generate_signal(self, bar_event: BarEvent) -> Optional[SignalEvent]:
         """
-        Generate a trading signal from the provided data.
+        Generate a trading signal from the provided bar event.
         
         Args:
-            data: Dictionary containing price data, indicators, features
-                 required by this rule
+            bar_event: BarEvent containing market data
                  
         Returns:
-            Signal object representing the trading decision
+            SignalEvent object representing the trading decision, or None if no signal
         """
         pass
 
-    def on_bar(self, event_or_data):
+    def on_bar(self, event: Event) -> Optional[SignalEvent]:
         """
         Process a bar event and generate a trading signal.
+        
+        Args:
+            event: Event containing a BarEvent in its data attribute
+            
+        Returns:
+            SignalEvent if a signal is generated, None otherwise
         """
-        # Extract data from different potential sources
-        bar_data = None
+        # Extract BarEvent properly with strong type checking
+        if not isinstance(event, Event):
+            logger.error(f"Expected Event object, got {type(event).__name__}")
+            return None
 
-        # Case 1: Standard Event object with data attribute
-        if hasattr(event_or_data, 'data'):
-            bar_data = event_or_data.data
-            logger.debug(f"Extracted data from Event object")
-
-        # Case 2: Already a dict (backward compatibility)
-        elif isinstance(event_or_data, dict):
-            bar_data = event_or_data
-            logger.debug(f"Using dict data directly")
-
-        # Case 3: Custom BarEvent with bar attribute
-        elif hasattr(event_or_data, 'bar'):
-            bar_data = event_or_data.bar
-            logger.debug(f"Extracted data from BarEvent.bar")
-
-        # Case 4: Try to handle other formats
+        # Case 1: Event data is a BarEvent
+        if isinstance(event.data, BarEvent):
+            bar_event = event.data
+        # Case 2: Event data is a dict (backward compatibility)
+        elif isinstance(event.data, dict) and 'Close' in event.data:
+            # Convert dict to BarEvent
+            bar_event = BarEvent(event.data)
+            logger.warning(f"Rule {self.name}: Received dictionary instead of BarEvent, converting")
         else:
-            logger.warning(f"Unknown data format in on_bar: {type(event_or_data)}")
-            try:
-                bar_data = dict(event_or_data)
-            except Exception as e:
-                logger.error(f"Failed to convert to dict: {e}")
-                # Create minimal dict with timestamp
-                bar_data = {'timestamp': datetime.now()}
-
-        # Log the resulting data 
-        logger.debug(f"Final bar_data for processing: {bar_data}")
-
+            logger.error(f"Rule {self.name}: Unable to extract BarEvent from {type(event.data).__name__}")
+            return None
+        
         # Generate signal
-        signal = self.generate_signal(bar_data)
-
-        # Store in history
-        if signal is not None:
-            self.signals.append(signal)
-            if signal.signal_type != SignalType.NEUTRAL:
-                logger.info(f"Generated {signal.signal_type} signal")
-
-        return signal
-
-
+        try:
+            signal = self.generate_signal(bar_event)
+            
+            # Store in history
+            if signal is not None:
+                self.signals.append(signal)
+                logger.info(f"Rule {self.name}: Generated {signal.get_signal_name()} signal")
+            
+            return signal
+            
+        except Exception as e:
+            logger.error(f"Rule {self.name}: Error generating signal: {str(e)}", exc_info=True)
+            return None
 
     def update_state(self, key: str, value: Any) -> None:
         """
@@ -133,17 +131,19 @@ class Rule(ABC):
         """
         self.state[key] = value
     
-    def get_state(self, key: str, default: Any = None) -> Any:
+    def get_state(self, key: str = None, default: Any = None) -> Any:
         """
-        Get a value from the rule's state.
+        Get a value from the rule's state or the entire state dict.
         
         Args:
-            key: State dictionary key
+            key: State dictionary key, or None to get the entire state
             default: Default value if key is not found
             
         Returns:
-            The value from state or default
+            The value from state or default, or the entire state dict
         """
+        if key is None:
+            return self.state
         return self.state.get(key, default)
     
     def reset(self) -> None:
@@ -202,45 +202,56 @@ class CompositeRule(Rule):
         if self.aggregation_method == 'weighted' and 'weights' not in self.params:
             raise ValueError("Weights must be provided for 'weighted' aggregation method")
     
-    def generate_signal(self, data: Dict[str, Any]) -> Signal:
+    def generate_signal(self, bar_event: BarEvent) -> Optional[SignalEvent]:
         """
         Generate a composite signal by combining signals from sub-rules.
         
         Args:
-            data: Dictionary containing price data, indicators, features
+            bar_event: BarEvent containing market data
                  
         Returns:
-            Signal object representing the combined decision
+            SignalEvent representing the combined decision, or None if no signal
         """
         # Generate signals from all sub-rules
-        sub_signals = [rule.generate_signal(data) for rule in self.rules]
+        sub_signals = []
+        for rule in self.rules:
+            signal = rule.generate_signal(bar_event)
+            if signal is not None:
+                sub_signals.append(signal)
+        
+        # If no signals were generated, return None
+        if not sub_signals:
+            return None
         
         # Combine signals based on the aggregation method
         if self.aggregation_method == 'majority':
-            return self._majority_vote(sub_signals, data)
+            return self._majority_vote(sub_signals, bar_event)
         elif self.aggregation_method == 'unanimous':
-            return self._unanimous_vote(sub_signals, data)
+            return self._unanimous_vote(sub_signals, bar_event)
         elif self.aggregation_method == 'weighted':
-            return self._weighted_vote(sub_signals, data)
+            return self._weighted_vote(sub_signals, bar_event)
         elif self.aggregation_method == 'any':
-            return self._any_vote(sub_signals, data)
+            return self._any_vote(sub_signals, bar_event)
         elif self.aggregation_method == 'sequence':
-            return self._sequence_vote(sub_signals, data)
+            return self._sequence_vote(sub_signals, bar_event)
         else:
             # Default to majority vote
-            return self._majority_vote(sub_signals, data)
+            return self._majority_vote(sub_signals, bar_event)
     
-    def _majority_vote(self, signals: List[Signal], data: Dict[str, Any]) -> Signal:
+    def _majority_vote(self, signals: List[SignalEvent], bar_event: BarEvent) -> SignalEvent:
         """
         Combine signals using a majority vote.
         
         Args:
             signals: List of signals from sub-rules
-            data: Original data dictionary
+            bar_event: Original bar event
             
         Returns:
             Combined signal
         """
+        from src.signals import SignalType
+        
+        # Count votes by signal type
         buy_votes = sum(1 for s in signals if s.signal_type == SignalType.BUY)
         sell_votes = sum(1 for s in signals if s.signal_type == SignalType.SELL)
         neutral_votes = len(signals) - buy_votes - sell_votes
@@ -265,34 +276,40 @@ class CompositeRule(Rule):
         else:
             confidence = 0.0
         
-        # Create combined signal
-        timestamp = data.get('timestamp', None)
-        price = data.get('Close', None)
-        
-        return Signal(
-            timestamp=timestamp,
-            signal_type=signal_type,
-            price=price,
-            rule_id=self.name,
-            confidence=confidence,
-            metadata={'vote_counts': {
+        # Create metadata with vote information
+        metadata = {
+            'vote_counts': {
                 'buy': buy_votes,
                 'sell': sell_votes,
                 'neutral': neutral_votes
-            }}
+            },
+            'symbol': bar_event.get_symbol()
+        }
+        
+        # Create combined signal
+        return SignalEvent(
+            signal_type=signal_type, 
+            price=bar_event.get_price(),
+            symbol=bar_event.get_symbol(),
+            rule_id=self.name,
+            metadata=metadata,
+            confidence=confidence,
+            timestamp=bar_event.get_timestamp()
         )
     
-    def _unanimous_vote(self, signals: List[Signal], data: Dict[str, Any]) -> Signal:
+    def _unanimous_vote(self, signals: List[SignalEvent], bar_event: BarEvent) -> SignalEvent:
         """
         Combine signals requiring unanimous agreement.
         
         Args:
             signals: List of signals from sub-rules
-            data: Original data dictionary
+            bar_event: Original bar event
             
         Returns:
             Combined signal
         """
+        from src.signals import SignalType
+        
         # Check if all signals are the same type
         signal_types = set(s.signal_type for s in signals)
         
@@ -303,28 +320,29 @@ class CompositeRule(Rule):
             signal_type = SignalType.NEUTRAL
         
         # Create combined signal
-        timestamp = data.get('timestamp', None)
-        price = data.get('Close', None)
-        
-        return Signal(
-            timestamp=timestamp,
+        return SignalEvent(
             signal_type=signal_type,
-            price=price,
+            price=bar_event.get_price(),
+            symbol=bar_event.get_symbol(),
             rule_id=self.name,
-            confidence=1.0 if len(signal_types) == 1 else 0.0
+            confidence=1.0 if len(signal_types) == 1 else 0.0,
+            metadata={'unanimous': len(signal_types) == 1},
+            timestamp=bar_event.get_timestamp()
         )
     
-    def _weighted_vote(self, signals: List[Signal], data: Dict[str, Any]) -> Signal:
+    def _weighted_vote(self, signals: List[SignalEvent], bar_event: BarEvent) -> SignalEvent:
         """
         Combine signals using weighted voting.
         
         Args:
             signals: List of signals from sub-rules
-            data: Original data dictionary
+            bar_event: Original bar event
             
         Returns:
             Combined signal
         """
+        from src.signals import SignalType
+        
         weights = self.params.get('weights', [1.0] * len(signals))
         
         # Ensure weights match the number of signals
@@ -361,51 +379,53 @@ class CompositeRule(Rule):
         confidence = abs(normalized_sum)
         
         # Create combined signal
-        timestamp = data.get('timestamp', None)
-        price = data.get('Close', None)
-        
-        return Signal(
-            timestamp=timestamp,
+        return SignalEvent(
             signal_type=signal_type,
-            price=price,
+            price=bar_event.get_price(),
+            symbol=bar_event.get_symbol(),
             rule_id=self.name,
             confidence=confidence,
-            metadata={'weighted_sum': normalized_sum}
+            metadata={'weighted_sum': normalized_sum},
+            timestamp=bar_event.get_timestamp()
         )
     
-    def _any_vote(self, signals: List[Signal], data: Dict[str, Any]) -> Signal:
+    def _any_vote(self, signals: List[SignalEvent], bar_event: BarEvent) -> SignalEvent:
         """
         Generate signal if any sub-rule generates a non-neutral signal.
         
         Args:
             signals: List of signals from sub-rules
-            data: Original data dictionary
+            bar_event: Original bar event
             
         Returns:
             Combined signal
         """
+        from src.signals import SignalType
+        
         # Look for the first non-neutral signal
         for signal in signals:
             if signal.signal_type != SignalType.NEUTRAL:
-                return Signal(
-                    timestamp=data.get('timestamp', None),
+                return SignalEvent(
                     signal_type=signal.signal_type,
-                    price=data.get('Close', None),
+                    price=bar_event.get_price(),
+                    symbol=bar_event.get_symbol(),
                     rule_id=self.name,
                     confidence=signal.confidence,
-                    metadata={'triggering_rule': signal.rule_id}
+                    metadata={'triggering_rule': signal.rule_id},
+                    timestamp=bar_event.get_timestamp()
                 )
         
         # If all signals are neutral, return neutral
-        return Signal(
-            timestamp=data.get('timestamp', None),
+        return SignalEvent(
             signal_type=SignalType.NEUTRAL,
-            price=data.get('Close', None),
+            price=bar_event.get_price(),
+            symbol=bar_event.get_symbol(),
             rule_id=self.name,
-            confidence=1.0
+            confidence=1.0,
+            timestamp=bar_event.get_timestamp()
         )
     
-    def _sequence_vote(self, signals: List[Signal], data: Dict[str, Any]) -> Signal:
+    def _sequence_vote(self, signals: List[SignalEvent], bar_event: BarEvent) -> SignalEvent:
         """
         Generate signal based on a sequence of conditions.
         
@@ -414,11 +434,13 @@ class CompositeRule(Rule):
         
         Args:
             signals: List of signals from sub-rules
-            data: Original data dictionary
+            bar_event: Original bar event
             
         Returns:
             Combined signal
         """
+        from src.signals import SignalType
+        
         # Check if the sequence requirement has been met
         sequence_key = 'sequence_index'
         current_index = self.get_state(sequence_key, 0)
@@ -436,26 +458,28 @@ class CompositeRule(Rule):
                     final_signal_type = current_signal.signal_type
                     self.update_state(sequence_key, 0)  # Reset sequence
                     
-                    return Signal(
-                        timestamp=data.get('timestamp', None),
+                    return SignalEvent(
                         signal_type=final_signal_type,
-                        price=data.get('Close', None),
+                        price=bar_event.get_price(),
+                        symbol=bar_event.get_symbol(),
                         rule_id=self.name,
                         confidence=current_signal.confidence,
-                        metadata={'sequence_completed': True}
+                        metadata={'sequence_completed': True},
+                        timestamp=bar_event.get_timestamp()
                     )
             else:
                 # If current rule returns neutral, reset sequence
                 self.update_state(sequence_key, 0)
         
         # If sequence is not complete, return neutral
-        return Signal(
-            timestamp=data.get('timestamp', None),
+        return SignalEvent(
             signal_type=SignalType.NEUTRAL,
-            price=data.get('Close', None),
+            price=bar_event.get_price(),
+            symbol=bar_event.get_symbol(),
             rule_id=self.name,
             confidence=0.0,
-            metadata={'sequence_index': current_index}
+            metadata={'sequence_index': current_index},
+            timestamp=bar_event.get_timestamp()
         )
     
     def reset(self) -> None:
@@ -490,39 +514,34 @@ class FeatureBasedRule(Rule):
         self.feature_names = feature_names
         super().__init__(name, params, description)
     
-    def generate_signal(self, data: Dict[str, Any]) -> Signal:
+    def generate_signal(self, bar_event: BarEvent) -> Optional[SignalEvent]:
         """
         Generate a trading signal based on features.
         
         Args:
-            data: Dictionary containing features and other data
+            bar_event: BarEvent containing market data
                  
         Returns:
-            Signal object representing the trading decision
+            SignalEvent representing the trading decision, or None if no signal
         """
+        # Extract raw bar data
+        bar_data = bar_event.get_data()
+        
         # Extract features from data
         features = {}
         for feature_name in self.feature_names:
-            if feature_name in data:
-                features[feature_name] = data[feature_name]
+            if feature_name in bar_data:
+                features[feature_name] = bar_data[feature_name]
             else:
-                # If a required feature is missing, return neutral signal
-                timestamp = data.get('timestamp', None)
-                price = data.get('Close', None)
-                return Signal(
-                    timestamp=timestamp,
-                    signal_type=SignalType.NEUTRAL,
-                    price=price,
-                    rule_id=self.name,
-                    confidence=0.0,
-                    metadata={'error': f"Missing feature: {feature_name}"}
-                )
+                # If a required feature is missing, return None
+                logger.warning(f"Rule {self.name}: Missing required feature: {feature_name}")
+                return None
         
         # Call the rule's decision method with the features
-        return self.make_decision(features, data)
+        return self.make_decision(features, bar_event)
     
     @abstractmethod
-    def make_decision(self, features: Dict[str, Any], data: Dict[str, Any]) -> Signal:
+    def make_decision(self, features: Dict[str, Any], bar_event: BarEvent) -> Optional[SignalEvent]:
         """
         Make a trading decision based on the features.
         
@@ -531,13 +550,12 @@ class FeatureBasedRule(Rule):
         
         Args:
             features: Dictionary of feature values
-            data: Original data dictionary
+            bar_event: Original bar event
                  
         Returns:
-            Signal object representing the trading decision
+            SignalEvent representing the trading decision, or None if no signal
         """
         pass
-
 
     def _validate_param_application(self):
         """
@@ -553,3 +571,5 @@ class FeatureBasedRule(Rule):
                 default_params = self.default_params()
                 if param_name in default_params and default_params[param_name] is not None:
                     raise ValueError(f"Parameter {param_name} is None but should have a value")
+
+

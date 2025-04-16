@@ -10,17 +10,16 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional, Union
 
-from src.events.event_bus import Event, EventBus
-from src.events.event_types import EventType
+from src.events.event_base import Event
+from src.events.event_types import EventType, BarEvent
 from src.events.signal_event import SignalEvent
-from src.signals.signal_processing import SignalType
 from src.strategies.strategy_utils import extract_bar_data
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
 
-class StrategyBase(ABC):
+class Strategy(ABC):
     """
     Base class for all trading strategies.
     
@@ -28,7 +27,7 @@ class StrategyBase(ABC):
     market data events and generate signal events in response.
     """
     
-    def __init__(self, name: str, event_bus: Optional[EventBus] = None):
+    def __init__(self, name: str, event_bus: Optional[Any] = None):
         """
         Initialize strategy.
         
@@ -40,6 +39,7 @@ class StrategyBase(ABC):
         self.event_bus = event_bus
         self.indicators = {}
         self.state = {}
+        self.last_signal = None
         
     def on_bar(self, event: Event) -> Optional[SignalEvent]:
         """
@@ -56,20 +56,30 @@ class StrategyBase(ABC):
         """
         try:
             # Extract bar data from event
-            bar_data = extract_bar_data(event)
-            if not bar_data:
-                logger.warning(f"Strategy {self.name}: Failed to extract bar data from event")
-                return None
+            if isinstance(event.data, BarEvent):
+                bar_event = event.data
+            elif isinstance(event.data, dict) and 'Close' in event.data:
+                # Convert dictionary to BarEvent for backward compatibility
+                bar_event = BarEvent(event.data, event.timestamp)
+            else:
+                bar_data = extract_bar_data(event)
+                if not bar_data:
+                    logger.warning(f"Strategy {self.name}: Failed to extract bar data from event")
+                    return None
+                bar_event = BarEvent(bar_data, event.timestamp)
                 
             # Update indicators
-            self.update_indicators(bar_data)
+            self.update_indicators(bar_event.get_data())
             
             # Generate signals
-            signal_event = self.generate_signals(event)
+            signal_event = self.generate_signals(bar_event)
+            
+            # Store last signal
+            self.last_signal = signal_event
             
             # Emit signal event if generated
             if signal_event is not None and self.event_bus is not None:
-                self.event_bus.emit(signal_event)
+                self.event_bus.emit(Event(EventType.SIGNAL, signal_event))
                 
             return signal_event
             
@@ -90,7 +100,7 @@ class StrategyBase(ABC):
         pass
     
     @abstractmethod
-    def generate_signals(self, event: Event) -> Optional[SignalEvent]:
+    def generate_signals(self, bar_event: BarEvent) -> Optional[SignalEvent]:
         """
         Generate trading signals based on market data.
         
@@ -98,14 +108,14 @@ class StrategyBase(ABC):
         signal events based on market data and strategy logic.
         
         Args:
-            event: Bar event
+            bar_event: BarEvent containing market data
             
         Returns:
             SignalEvent if signal generated, None otherwise
         """
         pass
     
-    def set_event_bus(self, event_bus: EventBus) -> None:
+    def set_event_bus(self, event_bus: Any) -> None:
         """
         Set the event bus for emitting signals.
         
@@ -118,6 +128,7 @@ class StrategyBase(ABC):
         """Reset strategy state."""
         self.indicators = {}
         self.state = {}
+        self.last_signal = None
         
     def get_state(self) -> Dict[str, Any]:
         """

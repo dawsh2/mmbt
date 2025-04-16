@@ -6,14 +6,16 @@ components using configurable weights.
 """
 
 import numpy as np
+import datetime
 from typing import List, Optional, Dict, Any, Union
 from src.strategies.strategy_base import Strategy
 from src.strategies.strategy_registry import StrategyRegistry
-from signals import Signal, SignalType
-from src.log_system import TradeLogger
+from src.events.event_types import BarEvent
+from src.events.signal_event import SignalEvent
 
-
-# logger = TradeLogger.get_logger('trading.strategy')
+# Configure logging
+import logging
+logger = logging.getLogger(__name__)
 
 
 @StrategyRegistry.register(category="core")
@@ -26,11 +28,12 @@ class WeightedStrategy(Strategy):
     """
     
     def __init__(self, 
-                 components: List[Any],  # Renamed from 'rules' to 'components'
-                 weights: Optional[np.ndarray] = None, 
+                 components: List[Any],
+                 weights: Optional[List[float]] = None, 
                  buy_threshold: float = 0.5, 
                  sell_threshold: float = -0.5, 
-                 name: Optional[str] = None):
+                 name: Optional[str] = None,
+                 event_bus = None):
         """Initialize the weighted strategy.
         
         Args:
@@ -39,9 +42,10 @@ class WeightedStrategy(Strategy):
             buy_threshold: Threshold above which to generate a buy signal
             sell_threshold: Threshold below which to generate a sell signal
             name: Strategy name
+            event_bus: Optional event bus for emitting events
         """
-        super().__init__(name or "WeightedStrategy")
-        self.components = components  # Renamed from 'rules' to 'components'
+        super().__init__(name or "WeightedStrategy", event_bus)
+        self.components = components
         
         # Initialize weights (equal by default)
         if weights is None:
@@ -57,93 +61,170 @@ class WeightedStrategy(Strategy):
         
         self.buy_threshold = buy_threshold
         self.sell_threshold = sell_threshold
-        self.last_signal = None
         
-    def generate_signals(self, bar, bar_event=None):
+        # Initialize state
+        self.state = {
+            'last_score': 0.0,
+            'last_signal': None,
+            'component_signals': {}
+        }
+    
+    def generate_signals(self, bar_event: BarEvent) -> Optional[SignalEvent]:
         """
         Generate weighted trading signals.
 
         Args:
-            bar: Dictionary containing bar data
-            bar_event: Original bar event (optional)
+            bar_event: BarEvent containing market data
 
         Returns:
-            Signal object representing the weighted decision
+            SignalEvent representing the weighted decision
         """
-        # Get signals from all components
-        component_signals = []
-        
-        # We pass the original bar_event to maintain the interface
-        for component in self.components:
-            signal = component.on_bar(bar_event)
-            if signal is not None:
-                component_signals.append(signal)
+        try:
+            # Get signals from all components
+            component_signals = []
+            
+            # Extract bar data for components that might need it in dictionary form
+            bar = bar_event.get_data()
+            
+            # We pass bar_event to components that can handle it, or bar dict for backward compatibility
+            for i, component in enumerate(self.components):
+                signal = None
+                
+                # If component has on_bar method expecting an Event
+                if hasattr(component, 'on_bar'):
+                    from src.events.event_base import Event
+                    from src.events.event_types import EventType
+                    
+                    # Create an event wrapping the bar_event
+                    event = Event(EventType.BAR, bar_event, bar_event.get_timestamp())
+                    signal = component.on_bar(event)
+                # If component has generate_signal method expecting a BarEvent
+                elif hasattr(component, 'generate_signals'):
+                    signal = component.generate_signals(bar_event)
+                elif hasattr(component, 'generate_signal'):
+                    signal = component.generate_signal(bar_event)
+                # For backward compatibility with components expecting dictionary
+                else:
+                    # Try passing the raw bar dictionary
+                    try:
+                        signal = component.on_bar(bar)
+                    except Exception as e:
+                        logger.warning(f"Component {i} error: {str(e)}")
+                        continue
 
-        if not component_signals:
-            # No signals generated, return neutral
-            return Signal(
-                timestamp=bar.get('timestamp', datetime.now()),
-                signal_type=SignalType.NEUTRAL,
-                price=bar.get('Close', None),
-                rule_id=self.name,
-                confidence=0.0,
-                metadata={'component_count': 0}
-            )
+                if signal is not None:
+                    component_signals.append(signal)
 
-        # Calculate weighted signal
-        weighted_sum = 0.0
-        total_weight = sum(self.weights)
-        signal_weights = {}
+            if not component_signals:
+                # No signals generated, return neutral
+                return self._create_neutral_signal(bar_event)
 
-        for i, signal in enumerate(component_signals):
-            # Get weight for this component
-            weight = self.weights[i] if i < len(self.weights) else 1.0/len(component_signals)
+            # Calculate weighted signal
+            weighted_sum = 0.0
+            total_weight = sum(self.weights)
+            signal_weights = {}
 
-            # Get direction from signal_type
-            direction = signal.signal_type.value
+            for i, signal in enumerate(component_signals):
+                # Get weight for this component
+                weight = self.weights[i] if i < len(self.weights) else 1.0/len(component_signals)
 
-            # Apply weight
-            weighted_sum += direction * weight * signal.confidence
+                # Get direction from signal
+                if isinstance(signal, SignalEvent):
+                    # Extract from SignalEvent
+                    direction = signal.get_signal_type()
+                    # Store for metadata
+                    signal_weights[signal.get_rule_id() or f"component_{i}"] = {
+                        'weight': float(weight),
+                        'direction': int(direction)
+                    }
+                elif isinstance(signal, dict) and 'signal_type' in signal:
+                    # Legacy dictionary signal
+                    direction = signal['signal_type']
+                    # Store for metadata
+                    signal_weights[signal.get('rule_id', f"component_{i}")] = {
+                        'weight': float(weight),
+                        'direction': int(direction)
+                    }
+                else:
+                    # Unknown signal format, skip
+                    logger.warning(f"Unknown signal format from component {i}: {type(signal)}")
+                    continue
 
-            # Store for metadata
-            signal_weights[signal.rule_id] = {
-                'weight': weight,
-                'direction': direction,
-                'confidence': signal.confidence,
-                'contribution': direction * weight * signal.confidence
-            }
+                # Apply weight
+                weighted_sum += direction * weight
 
-        # Normalize weighted sum
-        if total_weight > 0:
-            normalized_sum = weighted_sum / total_weight
-        else:
-            normalized_sum = 0.0
+            # Normalize weighted sum
+            if total_weight > 0:
+                normalized_sum = weighted_sum / total_weight
+            else:
+                normalized_sum = 0.0
 
-        # Determine final signal type based on weighted sum
-        if normalized_sum > self.buy_threshold:
-            signal_type = SignalType.BUY
-        elif normalized_sum < self.sell_threshold:
-            signal_type = SignalType.SELL
-        else:
-            signal_type = SignalType.NEUTRAL
+            # Update state
+            self.state['last_score'] = normalized_sum
+            self.state['component_signals'] = signal_weights
 
-        # Create the combined signal
-        return Signal(
-            timestamp=bar.get('timestamp', datetime.now()),
-            signal_type=signal_type,
-            price=bar.get('Close', None),
-            rule_id=self.name,
-            confidence=abs(normalized_sum),
-            metadata={
-                'weighted_sum': normalized_sum,
+            # Determine final signal type based on weighted sum
+            if normalized_sum > self.buy_threshold:
+                signal_type = SignalEvent.BUY
+                self.state['last_signal'] = 'BUY'
+            elif normalized_sum < self.sell_threshold:
+                signal_type = SignalEvent.SELL
+                self.state['last_signal'] = 'SELL'
+            else:
+                signal_type = SignalEvent.NEUTRAL
+                self.state['last_signal'] = 'NEUTRAL'
+
+            # Create the combined signal
+            metadata = {
+                'weighted_sum': float(normalized_sum),
                 'component_signals': signal_weights,
                 'component_count': len(component_signals)
             }
+            
+            return SignalEvent(
+                signal_type=signal_type,
+                price=bar_event.get_price(),
+                symbol=bar_event.get_symbol(),
+                rule_id=self.name,
+                metadata=metadata,
+                timestamp=bar_event.get_timestamp()
+            )
+        
+        except Exception as e:
+            logger.error(f"Error in {self.name}.generate_signals: {str(e)}", exc_info=True)
+            return None
+
+    def _create_neutral_signal(self, bar_event: BarEvent) -> SignalEvent:
+        """
+        Create a neutral signal.
+        
+        Args:
+            bar_event: BarEvent containing market data
+            
+        Returns:
+            Neutral SignalEvent
+        """
+        return SignalEvent(
+            signal_type=SignalEvent.NEUTRAL,
+            price=bar_event.get_price(),
+            symbol=bar_event.get_symbol(),
+            rule_id=self.name,
+            metadata={'component_count': 0},
+            timestamp=bar_event.get_timestamp()
         )
 
     def reset(self):
         """Reset all components in the strategy."""
+        super().reset()
+        
+        # Reset components if they have reset method
         for component in self.components:
             if hasattr(component, 'reset'):
                 component.reset()
-        self.last_signal = None
+        
+        # Reset state
+        self.state = {
+            'last_score': 0.0,
+            'last_signal': None,
+            'component_signals': {}
+        }
