@@ -48,6 +48,7 @@ This event-driven approach decouples components and standardizes communication t
 ## Core Components
 
 ### Event Types
+taxonomy of events
 
 ```python
 class EventType(Enum):

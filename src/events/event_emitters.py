@@ -9,9 +9,9 @@ import uuid
 import datetime
 from typing import Dict, List, Optional, Union, Any, Set
 
-from src.events.event_types import EventType, BarEvent
-from src.events.event_bus import Event, EventBus
-
+from src.events.event_types import EventType
+from src.events.event_base import Event
+from src.events.signal_event import SignalEvent
 
 
 class EventEmitter:
@@ -23,7 +23,7 @@ class EventEmitter:
     to generate events.
     """
     
-    def __init__(self, event_bus: EventBus):
+    def __init__(self, event_bus):
         """
         Initialize event emitter.
         
@@ -32,18 +32,28 @@ class EventEmitter:
         """
         self.event_bus = event_bus
     
-    def emit(self, event_type: EventType, data: Any = None) -> Event:
+    def emit(self, event_type: EventType, event_object) -> Event:
         """
         Create and emit an event.
         
         Args:
             event_type: Type of event to emit
-            data: Optional data payload
+            event_object: Event object to emit
             
         Returns:
             The emitted event
         """
-        event = Event(event_type, data)
+        # Ensure event_object is not a dictionary
+        if isinstance(event_object, dict):
+            raise TypeError("Event object cannot be a dictionary. Use appropriate event class.")
+            
+        # Create Event if event_object is not already an Event
+        if not isinstance(event_object, Event):
+            event = Event(event_type, event_object)
+        else:
+            # If it's already an Event, use it directly
+            event = event_object
+            
         self.emit_event(event)
         return event
     
@@ -54,9 +64,10 @@ class EventEmitter:
         Args:
             event: Event to emit
         """
+        if not isinstance(event, Event):
+            raise TypeError(f"Expected Event object, got {type(event).__name__}")
+            
         self.event_bus.emit(event)
-
-
 
 
 class MarketDataEmitter(EventEmitter):
@@ -80,74 +91,80 @@ class MarketDataEmitter(EventEmitter):
         super().__init__(event_bus)
         self.default_symbol = default_symbol
     
-    def emit_bar(self, bar_data: Dict[str, Any]) -> Event:
+    def emit_bar(self, bar_event) -> Event:
         """
         Emit a bar event.
         
-        Creates a BarEvent that wraps the raw bar data dictionary.
-        This ensures proper formatting for strategy components that
-        expect a BarEvent with a 'bar' attribute.
-        
         Args:
-            bar_data: Dictionary containing bar data (OHLCV, timestamp, etc.)
+            bar_event: BarEvent object to emit
             
         Returns:
             The emitted event
         """
-        # Ensure bar has symbol if not present
-        if 'symbol' not in bar_data and self.default_symbol:
+        # Ensure bar_event is a BarEvent
+        from src.events.event_types import BarEvent
+        if not isinstance(bar_event, BarEvent):
+            raise TypeError(f"Expected BarEvent object, got {type(bar_event).__name__}")
+            
+        # Set default symbol if not present
+        if not bar_event.get_symbol() and self.default_symbol:
+            # Create a new BarEvent with default symbol if needed
+            # This assumes BarEvent has copy or similar functionality
+            # You may need to adjust based on your actual implementation
+            bar_data = bar_event.data.copy() if isinstance(bar_event.data, dict) else {}
             bar_data['symbol'] = self.default_symbol
-        
-        # Wrap in BarEvent
-        bar_event = BarEvent(bar_data)
+            bar_event = BarEvent(bar_data, bar_event.timestamp)
         
         # Emit the event
         return self.emit(EventType.BAR, bar_event)
     
-    def emit_tick(self, tick_data: Dict[str, Any]) -> Event:
+    def emit_tick(self, tick_event) -> Event:
         """
         Emit a tick event.
         
         Args:
-            tick_data: Dictionary containing tick data
+            tick_event: TickEvent object to emit
             
         Returns:
             The emitted event
         """
-        return self.emit(EventType.TICK, tick_data)
+        # Ensure tick_event is a proper event object, not a dictionary
+        if isinstance(tick_event, dict):
+            raise TypeError("Expected TickEvent object, got dict. Use TickEvent class instead.")
+            
+        return self.emit(EventType.TICK, tick_event)
     
-    def emit_market_open(self, timestamp: Optional[datetime.datetime] = None,
-                       additional_data: Optional[Dict[str, Any]] = None) -> Event:
+    def emit_market_open(self, market_open_event) -> Event:
         """
         Emit a market open event.
         
         Args:
-            timestamp: Optional timestamp for the event
-            additional_data: Optional additional data
+            market_open_event: MarketOpenEvent object to emit
             
         Returns:
             The emitted event
         """
-        data = additional_data or {}
-        data['timestamp'] = timestamp or datetime.datetime.now()
-        return self.emit(EventType.MARKET_OPEN, data)
+        # Ensure proper event object
+        if isinstance(market_open_event, dict):
+            raise TypeError("Expected MarketOpenEvent object, got dict. Use MarketOpenEvent class instead.")
+            
+        return self.emit(EventType.MARKET_OPEN, market_open_event)
     
-    def emit_market_close(self, timestamp: Optional[datetime.datetime] = None,
-                        additional_data: Optional[Dict[str, Any]] = None) -> Event:
+    def emit_market_close(self, market_close_event) -> Event:
         """
         Emit a market close event.
         
         Args:
-            timestamp: Optional timestamp for the event
-            additional_data: Optional additional data
+            market_close_event: MarketCloseEvent object to emit
             
         Returns:
             The emitted event
         """
-        data = additional_data or {}
-        data['timestamp'] = timestamp or datetime.datetime.now()
-        return self.emit(EventType.MARKET_CLOSE, data)        
-
+        # Ensure proper event object
+        if isinstance(market_close_event, dict):
+            raise TypeError("Expected MarketCloseEvent object, got dict. Use MarketCloseEvent class instead.")
+            
+        return self.emit(EventType.MARKET_CLOSE, market_close_event)
 class SignalEmitter(EventEmitter):
     """
     Event emitter for trading signals.
@@ -155,38 +172,22 @@ class SignalEmitter(EventEmitter):
     This class emits signal events from strategies.
     """
     
-    def emit_signal(self, symbol: str, signal_type: str, price: float,
-                  confidence: float = 1.0, rule_id: Optional[str] = None,
-                  metadata: Optional[Dict[str, Any]] = None) -> Event:
+    def emit_signal(self, signal_event) -> Event:
         """
         Emit a signal event.
         
         Args:
-            symbol: Instrument symbol
-            signal_type: Signal type ('BUY', 'SELL', 'NEUTRAL')
-            price: Price at signal generation
-            confidence: Signal confidence (0-1)
-            rule_id: Optional ID of the rule that generated the signal
-            metadata: Optional additional signal data
+            signal_event: SignalEvent object to emit
             
         Returns:
             The emitted event
         """
-        data = {
-            'symbol': symbol,
-            'signal_type': signal_type,
-            'price': price,
-            'confidence': confidence,
-            'timestamp': datetime.datetime.now()
-        }
-        
-        if rule_id:
-            data['rule_id'] = rule_id
+        # Ensure signal_event is a SignalEvent
+        if not isinstance(signal_event, SignalEvent):
+            raise TypeError(f"Expected SignalEvent object, got {type(signal_event).__name__}")
             
-        if metadata:
-            data['metadata'] = metadata
-            
-        return self.emit(EventType.SIGNAL, data)
+        # Emit the event
+        return self.emit(EventType.SIGNAL, signal_event)
 
 
 class OrderEmitter(EventEmitter):
@@ -196,79 +197,59 @@ class OrderEmitter(EventEmitter):
     This class emits order, cancel, and modify events.
     """
     
-    def emit_order(self, symbol: str, order_type: str, quantity: float,
-                 direction: int, price: Optional[float] = None,
-                 metadata: Optional[Dict[str, Any]] = None) -> Event:
+    def emit_order(self, order_event) -> Event:
         """
         Emit an order event.
         
         Args:
-            symbol: Instrument symbol
-            order_type: Order type ('MARKET', 'LIMIT', etc.)
-            quantity: Order quantity
-            direction: Order direction (1 for buy, -1 for sell)
-            price: Optional price for limit orders
-            metadata: Optional additional order data
+            order_event: OrderEvent object to emit
             
         Returns:
             The emitted event
         """
-        data = {
-            'symbol': symbol,
-            'order_type': order_type,
-            'quantity': quantity,
-            'direction': direction,
-            'timestamp': datetime.datetime.now(),
-            'order_id': str(uuid.uuid4())
-        }
-        
-        if price is not None:
-            data['price'] = price
+        # Ensure order_event is an OrderEvent
+        from src.events.order_events import OrderEvent  # Assuming you have this class
+        if not isinstance(order_event, OrderEvent):
+            raise TypeError(f"Expected OrderEvent object, got {type(order_event).__name__}")
             
-        if metadata:
-            data['metadata'] = metadata
-            
-        return self.emit(EventType.ORDER, data)
+        # Emit the event
+        return self.emit(EventType.ORDER, order_event)
     
-    def emit_cancel(self, order_id: str, reason: Optional[str] = None) -> Event:
+    def emit_cancel(self, cancel_event) -> Event:
         """
         Emit a cancel order event.
         
         Args:
-            order_id: ID of order to cancel
-            reason: Optional reason for cancellation
+            cancel_event: CancelOrderEvent object to emit
             
         Returns:
             The emitted event
         """
-        data = {
-            'order_id': order_id,
-            'timestamp': datetime.datetime.now()
-        }
-        
-        if reason:
-            data['reason'] = reason
+        # Ensure cancel_event is a CancelOrderEvent
+        from src.events.order_events import CancelOrderEvent  # Assuming you have this class
+        if not isinstance(cancel_event, CancelOrderEvent):
+            raise TypeError(f"Expected CancelOrderEvent object, got {type(cancel_event).__name__}")
             
-        return self.emit(EventType.CANCEL, data)
+        # Emit the event
+        return self.emit(EventType.CANCEL, cancel_event)
     
-    def emit_modify(self, order_id: str, changes: Dict[str, Any]) -> Event:
+    def emit_modify(self, modify_event) -> Event:
         """
         Emit a modify order event.
         
         Args:
-            order_id: ID of order to modify
-            changes: Dictionary of changes to apply
+            modify_event: ModifyOrderEvent object to emit
             
         Returns:
             The emitted event
         """
-        data = {
-            'order_id': order_id,
-            'changes': changes,
-            'timestamp': datetime.datetime.now()
-        }
-        
-        return self.emit(EventType.MODIFY, data)
+        # Ensure modify_event is a ModifyOrderEvent
+        from src.events.order_events import ModifyOrderEvent  # Assuming you have this class
+        if not isinstance(modify_event, ModifyOrderEvent):
+            raise TypeError(f"Expected ModifyOrderEvent object, got {type(modify_event).__name__}")
+            
+        # Emit the event
+        return self.emit(EventType.MODIFY, modify_event)    
 
 
 class FillEmitter(EventEmitter):
@@ -278,100 +259,60 @@ class FillEmitter(EventEmitter):
     This class emits fill and partial fill events.
     """
     
-    def emit_fill(self, order_id: str, symbol: str, quantity: float,
-                price: float, direction: int, transaction_cost: float = 0.0,
-                metadata: Optional[Dict[str, Any]] = None) -> Event:
+    def emit_fill(self, fill_event) -> Event:
         """
         Emit a fill event.
         
         Args:
-            order_id: ID of filled order
-            symbol: Instrument symbol
-            quantity: Filled quantity
-            price: Fill price
-            direction: Fill direction (1 for buy, -1 for sell)
-            transaction_cost: Optional transaction cost
-            metadata: Optional additional fill data
+            fill_event: FillEvent object to emit
             
         Returns:
             The emitted event
         """
-        data = {
-            'order_id': order_id,
-            'symbol': symbol,
-            'quantity': quantity,
-            'price': price,
-            'direction': direction,
-            'transaction_cost': transaction_cost,
-            'timestamp': datetime.datetime.now()
-        }
-        
-        if metadata:
-            data['metadata'] = metadata
+        # Ensure fill_event is a FillEvent
+        from src.events.order_events import FillEvent  # Assuming you have this class
+        if not isinstance(fill_event, FillEvent):
+            raise TypeError(f"Expected FillEvent object, got {type(fill_event).__name__}")
             
-        return self.emit(EventType.FILL, data)
+        # Emit the event
+        return self.emit(EventType.FILL, fill_event)
     
-    def emit_partial_fill(self, order_id: str, symbol: str, quantity: float,
-                        price: float, direction: int, partial_quantity: float,
-                        remaining_quantity: float, transaction_cost: float = 0.0,
-                        metadata: Optional[Dict[str, Any]] = None) -> Event:
+    def emit_partial_fill(self, partial_fill_event) -> Event:
         """
         Emit a partial fill event.
         
         Args:
-            order_id: ID of filled order
-            symbol: Instrument symbol
-            quantity: Original order quantity
-            price: Fill price
-            direction: Fill direction (1 for buy, -1 for sell)
-            partial_quantity: Quantity filled in this partial fill
-            remaining_quantity: Quantity remaining to be filled
-            transaction_cost: Optional transaction cost
-            metadata: Optional additional fill data
+            partial_fill_event: PartialFillEvent object to emit
             
         Returns:
             The emitted event
         """
-        data = {
-            'order_id': order_id,
-            'symbol': symbol,
-            'quantity': quantity,
-            'price': price,
-            'direction': direction,
-            'partial_quantity': partial_quantity,
-            'remaining_quantity': remaining_quantity,
-            'transaction_cost': transaction_cost,
-            'timestamp': datetime.datetime.now()
-        }
-        
-        if metadata:
-            data['metadata'] = metadata
+        # Ensure partial_fill_event is a PartialFillEvent
+        from src.events.order_events import PartialFillEvent  # Assuming you have this class
+        if not isinstance(partial_fill_event, PartialFillEvent):
+            raise TypeError(f"Expected PartialFillEvent object, got {type(partial_fill_event).__name__}")
             
-        return self.emit(EventType.PARTIAL_FILL, data)
+        # Emit the event
+        return self.emit(EventType.PARTIAL_FILL, partial_fill_event)
     
-    def emit_reject(self, order_id: str, reason: str,
-                  metadata: Optional[Dict[str, Any]] = None) -> Event:
+    def emit_reject(self, reject_event) -> Event:
         """
         Emit an order rejection event.
         
         Args:
-            order_id: ID of rejected order
-            reason: Reason for rejection
-            metadata: Optional additional rejection data
+            reject_event: RejectEvent object to emit
             
         Returns:
             The emitted event
         """
-        data = {
-            'order_id': order_id,
-            'reason': reason,
-            'timestamp': datetime.datetime.now()
-        }
-        
-        if metadata:
-            data['metadata'] = metadata
+        # Ensure reject_event is a RejectEvent
+        from src.events.order_events import RejectEvent  # Assuming you have this class
+        if not isinstance(reject_event, RejectEvent):
+            raise TypeError(f"Expected RejectEvent object, got {type(reject_event).__name__}")
             
-        return self.emit(EventType.REJECT, data)
+        # Emit the event
+        return self.emit(EventType.REJECT, reject_event)
+
 
 
 class PortfolioEmitter(EventEmitter):
@@ -381,86 +322,60 @@ class PortfolioEmitter(EventEmitter):
     This class emits position opened, closed, and modified events.
     """
     
-    def emit_position_opened(self, symbol: str, quantity: float,
-                           entry_price: float, direction: int,
-                           metadata: Optional[Dict[str, Any]] = None) -> Event:
+    def emit_position_opened(self, position_opened_event) -> Event:
         """
         Emit a position opened event.
         
         Args:
-            symbol: Instrument symbol
-            quantity: Position quantity
-            entry_price: Entry price
-            direction: Position direction (1 for long, -1 for short)
-            metadata: Optional additional position data
+            position_opened_event: PositionOpenedEvent object to emit
             
         Returns:
             The emitted event
         """
-        data = {
-            'symbol': symbol,
-            'quantity': quantity,
-            'entry_price': entry_price,
-            'direction': direction,
-            'timestamp': datetime.datetime.now(),
-            'position_id': str(uuid.uuid4())
-        }
-        
-        if metadata:
-            data['metadata'] = metadata
+        # Ensure position_opened_event is a PositionOpenedEvent
+        from src.events.portfolio_events import PositionOpenedEvent
+        if not isinstance(position_opened_event, PositionOpenedEvent):
+            raise TypeError(f"Expected PositionOpenedEvent object, got {type(position_opened_event).__name__}")
             
-        return self.emit(EventType.POSITION_OPENED, data)
+        # Emit the event
+        return self.emit(EventType.POSITION_OPENED, position_opened_event)
     
-    def emit_position_closed(self, position_id: str, symbol: str,
-                           exit_price: float, pnl: float,
-                           metadata: Optional[Dict[str, Any]] = None) -> Event:
+    def emit_position_closed(self, position_closed_event) -> Event:
         """
         Emit a position closed event.
         
         Args:
-            position_id: ID of closed position
-            symbol: Instrument symbol
-            exit_price: Exit price
-            pnl: Profit/loss from the position
-            metadata: Optional additional position data
+            position_closed_event: PositionClosedEvent object to emit
             
         Returns:
             The emitted event
         """
-        data = {
-            'position_id': position_id,
-            'symbol': symbol,
-            'exit_price': exit_price,
-            'pnl': pnl,
-            'timestamp': datetime.datetime.now()
-        }
-        
-        if metadata:
-            data['metadata'] = metadata
+        # Ensure position_closed_event is a PositionClosedEvent
+        from src.events.portfolio_events import PositionClosedEvent
+        if not isinstance(position_closed_event, PositionClosedEvent):
+            raise TypeError(f"Expected PositionClosedEvent object, got {type(position_closed_event).__name__}")
             
-        return self.emit(EventType.POSITION_CLOSED, data)
+        # Emit the event
+        return self.emit(EventType.POSITION_CLOSED, position_closed_event)
     
-    def emit_position_modified(self, position_id: str, symbol: str,
-                             changes: Dict[str, Any]) -> Event:
+    def emit_position_modified(self, position_modified_event) -> Event:
         """
         Emit a position modified event.
         
         Args:
-            position_id: ID of modified position
-            symbol: Instrument symbol
-            changes: Dictionary of changes made
+            position_modified_event: PositionModifiedEvent object to emit
             
         Returns:
             The emitted event
         """
-        data = {
-            'position_id': position_id,
-            'symbol': symbol,
-            'changes': changes,
-            'timestamp': datetime.datetime.now()
-        }
-        
-        return self.emit(EventType.POSITION_MODIFIED, data)
+        # Ensure position_modified_event is a PositionModifiedEvent
+        from src.events.portfolio_events import PositionModifiedEvent
+        if not isinstance(position_modified_event, PositionModifiedEvent):
+            raise TypeError(f"Expected PositionModifiedEvent object, got {type(position_modified_event).__name__}")
+            
+        # Emit the event
+        return self.emit(EventType.POSITION_MODIFIED, position_modified_event)
+
 
 
 class SystemEmitter(EventEmitter):
@@ -470,133 +385,56 @@ class SystemEmitter(EventEmitter):
     This class emits system start, stop, pause, resume, and error events.
     """
     
-    def emit_start(self, component_name: Optional[str] = None,
-                 metadata: Optional[Dict[str, Any]] = None) -> Event:
+    def emit_start(self, start_event) -> Event:
         """
         Emit a system start event.
         
         Args:
-            component_name: Optional name of the starting component
-            metadata: Optional additional start data
+            start_event: StartEvent object to emit
             
         Returns:
             The emitted event
         """
-        data = {'timestamp': datetime.datetime.now()}
-        
-        if component_name:
-            data['component'] = component_name
+        # Ensure start_event is a StartEvent
+        from src.events.system_events import StartEvent  # Assuming you have this class
+        if not isinstance(start_event, StartEvent):
+            raise TypeError(f"Expected StartEvent object, got {type(start_event).__name__}")
             
-        if metadata:
-            data['metadata'] = metadata
-            
-        return self.emit(EventType.START, data)
+        # Emit the event
+        return self.emit(EventType.START, start_event)
     
-    def emit_stop(self, component_name: Optional[str] = None,
-                reason: Optional[str] = None,
-                metadata: Optional[Dict[str, Any]] = None) -> Event:
+    def emit_stop(self, stop_event) -> Event:
         """
         Emit a system stop event.
         
         Args:
-            component_name: Optional name of the stopping component
-            reason: Optional reason for stopping
-            metadata: Optional additional stop data
+            stop_event: StopEvent object to emit
             
         Returns:
             The emitted event
         """
-        data = {'timestamp': datetime.datetime.now()}
-        
-        if component_name:
-            data['component'] = component_name
+        # Ensure stop_event is a StopEvent
+        from src.events.system_events import StopEvent  # Assuming you have this class
+        if not isinstance(stop_event, StopEvent):
+            raise TypeError(f"Expected StopEvent object, got {type(stop_event).__name__}")
             
-        if reason:
-            data['reason'] = reason
-            
-        if metadata:
-            data['metadata'] = metadata
-            
-        return self.emit(EventType.STOP, data)
+        # Emit the event
+        return self.emit(EventType.STOP, stop_event)
     
-    def emit_error(self, error_message: str, component_name: Optional[str] = None,
-                 exception: Optional[Exception] = None,
-                 metadata: Optional[Dict[str, Any]] = None) -> Event:
+    def emit_error(self, error_event) -> Event:
         """
         Emit a system error event.
         
         Args:
-            error_message: Error message
-            component_name: Optional name of the component with error
-            exception: Optional exception object
-            metadata: Optional additional error data
+            error_event: ErrorEvent object to emit
             
         Returns:
             The emitted event
         """
-        data = {
-            'message': error_message,
-            'timestamp': datetime.datetime.now()
-        }
-        
-        if component_name:
-            data['component'] = component_name
+        # Ensure error_event is an ErrorEvent
+        from src.events.system_events import ErrorEvent  # Assuming you have this class
+        if not isinstance(error_event, ErrorEvent):
+            raise TypeError(f"Expected ErrorEvent object, got {type(error_event).__name__}")
             
-        if exception:
-            data['exception'] = {
-                'type': type(exception).__name__,
-                'str': str(exception)
-            }
-            
-        if metadata:
-            data['metadata'] = metadata
-            
-        return self.emit(EventType.ERROR, data)
-
-
-# Example usage
-if __name__ == "__main__":
-    from event_bus import EventBus, Event
-    from event_handlers import LoggingHandler
-    
-    # Create event bus
-    event_bus = EventBus()
-    
-    # Create logging handler
-    logger = LoggingHandler(list(EventType))
-    
-    # Register handler for all event types
-    for event_type in EventType:
-        event_bus.register(event_type, logger)
-    
-    # Create emitters
-    market_data_emitter = MarketDataEmitter(event_bus)
-    signal_emitter = SignalEmitter(event_bus)
-    order_emitter = OrderEmitter(event_bus)
-    
-    # Emit events
-    market_data_emitter.emit_bar({
-        'symbol': 'AAPL',
-        'open': 150.0,
-        'high': 151.5,
-        'low': 149.5,
-        'close': 151.0,
-        'volume': 1000000
-    })
-    
-    signal_emitter.emit_signal(
-        symbol='AAPL',
-        signal_type='BUY',
-        price=151.0,
-        confidence=0.8,
-        rule_id='sma_crossover',
-        metadata={'ma_fast': 10, 'ma_slow': 30}
-    )
-    
-    order_emitter.emit_order(
-        symbol='AAPL',
-        order_type='MARKET',
-        quantity=100,
-        direction=1,
-        metadata={'strategy': 'trend_following'}
-    )
+        # Emit the event
+        return self.emit(EventType.ERROR, error_event)    

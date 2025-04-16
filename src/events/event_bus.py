@@ -14,6 +14,7 @@ import weakref
 import logging
 from typing import Dict, List, Optional, Union, Any, Callable, Set, Type
 
+from src.events.event_base import Event 
 from src.events.event_types import EventType
 
 # Set up logging

@@ -5,18 +5,13 @@ import datetime
 import logging
 from typing import Dict, List, Any, Optional
 
-from src.events.event_bus import EventBus, Event
+from src.events.event_base import Event
+from src.events.event_bus import EventBus
 from src.events.event_types import EventType
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
-class BarEvent:
-    """Wrapper class for bar data to standardize event handling."""
-    def __init__(self, bar_data):
-        self.bar = bar_data
-        self.timestamp = bar_data.get('timestamp', datetime.datetime.now())
-        self.symbol = bar_data.get('symbol', 'UNKNOWN')
 
 class EventManager:
     """
@@ -153,24 +148,13 @@ class EventManager:
             """Process signals and create position actions."""
             try:
                 signal = event.data
-                
-                # Convert to dictionary format expected by position manager
-                signal_dict = {
-                    'symbol': signal.symbol if hasattr(signal, 'symbol') else "SYNTHETIC",
-                    'signal_type': signal.signal_type.value if hasattr(signal, 'signal_type') else 0,
-                    'direction': 1 if hasattr(signal, 'signal_type') and signal.signal_type.value > 0 else -1,
-                    'price': signal.price if hasattr(signal, 'price') else 0,
-                    'confidence': signal.confidence if hasattr(signal, 'confidence') else 1.0,
-                    'timestamp': signal.timestamp if hasattr(signal, 'timestamp') else datetime.datetime.now(),
-                    'metadata': signal.metadata if hasattr(signal, 'metadata') else {}
-                }
-                
-                # Store signal history
-                self.signal_history.append(signal_dict)
-                
+
+                # Store signal directly in history
+                self.signal_history.append(signal)
+
                 # Process through position manager
                 if hasattr(self.position_manager, 'on_signal'):
-                    actions = self.position_manager.on_signal(signal_dict)
+                    actions = self.position_manager.on_signal(signal)
                     
                     # Execute position actions
                     if actions:
