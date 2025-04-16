@@ -172,18 +172,17 @@ class SMACrossoverRule:
         self.last_slow_ma = slow_ma
 
         return signal
-        
 
     def _create_signal(self, signal_type, bar_event, fast_ma, slow_ma):
         """
         Create a signal event.
-        
+
         Args:
             signal_type: Type of signal to create
             bar_event: The bar event that triggered the signal
             fast_ma: Current fast moving average value
             slow_ma: Current slow moving average value
-            
+
         Returns:
             SignalEvent object
         """
@@ -194,24 +193,23 @@ class SMACrossoverRule:
             'price': bar_event.get_price(),
             'fast_window': self.fast_window,
             'slow_window': self.slow_window,
-            'symbol': bar_event.get_symbol()
+            'symbol': bar_event.get_symbol(),
+            'confidence': min(1.0, abs(fast_ma - slow_ma) / ((fast_ma + slow_ma) / 2 * 0.01))
         }
-        
-        # Calculate confidence based on the distance between MAs
-        ma_diff = abs(fast_ma - slow_ma)
-        avg_price = (fast_ma + slow_ma) / 2
-        confidence = min(1.0, ma_diff / (avg_price * 0.01))  # Max confidence at 1% difference
-        
+
         # Create and return the signal
         return SignalEvent(
-            signal_type=signal_type,
+            signal_value=signal_type.value,  # Changed from signal_type to signal_value
             price=bar_event.get_price(),
             symbol=bar_event.get_symbol(),
             rule_id=self.name,
-            confidence=confidence,
-            metadata=metadata,
+            metadata=metadata,  # Move confidence into metadata
             timestamp=bar_event.get_timestamp()
         )
+    
+
+
+
         
     def reset(self):
         """Reset the rule's state."""
@@ -335,7 +333,7 @@ class TestSMACrossoverRule(unittest.TestCase):
                 self.assertIsNotNone(signal, f"Should generate BUY signal at bar {i+1}")
                 if signal is not None:
                     self.assertIsInstance(signal, SignalEvent)
-                    self.assertEqual(signal.signal_type, SignalType.BUY)
+                    self.assertEqual(signal.get_signal_value(), SignalEvent.BUY)  # Uses the BUY constant from SignalEvent
             else:
                 # No signal on other bars
                 self.assertIsNone(signal, f"Should not generate signal at bar {i+1}")
