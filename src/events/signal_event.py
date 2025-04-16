@@ -12,32 +12,37 @@ from enum import Enum
 from src.events.event_bus import Event
 from src.events.event_types import EventType
 
-
 class SignalEvent(Event):
     """
     Event class for trading signals.
     """
+    # Signal value constants
+    BUY = 1
+    SELL = -1
+    NEUTRAL = 0
     
-    def __init__(self, signal_type: SignalType, price: float, 
+    def __init__(self, signal_value: int, price: float, 
                  symbol: str = "default", rule_id: Optional[str] = None,
-                 confidence: float = 1.0, 
                  metadata: Optional[Dict[str, Any]] = None,
                  timestamp: Optional[datetime.datetime] = None):
         """
         Initialize a signal event.
         
         Args:
-            signal_type: Type of signal (BUY, SELL, NEUTRAL)
+            signal_value: Signal value (1 for buy, -1 for sell, 0 for neutral)
             price: Price at signal generation
             symbol: Instrument symbol
             rule_id: ID of the rule that generated the signal
-            confidence: Signal confidence (0-1)
             metadata: Additional signal metadata
             timestamp: Signal timestamp
         """
+        # Validate signal value
+        if signal_value not in (self.BUY, self.SELL, self.NEUTRAL):
+            raise ValueError(f"Invalid signal value: {signal_value}. Must be 1 (BUY), -1 (SELL), or 0 (NEUTRAL).")
+            
         # Create signal data
         data = {
-            'signal_type': signal_type,
+            'signal_value': signal_value,
             'price': price,
             'symbol': symbol,
             'rule_id': rule_id,
@@ -47,40 +52,41 @@ class SignalEvent(Event):
         # Initialize base Event
         super().__init__(EventType.SIGNAL, data, timestamp)
     
-    def get_signal_type(self):
-        """Get the signal type."""
-        return self.get('signal_type')
+    def get_signal_value(self) -> int:
+        """Get the signal value."""
+        return self.get('signal_value', self.NEUTRAL)
     
-    def get_price(self):
+    def is_active(self) -> bool:
+        """Check if this is an active signal (not neutral)."""
+        return self.get_signal_value() != self.NEUTRAL
+    
+    def get_signal_name(self) -> str:
+        """Get the signal name (BUY, SELL, or NEUTRAL)."""
+        value = self.get_signal_value()
+        if value == self.BUY:
+            return "BUY"
+        elif value == self.SELL:
+            return "SELL"
+        else:
+            return "NEUTRAL"
+    
+    def get_price(self) -> float:
         """Get the price at signal generation."""
         return self.get('price')
     
-    def get_symbol(self):
+    def get_symbol(self) -> str:
         """Get the instrument symbol."""
         return self.get('symbol', 'default')
     
-    def get_rule_id(self):
+    def get_rule_id(self) -> Optional[str]:
         """Get the rule ID that generated the signal."""
         return self.get('rule_id')
     
-    def get_metadata(self):
+    def get_metadata(self) -> Dict[str, Any]:
         """Get the signal metadata."""
         return self.get('metadata', {})
     
-    def __str__(self):
+    def __str__(self) -> str:
         """String representation of the signal event."""
-        signal_type = self.get_signal_type()
-        return f"SignalEvent({signal_type}, {self.get_symbol()}, price={self.get_price()}, confidence={self.get_confidence():.2f})"
-
-
-
-class SignalType(Enum):
-    """Enumeration of different signal types."""
-    BUY = 1
-    SELL = -1
-    NEUTRAL = 0
-    
-    @property
-    def is_active(self):
-        """Check if this is an active signal (not NEUTRAL)."""
-        return self != SignalType.NEUTRAL    
+        signal_name = self.get_signal_name()
+        return f"SignalEvent({signal_name}, {self.get_symbol()}, price={self.get_price()})"

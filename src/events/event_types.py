@@ -115,48 +115,6 @@ class EventType(Enum):
         except KeyError:
             raise ValueError(f"No event type with name: {name}")
 
-class BarEvent(Event):
-    """Specialized event for bar data."""
-    
-    def __init__(self, bar_data):
-        """Initialize with bar data."""
-        super().__init__(EventType.BAR, bar_data)
-
-    def timestamp(self):
-        """Get the bar timestamp."""
-        return self.bar.get('timestamp')
-    
-    @property
-    def open(self):
-        """Get the opening price."""
-        return self.data.get('Open')
-    
-    @property
-    def high(self):
-        """Get the high price."""
-        return self.data.get('High')
-    
-    @property
-    def low(self):
-        """Get the low price."""
-        return self.data.get('Low')
-    
-    @property
-    def close(self):
-        """Get the closing price."""
-        return self.data.get('Close')
-    
-    @property
-    def volume(self):
-        """Get the volume."""
-        return self.data.get('Volume')
-    
-    @property
-    def symbol(self):
-        """Get the symbol."""
-        return self.data.get('symbol')
-        
-
 
 class BarEvent(Event):
     """Event specifically for market data bars."""
