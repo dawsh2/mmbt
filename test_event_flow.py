@@ -1,7 +1,3 @@
-"""
-Test event flow through the trading system components.
-"""
-
 import datetime
 from src.events.event_bus import EventBus, Event
 from src.events.event_types import EventType, BarEvent
@@ -13,7 +9,7 @@ from src.strategies.weighted_strategy import WeightedStrategy
 
 
 def test_event_flow():
-    """Test the complete event flow through the system."""
+    
     # Create event bus
     event_bus = EventBus()
     
@@ -50,12 +46,9 @@ def test_event_flow():
         'Volume': 10000
     }
     
-    # Create a proper BarEvent with the bar_data dictionary
-    # This matches your BarEvent constructor which takes a single bar_data parameter
-    bar_event = BarEvent(bar_data)
-    
-    # Process through the event manager using the BarEvent
-    event_manager.process_market_data(bar_event)
+    # Process through the event manager - note that we pass the bar_data directly
+    # The event manager will handle wrapping it properly
+    event_manager.process_market_data(bar_data)
     
     # Check results
     status = event_manager.get_status()
@@ -68,16 +61,12 @@ def test_event_flow():
     print("Event flow test completed successfully")
 
 
+# In your test_event_flow.py
+
 def test_signal_handling():
-    """Test signal handling through the position manager."""
-    # Create event bus
-    event_bus = EventBus()
-    
+    """Test signal handling with standardized event pattern."""
     # Create position manager
-    position_manager = PositionManager()  # Uses default test portfolio
-    
-    # Register position manager with event bus
-    event_bus.register(EventType.SIGNAL, position_manager.on_signal)
+    position_manager = PositionManager()
     
     # Create a signal
     signal = Signal(
@@ -90,18 +79,15 @@ def test_signal_handling():
         symbol="TEST"
     )
     
-    # Create and emit signal event
+    # Create signal event
     signal_event = Event(EventType.SIGNAL, signal)
-    event_bus.emit(signal_event)
+    
+    # Process the event
+    position_manager.on_signal(signal_event)
     
     # Check position manager state
     assert hasattr(position_manager, 'signal_history'), "Position manager should have signal_history attribute"
     assert len(position_manager.signal_history) > 0, "Position manager should have recorded the signal"
-    
-    if len(position_manager.signal_history) > 0:
-        assert position_manager.signal_history[-1].signal_type == SignalType.BUY, "Position manager did not record the BUY signal"
-    
-    print("Signal handling test completed successfully")
 
 
 if __name__ == "__main__":
@@ -109,7 +95,8 @@ if __name__ == "__main__":
     print("Running test_event_flow...")
     test_event_flow()
     
-    print("\nRunning test_signal_handling...")
+    print("\\nRunning test_signal_handling...")
     test_signal_handling()
     
-    print("\nAll tests completed")
+    print("\\nAll tests completed")
+

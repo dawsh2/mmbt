@@ -35,10 +35,18 @@ from src.events.event_emitters import (
     SystemEmitter
 )
 
+# Import event utilities
+from src.events.event_utils import (
+    unpack_bar_event,
+    create_signal,
+    unpack_signal_event,
+    create_position_action
+)
+
 # Make common classes available directly from events module
 __all__ = [
     # Manager
-    'EventsManager',
+    'EventManager',
     
     # Core components
     'Event',
@@ -68,5 +76,11 @@ __all__ = [
     'OrderEmitter',
     'FillEmitter',
     'PortfolioEmitter',
-    'SystemEmitter'
+    'SystemEmitter',
+    
+    # Utilities
+    'unpack_bar_event',
+    'create_signal',
+    'unpack_signal_event',
+    'create_position_action'
 ]

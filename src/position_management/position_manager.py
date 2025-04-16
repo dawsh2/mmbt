@@ -92,42 +92,59 @@ class PositionManager:
             risk_manager: Risk management component
         """
         self.risk_manager = risk_manager
-    
-    def on_signal(self, signal_event: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """
-        Process a signal event and generate appropriate position actions.
-        
+
+
+    def on_signal(self, event):
+        """Process a signal event and generate position actions.
+
         Args:
-            signal_event: Signal event data
-            
+            event: Event object containing a Signal in its data attribute
+
         Returns:
-            List of position action dictionaries
+            List[Dict[str, Any]]: List of position actions (entry/exit/modify)
         """
-        print(f"\nPOSITION MANAGER received signal: {signal_event}")
-        signals = {}
-        current_prices = {}
-        # After signals and current_prices are populated
-        print(f"Extracted signals: {signals}")
-        print(f"Extracted prices: {current_prices}")
-        
-        # Extract signals and prices from event
-        if 'batch_signals' in signal_event:
-            # Batch signal event
-            for signal in signal_event['batch_signals']:
-                symbol = signal['symbol']
-                signals[symbol] = signal
-                current_prices[symbol] = signal.get('price', 0)
+        # Extract the Signal from the Event
+        if hasattr(event, 'data'):
+            signal = event.data
+
+            # Record the signal in our history for tracking/analysis
+            if hasattr(self, 'signal_history'):
+                self.signal_history.append(signal)
+
+            # Convert to format expected by _process_signals method
+            signals_dict = {}
+            prices_dict = {}
+
+            # Extract data from the Signal object
+            symbol = signal.symbol if hasattr(signal, 'symbol') else 'default'
+            price = signal.price if hasattr(signal, 'price') else 0
+
+            # Add to our dictionaries for processing
+            signals_dict[symbol] = signal
+            prices_dict[symbol] = price
+
+            # Generate position actions from the signal
+            actions = self._process_signals(signals_dict, prices_dict)
+
+            # Return the actions
+            return actions
         else:
-            # Single signal event
-            symbol = signal_event['symbol']
-            signals[symbol] = signal_event
-            current_prices[symbol] = signal_event.get('price', 0)
-            
-        # Process signals into position actions
-        actions = self._process_signals(signals, current_prices)
-        print(f"Generated actions: {actions}")
-        
-        return actions
+            # For backward compatibility, check if a Signal was passed directly
+            if hasattr(event, 'signal_type'):
+                signal = event
+                if hasattr(self, 'signal_history'):
+                    self.signal_history.append(signal)
+
+                symbol = signal.symbol if hasattr(signal, 'symbol') else 'default'
+                price = signal.price if hasattr(signal, 'price') else 0
+
+                signals_dict = {symbol: signal}
+                prices_dict = {symbol: price}
+
+                return self._process_signals(signals_dict, prices_dict)
+            else:
+                raise TypeError(f"Expected Event object with data attribute or Signal object")
+
 
     def on_fill(self, fill_event):
         """

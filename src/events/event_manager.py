@@ -234,16 +234,24 @@ class EventManager:
         
         return handle_fill_event
 
+    # In your event_manager.py
+
     def process_market_data(self, bar_data):
-        """
-        Process a single bar of market data through the system.
+        """Process a single bar of market data.
 
         Args:
-            bar_data: Dictionary containing OHLCV data
+            bar_data: Dictionary or BarEvent containing market data
         """
+        # Wrap in BarEvent if it's not already
+        if not isinstance(bar_data, BarEvent) and isinstance(bar_data, dict):
+            bar_event = BarEvent(bar_data)
+        else:
+            bar_event = bar_data
+
         # Create and emit a BAR event
-        bar_event = Event(EventType.BAR, bar_data)
-        self.event_bus.emit(bar_event)
+        event = Event(EventType.BAR, bar_event)
+        self.event_bus.emit(event)
+
     
  
     def get_status(self):
