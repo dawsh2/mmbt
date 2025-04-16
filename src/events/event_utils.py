@@ -3,6 +3,9 @@ Event Utilities Module
 
 Provides helper functions for working with events, including
 unpacking/packing event data and creating standardized objects.
+
+TODO: Eventually some of these, along with others sprinkled throughout
+the module, should be refactored into a SystemEvents class. 
 """
 
 from datetime import datetime
@@ -177,3 +180,159 @@ def create_position_action(action_type: str, symbol: str, **kwargs) -> Dict[str,
     return action
 
 
+
+
+def create_error_event(source, message, error_type=None, original_event=None):
+    """Create a standardized error event."""
+    error_data = {
+        'source': source,
+        'message': str(message),
+        'error_type': error_type or type(message).__name__,
+        'timestamp': datetime.datetime.now()
+    }
+    
+    if original_event:
+        error_data['original_event_id'] = original_event.id
+        error_data['original_event_type'] = original_event.event_type.name
+        
+    return Event(EventType.ERROR, error_data)
+
+
+class MetricsCollector:
+    """
+    Collects and aggregates metrics from all system components.
+    """
+    
+    def __init__(self, components):
+        """
+        Initialize metrics collector.
+        
+        Args:
+            components: Dictionary of system components to collect metrics from
+        """
+        self.components = components
+        self.start_time = datetime.datetime.now()
+        
+    def get_metrics(self):
+        """
+        Get aggregated system metrics.
+        
+        Returns:
+            Dictionary of metrics from all components
+        """
+        metrics = {
+            'system': {
+                'run_time': (datetime.datetime.now() - self.start_time).total_seconds(),
+                'timestamp': datetime.datetime.now()
+            }
+        }
+        
+        # Collect metrics from each component
+        for name, component in self.components.items():
+            if hasattr(component, 'get_metrics'):
+                metrics[name] = component.get_metrics()
+        
+        return metrics
+
+
+class EventValidator:
+    """
+    Validates events to ensure they conform to expected schemas.
+    """
+    
+    def __init__(self):
+        # Import schemas
+        from src.events.event_schema import EVENT_SCHEMAS
+        self.schemas = EVENT_SCHEMAS
+        
+    def validate(self, event):
+        """
+        Validate an event against its schema.
+        
+        Args:
+            event: Event to validate
+            
+        Returns:
+            True if valid
+            
+        Raises:
+            ValueError: If event is invalid
+        """
+        # Get schema for this event type
+        event_type_name = event.event_type.name
+        if event_type_name not in self.schemas:
+            raise ValueError(f"No schema defined for event type: {event_type_name}")
+            
+        schema = self.schemas[event_type_name]
+        
+        # If event.data is a specialized event object
+        if hasattr(event.data, '__dict__'):
+            # Extract attributes from object
+            data = {attr: getattr(event.data, attr) 
+                   for attr in dir(event.data) 
+                   if not attr.startswith('_') and not callable(getattr(event.data, attr))}
+        elif isinstance(event.data, dict):
+            data = event.data
+        else:
+            # If data is neither an object nor dict, we can't validate
+            raise ValueError(f"Cannot validate event data of type: {type(event.data)}")
+            
+        # Validate against schema
+        try:
+            schema.validate(data)
+            return True
+        except ValueError as e:
+            raise ValueError(f"Invalid {event_type_name} event: {str(e)}")    
+
+
+class ErrorHandler:
+    """
+    Centralized handler for system errors.
+    
+    This component tracks errors, logs them appropriately, and can
+    perform actions like stopping the system or sending notifications.
+    """
+    
+    def __init__(self, event_bus, log_level=logging.ERROR):
+        self.event_bus = event_bus
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(log_level)
+        
+        self.error_counts = {}
+        self.error_threshold = 5  # Max errors of same type before system halt
+        
+        # Register with event bus
+        self.event_bus.register(EventType.ERROR, self)
+        
+    def handle(self, event):
+        """Handle an error event."""
+        if event.event_type != EventType.ERROR:
+            return
+            
+        error_data = event.data
+        error_type = error_data.get('error_type', 'unknown')
+        error_msg = error_data.get('message', 'No message')
+        source = error_data.get('source', 'unknown')
+        
+        # Log the error
+        self.logger.error(f"Error in {source}: {error_msg}")
+        
+        # Track error counts
+        if error_type not in self.error_counts:
+            self.error_counts[error_type] = 0
+        self.error_counts[error_type] += 1
+        
+        # Check if threshold exceeded
+        if self.error_counts[error_type] >= self.error_threshold:
+            self.logger.critical(
+                f"Error threshold exceeded for {error_type}. System halting."
+            )
+            # Emit system halt event
+            halt_event = Event(
+                EventType.STOP, 
+                {
+                    'reason': f"Error threshold exceeded for {error_type}",
+                    'emergency': True
+                }
+            )
+            self.event_bus.emit(halt_event)        

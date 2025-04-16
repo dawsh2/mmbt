@@ -16,52 +16,11 @@ from typing import Dict, List, Optional, Union, Any, Callable, Set, Type
 
 from src.events.event_base import Event 
 from src.events.event_types import EventType
+from src.events.event_utils import EventValidator
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
-
-# For consistency across codebase, should this be refactored to event_base.py?
-class Event:
-    """
-    Base class for all events in the trading system.
-
-    Events contain a type, timestamp, unique ID, and data payload.
-    """
-
-    def __init__(self, event_type: EventType, data: Any = None, 
-               timestamp: Optional[datetime.datetime] = None):
-        """
-        Initialize an event.
-        
-        Args:
-            event_type: Type of the event
-            data: Optional data payload
-            timestamp: Event timestamp (defaults to current time)
-        """
-        self.event_type = event_type
-        self.data = data
-        self.timestamp = timestamp or datetime.datetime.now()
-        self.id = str(uuid.uuid4())
-    
-    def get(self, key, default=None):
-        """
-        Get a value from the event data.
-        
-        Args:
-            key: Dictionary key to retrieve
-            default: Default value if key is not found
-            
-        Returns:
-            Value for the key or default
-        """
-        if isinstance(self.data, dict):
-            return self.data.get(key, default)
-        return default
-    
-    def __str__(self) -> str:
-        """String representation of the event."""
-        return f"Event(type={self.event_type.name}, id={self.id}, timestamp={self.timestamp})"
 
     
 class EventBus:
@@ -92,6 +51,21 @@ class EventBus:
         # Start dispatch thread if in async mode
         if async_mode:
             self.start_dispatch_thread()
+
+        # Initialize metrics
+        self.metrics = {
+            'events_emitted': {event_type: 0 for event_type in EventType},
+            'events_processed': {event_type: 0 for event_type in EventType},
+            'event_processing_time': {event_type: [] for event_type in EventType},
+            'errors': 0,
+            'last_event_time': None,
+            'event_rate': 0  # events/second
+        }
+        self.metrics_start_time = datetime.datetime.now()
+        self.metrics_last_update = self.metrics_start_time
+        self.validate_events = validate_events
+        if validate_events:
+            self.validator = EventValidator()
     
     def register(self, event_type: EventType, handler) -> None:
         """
@@ -127,14 +101,25 @@ class EventBus:
                 return True
         
         return False
-    
-    def emit(self, event: Event) -> None:
-        """
-        Emit an event to all registered handlers.
-        
-        Args:
-            event: Event to emit
-        """
+
+    def emit(self, event):
+        """Emit an event to registered handlers."""
+        # Validate event if enabled
+        if self.validate_events:
+            try:
+                self.validator.validate(event)
+            except ValueError as e:
+                logger.error(f"Event validation failed: {str(e)}")
+                # Create and emit an error event instead
+                error_event = create_error_event(
+                    source="EventBus",
+                    message=str(e),
+                    error_type="ValidationError",
+                    original_event=event
+                )
+                self._dispatch_event(error_event)
+                return
+
         # Add to history
         self._add_to_history(event)
         
@@ -270,6 +255,48 @@ class EventBus:
                 pass
             except Exception as e:
                 logger.error(f"Error in dispatch loop: {str(e)}", exc_info=True)
+
+
+def _update_metrics(self, event_type, processing_time=None):
+    """Update event metrics."""
+    # Count emitted event
+    self.metrics['events_emitted'][event_type] += 1
+    
+    # Update timing
+    now = datetime.datetime.now()
+    self.metrics['last_event_time'] = now
+    
+    # Update event rate (every 10 events)
+    total_events = sum(self.metrics['events_emitted'].values())
+    if total_events % 10 == 0:
+        elapsed = (now - self.metrics_start_time).total_seconds()
+        if elapsed > 0:
+            self.metrics['event_rate'] = total_events / elapsed
+    
+    # Add processing time if provided
+    if processing_time is not None:
+        self.metrics['events_processed'][event_type] += 1
+        self.metrics['event_processing_time'][event_type].append(processing_time)
+
+    def get_metrics(self):
+        """Get the current event metrics."""
+        # Calculate average processing times
+        avg_processing_times = {}
+        for event_type, times in self.metrics['event_processing_time'].items():
+            if times:
+                avg_processing_times[event_type] = sum(times) / len(times)
+            else:
+                avg_processing_times[event_type] = 0
+
+        # Return compiled metrics
+        return {
+            'events_emitted': dict(self.metrics['events_emitted']),
+            'events_processed': dict(self.metrics['events_processed']),
+            'avg_processing_time': avg_processing_times,
+            'event_rate': self.metrics['event_rate'],
+            'run_time': (datetime.datetime.now() - self.metrics_start_time).total_seconds(),
+            'errors': self.metrics['errors']
+        }                
     
     def reset(self) -> None:
         """Reset the event bus state."""
