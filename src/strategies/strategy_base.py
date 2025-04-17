@@ -2,7 +2,7 @@
 Strategy Base Module
 
 This module provides the base class for all trading strategies in the system.
-It standardizes signal generation and event handling for strategies.
+It standardizes the interface for processing signals and handling events.
 """
 
 import datetime
@@ -24,7 +24,8 @@ class Strategy(ABC):
     Base class for all trading strategies.
     
     This class provides the standard interface for strategies to receive
-    market data events and generate signal events in response.
+    market data events and process signals in response. Strategies typically
+    evaluate signals from multiple rules or other sources to make trading decisions.
     """
     
     def __init__(self, name: str, event_bus: Optional[Any] = None):
@@ -43,10 +44,10 @@ class Strategy(ABC):
         
     def on_bar(self, event: Event) -> Optional[SignalEvent]:
         """
-        Process a bar event and generate signals.
+        Process a bar event and process signals.
         
         This method is called when a new bar event is received.
-        It extracts bar data and delegates to generate_signals.
+        It extracts bar data and delegates to process_signals.
         
         Args:
             event: Bar event
@@ -71,8 +72,8 @@ class Strategy(ABC):
             # Update indicators
             self.update_indicators(bar_event.get_data())
             
-            # Generate signals
-            signal_event = self.generate_signals(bar_event)
+            # Process signals
+            signal_event = self.process_signals(bar_event)
             
             # Store last signal
             self.last_signal = signal_event
@@ -100,18 +101,18 @@ class Strategy(ABC):
         pass
     
     @abstractmethod
-    def generate_signals(self, bar_event: BarEvent) -> Optional[SignalEvent]:
+    def process_signals(self, bar_event: BarEvent) -> Optional[SignalEvent]:
         """
-        Generate trading signals based on market data.
+        Process signals based on market data.
         
-        This method must be implemented by subclasses to generate
-        signal events based on market data and strategy logic.
+        This method must be implemented by subclasses to process
+        signals from rules or other sources and determine a trading decision.
         
         Args:
             bar_event: BarEvent containing market data
             
         Returns:
-            SignalEvent if signal generated, None otherwise
+            SignalEvent if a signal is produced, None otherwise
         """
         pass
     
@@ -142,3 +143,15 @@ class Strategy(ABC):
             'indicators': self.indicators,
             'state': self.state
         }
+"""
+Implementation Notes:
+
+1. The primary method renamed from 'generate_signals' to 'process_signals'
+   to better reflect that strategies typically process signals from rules
+   rather than generating them directly from market data.
+
+2. No helper methods for creating signals - strategies should directly
+   use the SignalEvent constructor when needed.
+
+3. Clear documentation explaining the role of strategies in the signal flow.
+"""

@@ -86,7 +86,7 @@ class WeightedStrategy(Strategy):
             # Extract bar data for components that might need it in dictionary form
             bar = bar_event.get_data()
             
-            # We pass bar_event to components that can handle it, or bar dict for backward compatibility
+            # We pass bar_event to components that can handle it
             for i, component in enumerate(self.components):
                 signal = None
                 
@@ -103,21 +103,23 @@ class WeightedStrategy(Strategy):
                     signal = component.generate_signals(bar_event)
                 elif hasattr(component, 'generate_signal'):
                     signal = component.generate_signal(bar_event)
-                # For backward compatibility with components expecting dictionary
                 else:
-                    # Try passing the raw bar dictionary
-                    try:
-                        signal = component.on_bar(bar)
-                    except Exception as e:
-                        logger.warning(f"Component {i} error: {str(e)}")
-                        continue
+                    logger.warning(f"Component {i} does not have a compatible signal generation method")
+                    continue
 
-                if signal is not None:
+                if signal is not None and isinstance(signal, SignalEvent):
                     component_signals.append(signal)
 
             if not component_signals:
                 # No signals generated, return neutral
-                return self._create_neutral_signal(bar_event)
+                return SignalEvent(
+                    signal_value=SignalEvent.NEUTRAL,
+                    price=bar_event.get_price(),
+                    symbol=bar_event.get_symbol(),
+                    rule_id=self.name,
+                    metadata={'component_count': 0},
+                    timestamp=bar_event.get_timestamp()
+                )
 
             # Calculate weighted signal
             weighted_sum = 0.0
@@ -128,27 +130,14 @@ class WeightedStrategy(Strategy):
                 # Get weight for this component
                 weight = self.weights[i] if i < len(self.weights) else 1.0/len(component_signals)
 
-                # Get direction from signal
-                if isinstance(signal, SignalEvent):
-                    # Extract from SignalEvent
-                    direction = signal.get_signal_type()
-                    # Store for metadata
-                    signal_weights[signal.get_rule_id() or f"component_{i}"] = {
-                        'weight': float(weight),
-                        'direction': int(direction)
-                    }
-                elif isinstance(signal, dict) and 'signal_type' in signal:
-                    # Legacy dictionary signal
-                    direction = signal['signal_type']
-                    # Store for metadata
-                    signal_weights[signal.get('rule_id', f"component_{i}")] = {
-                        'weight': float(weight),
-                        'direction': int(direction)
-                    }
-                else:
-                    # Unknown signal format, skip
-                    logger.warning(f"Unknown signal format from component {i}: {type(signal)}")
-                    continue
+                # Extract direction value from SignalEvent
+                direction = signal.get_signal_value()
+                
+                # Store for metadata
+                signal_weights[signal.get_rule_id() or f"component_{i}"] = {
+                    'weight': float(weight),
+                    'direction': int(direction)
+                }
 
                 # Apply weight
                 weighted_sum += direction * weight
@@ -165,13 +154,13 @@ class WeightedStrategy(Strategy):
 
             # Determine final signal type based on weighted sum
             if normalized_sum > self.buy_threshold:
-                signal_type = SignalEvent.BUY
+                signal_value = SignalEvent.BUY
                 self.state['last_signal'] = 'BUY'
             elif normalized_sum < self.sell_threshold:
-                signal_type = SignalEvent.SELL
+                signal_value = SignalEvent.SELL
                 self.state['last_signal'] = 'SELL'
             else:
-                signal_type = SignalEvent.NEUTRAL
+                signal_value = SignalEvent.NEUTRAL
                 self.state['last_signal'] = 'NEUTRAL'
 
             # Create the combined signal
@@ -182,7 +171,7 @@ class WeightedStrategy(Strategy):
             }
             
             return SignalEvent(
-                signal_type=signal_type,
+                signal_value=signal_value,
                 price=bar_event.get_price(),
                 symbol=bar_event.get_symbol(),
                 rule_id=self.name,
@@ -193,25 +182,6 @@ class WeightedStrategy(Strategy):
         except Exception as e:
             logger.error(f"Error in {self.name}.generate_signals: {str(e)}", exc_info=True)
             return None
-
-    def _create_neutral_signal(self, bar_event: BarEvent) -> SignalEvent:
-        """
-        Create a neutral signal.
-        
-        Args:
-            bar_event: BarEvent containing market data
-            
-        Returns:
-            Neutral SignalEvent
-        """
-        return SignalEvent(
-            signal_type=SignalEvent.NEUTRAL,
-            price=bar_event.get_price(),
-            symbol=bar_event.get_symbol(),
-            rule_id=self.name,
-            metadata={'component_count': 0},
-            timestamp=bar_event.get_timestamp()
-        )
 
     def reset(self):
         """Reset all components in the strategy."""
