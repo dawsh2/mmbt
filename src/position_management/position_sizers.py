@@ -11,6 +11,8 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Union, Any, Callable
 
+from src.events.signal_event import SignalEvent
+
 # Set up logging
 logger = logging.getLogger(__name__)
 
@@ -24,9 +26,9 @@ class PositionSizer(ABC):
     """
     
     @abstractmethod
-    def calculate_position_size(self, signal: Dict[str, Any], 
+    def calculate_position_size(self, signal: SignalEvent, 
                                portfolio: Any, 
-                               current_price: float) -> float:
+                               current_price: Optional[float] = None) -> float:
         """
         Calculate position size for a signal.
         
@@ -57,11 +59,10 @@ class FixedSizeSizer(PositionSizer):
             fixed_size: Number of units to trade
         """
         self.fixed_size = fixed_size
-
         
-    def calculate_position_size(self, signal: Dict[str, Any], 
+    def calculate_position_size(self, signal: SignalEvent, 
                                portfolio: Any, 
-                               current_price: float) -> float:
+                               current_price: Optional[float] = None) -> float:
         """
         Calculate position size for a signal.
         
@@ -74,10 +75,8 @@ class FixedSizeSizer(PositionSizer):
             Fixed position size
         """
         # Apply direction
-        direction = signal.get('direction', 1)
-        if isinstance(direction, str):
-            direction = 1 if direction.upper() in ['BUY', 'LONG'] else -1
-            
+        direction = signal.signal_type.value if hasattr(signal.signal_type, 'value') else 0
+        
         return self.fixed_size * direction
 
 
@@ -89,54 +88,66 @@ class PercentOfEquitySizer(PositionSizer):
     the current portfolio equity.
     """
     
-    def __init__(self, percent: float = 0.02, max_pct: float = 0.25):
+    def __init__(self, percent: float = 2.0, max_pct: float = 25.0):
         """
         Initialize percent of equity position sizer.
         
         Args:
-            percent: Percentage of equity to allocate (0.02 = 2%)
+            percent: Percentage of equity to allocate (2.0 = 2%)
             max_pct: Maximum percentage of equity for any one position
         """
         self.percent = percent
         self.max_pct = max_pct
 
-    def calculate_position_size(self, signal, portfolio, price=None):
-            """
-            Calculate position size based on a percentage of equity.
-
-            Args:
-                signal: Signal object
-                portfolio: Portfolio instance
-                price: Current price (optional)
-
-            Returns:
-                float: Position size (positive for buy, negative for sell)
-            """
-            # Get equity from portfolio
-            equity = portfolio.equity if hasattr(portfolio, 'equity') else 10000
-
-            # Get direction directly from signal_type
-            direction = signal.signal_type.value
-
-            # Skip neutral signals
-            if direction == 0:
-                return 0
-
-            # Calculate position size
-            size = equity * self.percent / 100
-
-            # If price is not provided, use signal price
-            if price is None and hasattr(signal, 'price') and signal.price is not None:
-                price = signal.price
-
-            if price and price > 0:
-                size = size / price
-
-            # Apply direction
-            return size * direction
-
-
- 
+    def calculate_position_size(self, signal: SignalEvent, 
+                               portfolio: Any, 
+                               current_price: Optional[float] = None) -> float:
+        """
+        Calculate position size based on a percentage of equity.
+        
+        Args:
+            signal: Trading signal
+            portfolio: Current portfolio state
+            current_price: Current market price
+            
+        Returns:
+            Position size (positive for buy, negative for sell)
+        """
+        # Get equity from portfolio
+        equity = 0
+        if hasattr(portfolio, 'equity'):
+            equity = portfolio.equity
+        elif hasattr(portfolio, 'get_equity'):
+            equity = portfolio.get_equity()
+        elif isinstance(portfolio, dict) and 'equity' in portfolio:
+            equity = portfolio['equity']
+            
+        if equity <= 0:
+            return 0
+        
+        # Get direction from signal
+        direction = signal.signal_type.value if hasattr(signal.signal_type, 'value') else 0
+        
+        # Skip neutral signals
+        if direction == 0:
+            return 0
+        
+        # Use price from signal if not provided
+        if current_price is None:
+            current_price = signal.price
+        
+        if current_price is None or current_price <= 0:
+            return 0
+        
+        # Calculate position size as percentage of equity
+        size = equity * (self.percent / 100) / current_price
+        
+        # Apply maximum percentage constraint
+        max_size = equity * (self.max_pct / 100) / current_price
+        size = min(size, max_size)
+        
+        # Apply direction
+        return size * direction
 
 
 class VolatilityPositionSizer(PositionSizer):
@@ -147,13 +158,13 @@ class VolatilityPositionSizer(PositionSizer):
     portfolio equity per unit of volatility.
     """
     
-    def __init__(self, risk_pct: float = 0.01, atr_multiplier: float = 2.0, 
-                lookback_period: int = 20, max_pct: float = 0.25):
+    def __init__(self, risk_pct: float = 1.0, atr_multiplier: float = 2.0, 
+                lookback_period: int = 20, max_pct: float = 25.0):
         """
         Initialize volatility-based position sizer.
         
         Args:
-            risk_pct: Percentage of equity to risk (0.01 = 1%)
+            risk_pct: Percentage of equity to risk (1.0 = 1%)
             atr_multiplier: Multiplier for ATR to set stop distance
             lookback_period: Period for ATR calculation
             max_pct: Maximum percentage of equity for any one position
@@ -163,9 +174,9 @@ class VolatilityPositionSizer(PositionSizer):
         self.lookback_period = lookback_period
         self.max_pct = max_pct
         
-    def calculate_position_size(self, signal: Dict[str, Any], 
+    def calculate_position_size(self, signal: SignalEvent, 
                                portfolio: Any, 
-                               current_price: float) -> float:
+                               current_price: Optional[float] = None) -> float:
         """
         Calculate position size for a signal.
         
@@ -178,37 +189,62 @@ class VolatilityPositionSizer(PositionSizer):
             Position size based on volatility
         """
         # Get portfolio equity
-        equity = getattr(portfolio, 'equity', 0)
+        equity = 0
+        if hasattr(portfolio, 'equity'):
+            equity = portfolio.equity
+        elif hasattr(portfolio, 'get_equity'):
+            equity = portfolio.get_equity()
+        elif isinstance(portfolio, dict) and 'equity' in portfolio:
+            equity = portfolio['equity']
+            
         if equity <= 0:
+            logger.warning("Portfolio equity is zero or negative")
             return 0
             
-        # Get ATR from signal or use default volatility estimate
-        atr = signal.get('atr', None)
+        # Use provided price or get from signal
+        if current_price is None:
+            current_price = signal.price
+            
+        if current_price is None or current_price <= 0:
+            logger.warning("Current price is invalid")
+            return 0
+            
+        # Get ATR from signal metadata or use default volatility estimate
+        atr = None
+        if hasattr(signal, 'metadata') and signal.metadata:
+            atr = signal.metadata.get('atr')
+            
+        if atr is None:
+            # Try other common names for volatility
+            if hasattr(signal, 'metadata') and signal.metadata:
+                atr = signal.metadata.get('volatility')
+                if atr is None:
+                    atr = signal.metadata.get('atr_value')
+            
         if atr is None:
             # Default to estimated volatility based on price
             atr = current_price * 0.015  # Assume 1.5% daily volatility
-            logger.warning(f"No ATR provided in signal, using estimate: {atr:.4f}")
+            logger.debug(f"No ATR provided in signal, using estimate: {atr:.4f}")
             
         # Calculate stop distance
         stop_distance = atr * self.atr_multiplier
         
         # Calculate dollar amount to risk
-        risk_amount = equity * self.risk_pct
+        risk_amount = equity * (self.risk_pct / 100)
         
         # Calculate units based on risk amount and stop distance
         if stop_distance <= 0:
+            logger.warning("Stop distance is zero or negative")
             return 0
             
         units = risk_amount / stop_distance
         
         # Limit by maximum percentage of equity
-        max_units = (equity * self.max_pct) / current_price
+        max_units = (equity * (self.max_pct / 100)) / current_price
         units = min(units, max_units)
         
         # Apply direction
-        direction = signal.get('direction', 1)
-        if isinstance(direction, str):
-            direction = 1 if direction.upper() in ['BUY', 'LONG'] else -1
+        direction = signal.signal_type.value if hasattr(signal.signal_type, 'value') else 0
             
         return units * direction
 
@@ -222,7 +258,7 @@ class KellyCriterionSizer(PositionSizer):
     """
     
     def __init__(self, win_rate: float = 0.5, reward_risk_ratio: float = 1.0, 
-                fraction: float = 0.5, max_pct: float = 0.25):
+                fraction: float = 0.5, max_pct: float = 25.0):
         """
         Initialize Kelly Criterion position sizer.
         
@@ -237,9 +273,9 @@ class KellyCriterionSizer(PositionSizer):
         self.fraction = fraction
         self.max_pct = max_pct
         
-    def calculate_position_size(self, signal: Dict[str, Any], 
+    def calculate_position_size(self, signal: SignalEvent, 
                                portfolio: Any, 
-                               current_price: float) -> float:
+                               current_price: Optional[float] = None) -> float:
         """
         Calculate position size for a signal.
         
@@ -252,13 +288,33 @@ class KellyCriterionSizer(PositionSizer):
             Position size based on Kelly Criterion
         """
         # Get portfolio equity
-        equity = getattr(portfolio, 'equity', 0)
+        equity = 0
+        if hasattr(portfolio, 'equity'):
+            equity = portfolio.equity
+        elif hasattr(portfolio, 'get_equity'):
+            equity = portfolio.get_equity()
+        elif isinstance(portfolio, dict) and 'equity' in portfolio:
+            equity = portfolio['equity']
+            
         if equity <= 0:
             return 0
             
+        # Use provided price or get from signal
+        if current_price is None:
+            current_price = signal.price
+            
+        if current_price is None or current_price <= 0:
+            return 0
+        
         # Get win rate and reward-risk ratio from signal or use defaults
-        win_rate = signal.get('win_rate', self.win_rate)
-        reward_risk_ratio = signal.get('reward_risk_ratio', self.reward_risk_ratio)
+        win_rate = self.win_rate
+        reward_risk_ratio = self.reward_risk_ratio
+        
+        if hasattr(signal, 'metadata') and signal.metadata:
+            if 'win_rate' in signal.metadata:
+                win_rate = signal.metadata['win_rate']
+            if 'reward_risk_ratio' in signal.metadata:
+                reward_risk_ratio = signal.metadata['reward_risk_ratio']
         
         # Calculate Kelly percentage
         # Kelly formula: f* = (p×b - q) ÷ b
@@ -267,7 +323,7 @@ class KellyCriterionSizer(PositionSizer):
         kelly_pct = (win_rate * reward_risk_ratio - loss_rate) / reward_risk_ratio
         
         # Apply fraction and limit
-        allocation_pct = min(kelly_pct * self.fraction, self.max_pct)
+        allocation_pct = min(kelly_pct * self.fraction, self.max_pct / 100)
         
         # Ensure non-negative (Kelly can be negative if edge is negative)
         allocation_pct = max(0, allocation_pct)
@@ -282,9 +338,7 @@ class KellyCriterionSizer(PositionSizer):
         units = allocation / current_price
         
         # Apply direction
-        direction = signal.get('direction', 1)
-        if isinstance(direction, str):
-            direction = 1 if direction.upper() in ['BUY', 'LONG'] else -1
+        direction = signal.signal_type.value if hasattr(signal.signal_type, 'value') else 0
             
         return units * direction
 
@@ -297,7 +351,7 @@ class RiskParityPositionSizer(PositionSizer):
     across different assets based on their volatility.
     """
     
-    def __init__(self, target_portfolio_volatility: float = 0.10, max_pct: float = 0.25):
+    def __init__(self, target_portfolio_volatility: float = 0.10, max_pct: float = 25.0):
         """
         Initialize risk parity position sizer.
         
@@ -309,9 +363,9 @@ class RiskParityPositionSizer(PositionSizer):
         self.max_pct = max_pct
         self.asset_volatilities = {}  # Cache for asset volatilities
         
-    def calculate_position_size(self, signal: Dict[str, Any], 
+    def calculate_position_size(self, signal: SignalEvent, 
                                portfolio: Any, 
-                               current_price: float) -> float:
+                               current_price: Optional[float] = None) -> float:
         """
         Calculate position size for a signal.
         
@@ -324,15 +378,37 @@ class RiskParityPositionSizer(PositionSizer):
             Position size based on risk parity
         """
         # Get portfolio equity
-        equity = getattr(portfolio, 'equity', 0)
+        equity = 0
+        if hasattr(portfolio, 'equity'):
+            equity = portfolio.equity
+        elif hasattr(portfolio, 'get_equity'):
+            equity = portfolio.get_equity()
+        elif isinstance(portfolio, dict) and 'equity' in portfolio:
+            equity = portfolio['equity']
+            
         if equity <= 0:
             return 0
             
+        # Use provided price or get from signal
+        if current_price is None:
+            current_price = signal.price
+            
+        if current_price is None or current_price <= 0:
+            return 0
+            
         # Get symbol
-        symbol = signal.get('symbol', 'default')
+        symbol = signal.symbol
         
         # Get asset volatility from signal or use cached/default
-        volatility = signal.get('volatility', None)
+        volatility = None
+        if hasattr(signal, 'metadata') and signal.metadata:
+            volatility = signal.metadata.get('volatility')
+            if volatility is None:
+                volatility = signal.metadata.get('atr', None)
+                if volatility is not None:
+                    # Convert ATR to percentage volatility
+                    volatility = volatility / current_price
+        
         if volatility is None:
             volatility = self.asset_volatilities.get(symbol, 0.01)  # Default to 1% daily volatility
             
@@ -340,9 +416,14 @@ class RiskParityPositionSizer(PositionSizer):
         self.asset_volatilities[symbol] = volatility
             
         # Get number of assets in portfolio
-        positions = getattr(portfolio, 'positions', {})
-        unique_symbols = set([symbol] + [p.symbol for p in positions.values()])
-        num_assets = max(1, len(unique_symbols))
+        num_assets = 1
+        if hasattr(portfolio, 'positions'):
+            positions = portfolio.positions
+            if isinstance(positions, dict):
+                unique_symbols = set([symbol] + list(positions.keys()))
+                num_assets = len(unique_symbols)
+        elif hasattr(portfolio, 'get_position_count'):
+            num_assets = max(1, portfolio.get_position_count() + 1) # +1 for new position
         
         # Calculate target risk per asset assuming equal risk allocation
         risk_per_asset = self.target_portfolio_volatility / math.sqrt(num_assets)
@@ -354,13 +435,11 @@ class RiskParityPositionSizer(PositionSizer):
         units = risk_amount / (current_price * volatility)
         
         # Limit by maximum percentage of equity
-        max_units = (equity * self.max_pct) / current_price
+        max_units = (equity * (self.max_pct / 100)) / current_price
         units = min(units, max_units)
         
         # Apply direction
-        direction = signal.get('direction', 1)
-        if isinstance(direction, str):
-            direction = 1 if direction.upper() in ['BUY', 'LONG'] else -1
+        direction = signal.signal_type.value if hasattr(signal.signal_type, 'value') else 0
             
         return units * direction
 
@@ -373,13 +452,13 @@ class PSARPositionSizer(PositionSizer):
     and a fixed risk percentage of equity.
     """
     
-    def __init__(self, risk_pct: float = 0.01, psar_factor: float = 0.02, 
-                psar_max: float = 0.2, max_pct: float = 0.25):
+    def __init__(self, risk_pct: float = 1.0, psar_factor: float = 0.02, 
+                psar_max: float = 0.2, max_pct: float = 25.0):
         """
         Initialize PSAR-based position sizer.
         
         Args:
-            risk_pct: Percentage of equity to risk (0.01 = 1%)
+            risk_pct: Percentage of equity to risk (1.0 = 1%)
             psar_factor: PSAR acceleration factor
             psar_max: Maximum PSAR acceleration
             max_pct: Maximum percentage of equity for any one position
@@ -389,9 +468,9 @@ class PSARPositionSizer(PositionSizer):
         self.psar_max = psar_max
         self.max_pct = max_pct
         
-    def calculate_position_size(self, signal: Dict[str, Any], 
+    def calculate_position_size(self, signal: SignalEvent, 
                                portfolio: Any, 
-                               current_price: float) -> float:
+                               current_price: Optional[float] = None) -> float:
         """
         Calculate position size for a signal.
         
@@ -404,21 +483,39 @@ class PSARPositionSizer(PositionSizer):
             Position size based on PSAR stops
         """
         # Get portfolio equity
-        equity = getattr(portfolio, 'equity', 0)
+        equity = 0
+        if hasattr(portfolio, 'equity'):
+            equity = portfolio.equity
+        elif hasattr(portfolio, 'get_equity'):
+            equity = portfolio.get_equity()
+        elif isinstance(portfolio, dict) and 'equity' in portfolio:
+            equity = portfolio['equity']
+            
         if equity <= 0:
             return 0
             
-        # Get PSAR value from signal
-        psar = signal.get('psar', None)
+        # Use provided price or get from signal
+        if current_price is None:
+            current_price = signal.price
+            
+        if current_price is None or current_price <= 0:
+            return 0
+            
+        # Get PSAR value from signal metadata
+        psar = None
+        if hasattr(signal, 'metadata') and signal.metadata:
+            psar = signal.metadata.get('psar')
+            
         if psar is None:
             logger.warning(f"No PSAR value provided in signal, using estimated stop distance")
-            # Default to estimated stop distance based on price
-            psar = current_price * 0.98 if signal.get('direction', 1) > 0 else current_price * 1.02
+            # Default to estimated stop distance based on price and direction
+            direction = signal.signal_type.value if hasattr(signal.signal_type, 'value') else 0
+            psar = current_price * 0.98 if direction > 0 else current_price * 1.02
             
         # Calculate stop distance
-        direction = signal.get('direction', 1)
-        if isinstance(direction, str):
-            direction = 1 if direction.upper() in ['BUY', 'LONG'] else -1
+        direction = signal.signal_type.value if hasattr(signal.signal_type, 'value') else 0
+        if direction == 0:
+            return 0
             
         if direction > 0:  # Long position
             stop_distance = current_price - psar
@@ -429,13 +526,13 @@ class PSARPositionSizer(PositionSizer):
         stop_distance = max(0.0001, stop_distance)
         
         # Calculate dollar amount to risk
-        risk_amount = equity * self.risk_pct
+        risk_amount = equity * (self.risk_pct / 100)
         
         # Calculate units based on risk amount and stop distance
         units = risk_amount / stop_distance
         
         # Limit by maximum percentage of equity
-        max_units = (equity * self.max_pct) / current_price
+        max_units = (equity * (self.max_pct / 100)) / current_price
         units = min(units, max_units)
             
         return units * direction
@@ -449,15 +546,15 @@ class AdaptivePositionSizer(PositionSizer):
     trend strength, and other market conditions.
     """
     
-    def __init__(self, base_risk_pct: float = 0.01, 
+    def __init__(self, base_risk_pct: float = 1.0, 
                 volatility_factor: float = 0.5,
                 trend_factor: float = 0.5,
-                max_pct: float = 0.25):
+                max_pct: float = 25.0):
         """
         Initialize adaptive position sizer.
         
         Args:
-            base_risk_pct: Base percentage of equity to risk (0.01 = 1%)
+            base_risk_pct: Base percentage of equity to risk (1.0 = 1%)
             volatility_factor: How much to adjust for volatility (0-1)
             trend_factor: How much to adjust for trend strength (0-1)
             max_pct: Maximum percentage of equity for any one position
@@ -467,9 +564,9 @@ class AdaptivePositionSizer(PositionSizer):
         self.trend_factor = trend_factor
         self.max_pct = max_pct
         
-    def calculate_position_size(self, signal: Dict[str, Any], 
+    def calculate_position_size(self, signal: SignalEvent, 
                                portfolio: Any, 
-                               current_price: float) -> float:
+                               current_price: Optional[float] = None) -> float:
         """
         Calculate position size for a signal.
         
@@ -482,30 +579,52 @@ class AdaptivePositionSizer(PositionSizer):
             Position size based on adaptive factors
         """
         # Get portfolio equity
-        equity = getattr(portfolio, 'equity', 0)
+        equity = 0
+        if hasattr(portfolio, 'equity'):
+            equity = portfolio.equity
+        elif hasattr(portfolio, 'get_equity'):
+            equity = portfolio.get_equity()
+        elif isinstance(portfolio, dict) and 'equity' in portfolio:
+            equity = portfolio['equity']
+            
         if equity <= 0:
             return 0
             
-        # Get volatility measure from signal
-        volatility = signal.get('volatility', 0.01)  # Default to 1% volatility
+        # Use provided price or get from signal
+        if current_price is None:
+            current_price = signal.price
+            
+        if current_price is None or current_price <= 0:
+            return 0
+            
+        # Get relevant metrics from signal metadata
+        volatility = 0.01  # Default 1% volatility
+        trend_strength = 0.5  # Default neutral trend strength
+        confidence = 0.5  # Default moderate confidence
         
-        # Get trend strength measure from signal (0-1 scale)
-        trend_strength = signal.get('trend_strength', 0.5)  # Default to neutral trend
+        if hasattr(signal, 'metadata') and signal.metadata:
+            metadata = signal.metadata
+            volatility = metadata.get('volatility', volatility)
+            trend_strength = metadata.get('trend_strength', trend_strength)
+            confidence = metadata.get('confidence', confidence) if hasattr(signal, 'confidence') else confidence
+            
+            # Look for alternative volatility measure
+            if volatility == 0.01 and 'atr' in metadata:
+                volatility = metadata['atr'] / current_price
         
-        # Get signal confidence
-        confidence = signal.get('confidence', 0.5)  # Default to moderate confidence
-        
-        # Calculate adjusted risk percentage
         # 1. Decrease risk when volatility is high
         volatility_adjustment = 1.0 - (self.volatility_factor * (volatility / 0.01 - 1.0))
         volatility_adjustment = max(0.25, min(2.0, volatility_adjustment))  # Limit adjustment range
         
         # 2. Increase risk when trend is strong and aligned with position
-        direction = signal.get('direction', 1)
-        if isinstance(direction, str):
-            direction = 1 if direction.upper() in ['BUY', 'LONG'] else -1
+        direction = signal.signal_type.value if hasattr(signal.signal_type, 'value') else 0
+        if direction == 0:
+            return 0
             
-        trend_direction = signal.get('trend_direction', 0)  # -1 for down, 0 for neutral, 1 for up
+        trend_direction = 0
+        if hasattr(signal, 'metadata') and signal.metadata:
+            trend_direction = signal.metadata.get('trend_direction', 0)
+            
         trend_alignment = direction * trend_direction  # Positive if aligned, negative if counter-trend
         
         trend_adjustment = 1.0 + (self.trend_factor * trend_alignment * trend_strength)
@@ -519,11 +638,17 @@ class AdaptivePositionSizer(PositionSizer):
         risk_pct = self.base_risk_pct * volatility_adjustment * trend_adjustment * confidence_adjustment
         
         # Get ATR or use volatility for stop distance
-        atr = signal.get('atr', volatility * current_price)
+        atr = None
+        if hasattr(signal, 'metadata') and signal.metadata:
+            atr = signal.metadata.get('atr')
+        
+        if atr is None:
+            atr = volatility * current_price
+            
         stop_distance = atr * 2.0  # Use 2 ATRs for stop distance
         
         # Calculate dollar amount to risk
-        risk_amount = equity * min(risk_pct, self.max_pct)
+        risk_amount = equity * (risk_pct / 100)
         
         # Calculate units based on risk amount and stop distance
         if stop_distance <= 0:
@@ -532,7 +657,7 @@ class AdaptivePositionSizer(PositionSizer):
         units = risk_amount / stop_distance
         
         # Limit by maximum percentage of equity
-        max_units = (equity * self.max_pct) / current_price
+        max_units = (equity * (self.max_pct / 100)) / current_price
         units = min(units, max_units)
         
         return units * direction
@@ -569,41 +694,41 @@ class PositionSizerFactory:
             )
         elif sizer_type == 'percent_equity':
             return PercentOfEquitySizer(
-                percent=kwargs.get('percent', 0.02),
-                max_pct=kwargs.get('max_pct', 0.25)
+                percent=kwargs.get('percent', 2.0),
+                max_pct=kwargs.get('max_pct', 25.0)
             )
         elif sizer_type == 'volatility':
             return VolatilityPositionSizer(
-                risk_pct=kwargs.get('risk_pct', 0.01),
+                risk_pct=kwargs.get('risk_pct', 1.0),
                 atr_multiplier=kwargs.get('atr_multiplier', 2.0),
                 lookback_period=kwargs.get('lookback_period', 20),
-                max_pct=kwargs.get('max_pct', 0.25)
+                max_pct=kwargs.get('max_pct', 25.0)
             )
         elif sizer_type == 'kelly':
             return KellyCriterionSizer(
                 win_rate=kwargs.get('win_rate', 0.5),
                 reward_risk_ratio=kwargs.get('reward_risk_ratio', 1.0),
                 fraction=kwargs.get('fraction', 0.5),
-                max_pct=kwargs.get('max_pct', 0.25)
+                max_pct=kwargs.get('max_pct', 25.0)
             )
         elif sizer_type == 'risk_parity':
             return RiskParityPositionSizer(
                 target_portfolio_volatility=kwargs.get('target_portfolio_volatility', 0.10),
-                max_pct=kwargs.get('max_pct', 0.25)
+                max_pct=kwargs.get('max_pct', 25.0)
             )
         elif sizer_type == 'psar':
             return PSARPositionSizer(
-                risk_pct=kwargs.get('risk_pct', 0.01),
+                risk_pct=kwargs.get('risk_pct', 1.0),
                 psar_factor=kwargs.get('psar_factor', 0.02),
                 psar_max=kwargs.get('psar_max', 0.2),
-                max_pct=kwargs.get('max_pct', 0.25)
+                max_pct=kwargs.get('max_pct', 25.0)
             )
         elif sizer_type == 'adaptive':
             return AdaptivePositionSizer(
-                base_risk_pct=kwargs.get('base_risk_pct', 0.01),
+                base_risk_pct=kwargs.get('base_risk_pct', 1.0),
                 volatility_factor=kwargs.get('volatility_factor', 0.5),
                 trend_factor=kwargs.get('trend_factor', 0.5),
-                max_pct=kwargs.get('max_pct', 0.25)
+                max_pct=kwargs.get('max_pct', 25.0)
             )
         else:
             raise ValueError(f"Unknown position sizer type: {sizer_type}")
@@ -632,47 +757,3 @@ class PositionSizerFactory:
         params = config.get('params', {})
         
         return PositionSizerFactory.create_sizer(sizer_type, **params)
-
-
-# Example usage
-if __name__ == "__main__":
-    # Create different position sizers
-    fixed_sizer = PositionSizerFactory.create_sizer('fixed', fixed_size=100)
-    percent_sizer = PositionSizerFactory.create_sizer('percent_equity', percent=0.05)
-    volatility_sizer = PositionSizerFactory.create_sizer('volatility', risk_pct=0.01)
-    kelly_sizer = PositionSizerFactory.create_sizer('kelly', win_rate=0.6, reward_risk_ratio=2.0)
-    
-    # Sample portfolio
-    class SamplePortfolio:
-        def __init__(self, equity):
-            self.equity = equity
-            self.positions = {}
-    
-    portfolio = SamplePortfolio(100000)
-    
-    # Sample signal
-    signal = {
-        'symbol': 'AAPL',
-        'direction': 1,  # Long
-        'price': 150.0,
-        'confidence': 0.8,
-        'volatility': 0.012,  # 1.2% daily volatility
-        'atr': 2.0,  # $2 ATR
-        'win_rate': 0.55,
-        'reward_risk_ratio': 1.5,
-        'trend_strength': 0.7,
-        'trend_direction': 1  # Uptrend
-    }
-    
-    # Calculate position sizes with different sizers
-    current_price = signal['price']
-    
-    fixed_size = fixed_sizer.calculate_position_size(signal, portfolio, current_price)
-    percent_size = percent_sizer.calculate_position_size(signal, portfolio, current_price)
-    volatility_size = volatility_sizer.calculate_position_size(signal, portfolio, current_price)
-    kelly_size = kelly_sizer.calculate_position_size(signal, portfolio, current_price)
-    
-    print(f"Fixed Size: {fixed_size:.2f} units (${fixed_size * current_price:.2f})")
-    print(f"Percent of Equity: {percent_size:.2f} units (${percent_size * current_price:.2f})")
-    print(f"Volatility-Based: {volatility_size:.2f} units (${volatility_size * current_price:.2f})")
-    print(f"Kelly Criterion: {kelly_size:.2f} units (${kelly_size * current_price:.2f})")

@@ -69,9 +69,9 @@ class WeightedStrategy(Strategy):
             'component_signals': {}
         }
     
-    def generate_signals(self, bar_event: BarEvent) -> Optional[SignalEvent]:
+    def process_signals(self, bar_event: BarEvent) -> Optional[SignalEvent]:
         """
-        Generate weighted trading signals.
+        Process signals from components and generate a weighted trading signal.
 
         Args:
             bar_event: BarEvent containing market data
@@ -82,9 +82,6 @@ class WeightedStrategy(Strategy):
         try:
             # Get signals from all components
             component_signals = []
-            
-            # Extract bar data for components that might need it in dictionary form
-            bar = bar_event.get_data()
             
             # We pass bar_event to components that can handle it
             for i, component in enumerate(self.components):
@@ -99,10 +96,13 @@ class WeightedStrategy(Strategy):
                     event = Event(EventType.BAR, bar_event, bar_event.get_timestamp())
                     signal = component.on_bar(event)
                 # If component has generate_signal method expecting a BarEvent
-                elif hasattr(component, 'generate_signals'):
-                    signal = component.generate_signals(bar_event)
                 elif hasattr(component, 'generate_signal'):
                     signal = component.generate_signal(bar_event)
+                # For backward compatibility with old method names
+                elif hasattr(component, 'process_signals'):
+                    signal = component.process_signals(bar_event)
+                elif hasattr(component, 'generate_signals'):
+                    signal = component.generate_signals(bar_event)
                 else:
                     logger.warning(f"Component {i} does not have a compatible signal generation method")
                     continue
@@ -180,7 +180,7 @@ class WeightedStrategy(Strategy):
             )
         
         except Exception as e:
-            logger.error(f"Error in {self.name}.generate_signals: {str(e)}", exc_info=True)
+            logger.error(f"Error in {self.name}.process_signals: {str(e)}", exc_info=True)
             return None
 
     def reset(self):

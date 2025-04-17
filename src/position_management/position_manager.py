@@ -58,97 +58,183 @@ class PositionManager:
         self.signal_history = []
         self.orders_generated = []
 
-    def _process_signal(self, signal_event):
-        """Process a signal into position action events."""
-        # Determine action to take
-        symbol = signal_event.symbol
-        direction = signal_event.direction
 
-        # Create and emit position action event
-        action_event = PositionActionEvent(
-            action_type='entry',
-            symbol=symbol,
-            direction=direction,
-            size=100,  # Calculate appropriate size
-            price=signal_event.price,
-            # Other parameters...
-        )
 
-        self.event_bus.emit(action_event)        
-    
-
-    # In position_manager_updated.py
-    def _process_signal(self, signal_event: SignalEvent) -> List[Dict[str, Any]]:
+    def on_signal(self, event):
         """
-        Process a signal event into position actions.
+        Process a signal event and determine position actions.
 
         Args:
-            signal_event: Signal event
+            event: Event containing a SignalEvent
 
         Returns:
-            List of position action dictionaries
+            List of position action events
         """
+        # Extract signal from event
+        if not isinstance(event.data, SignalEvent):
+            logger.error(f"Expected SignalEvent in event.data, got {type(event.data)}")
+            return []
+
+        signal = event.data
+
+        # Store signal for tracking
+        self.signal_history.append(signal)
+
+        # Process signal and get position actions
+        actions = self._process_signal(signal)
+
+        # Store and emit position actions
+        for action in actions:
+            if self.event_bus:
+                self.event_bus.emit(Event(EventType.POSITION_ACTION, action))
+
+        return actions
+
+    def _process_signal(self, signal):
+        """
+        Process a signal into position actions.
+
+        Args:
+            signal: SignalEvent to process
+
+        Returns:
+            List of PositionActionEvent objects
+        """
+        from src.events.portfolio_events import PositionActionEvent
+
         actions = []
 
-        # Get signal direction
-        direction = get_signal_direction(signal_event)
-        symbol = signal_event.symbol
-        price = signal_event.price
+        # Get signal data using proper getters
+        symbol = signal.get_symbol()
+        direction = signal.get_signal_value()  # BUY (1) or SELL (-1)
+        price = signal.get_price()
+        timestamp = signal.timestamp
+
+        # Skip neutral signals
+        if direction == SignalEvent.NEUTRAL:
+            logger.debug(f"Skipping neutral signal for {symbol}")
+            return []
 
         # Check if we already have a position in this symbol
-        net_position = self.portfolio.get_net_position(symbol)
+        net_position = self.portfolio.get_net_position(symbol) if hasattr(self.portfolio, 'get_net_position') else 0
 
         if net_position != 0:
             # We have an existing position
             if (direction > 0 and net_position < 0) or (direction < 0 and net_position > 0):
                 # Signal direction opposite of current position - exit current position
-                for position in self.portfolio.positions_by_symbol.get(symbol, []):
-                    # Create and emit exit action event
-                    exit_event = PositionActionEvent(
+                positions = self.portfolio.get_positions_by_symbol(symbol) if hasattr(self.portfolio, 'get_positions_by_symbol') else []
+
+                for position in positions:
+                    # Create exit action
+                    action = PositionActionEvent(
                         action_type='exit',
-                        position_id=position.position_id,
                         symbol=symbol,
+                        position_id=position.position_id,
                         price=price,
-                        exit_type=ExitType.STRATEGY,
-                        reason='Signal direction change',
-                        timestamp=signal_event.timestamp
+                        exit_type=getattr(self, 'ExitType', {}).get('STRATEGY', 'strategy'),
+                        exit_reason="Signal direction change",
+                        timestamp=timestamp
                     )
 
-                    self.event_bus.emit(exit_event)
-                    actions.append({'action': 'exit', 'position_id': position.position_id})
-        else:
-            # No existing position - evaluate new entry
+                    actions.append(action)
+                    logger.info(f"Generated exit action for {symbol} position {position.position_id}")
+
+        # Evaluate new entry based on signal direction
+        if (direction > 0 and net_position <= 0) or (direction < 0 and net_position >= 0):
             # Calculate position size
             size = 0
             if self.position_sizer:
                 size = self.position_sizer.calculate_position_size(
-                    signal_event, self.portfolio, price
+                    signal, self.portfolio, price
                 )
             else:
+                # Default sizing logic if no position sizer provided
                 equity = getattr(self.portfolio, 'equity', 100000)
-                size = (equity * 0.01) / price * direction
+                size = (equity * 0.01) / price  # Default to 1% of equity
+                size = size if direction > 0 else -size
 
-            # Create and emit entry action event
+            # Only create entry action if size is non-zero
             if size != 0:
-                metadata = signal_event.metadata.copy() if hasattr(signal_event, 'metadata') else {}
-                entry_event = PositionActionEvent(
+                # Get stop loss and take profit from signal metadata if available
+                metadata = signal.get_metadata() if hasattr(signal, 'get_metadata') else {}
+                stop_loss = metadata.get('stop_loss')
+                take_profit = metadata.get('take_profit')
+
+                # Create entry action
+                action = PositionActionEvent(
                     action_type='entry',
                     symbol=symbol,
                     direction=direction,
                     size=abs(size),
                     price=price,
-                    stop_loss=metadata.get('stop_loss'),
-                    take_profit=metadata.get('take_profit'),
-                    strategy_id=signal_event.rule_id if hasattr(signal_event, 'rule_id') else None,
-                    timestamp=signal_event.timestamp,
-                    metadata=metadata
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
+                    strategy_id=signal.get_rule_id() if hasattr(signal, 'get_rule_id') else None,
+                    timestamp=timestamp
                 )
 
-                self.event_bus.emit(entry_event)
-                actions.append({'action': 'entry', 'symbol': symbol, 'direction': direction})
+                actions.append(action)
+                logger.info(f"Generated entry action for {symbol} direction {direction} size {abs(size)}")
 
         return actions
 
+    def calculate_position_size(self, signal, portfolio, current_price=None):
+        """
+        Calculate appropriate position size for a signal.
+
+        Args:
+            signal: SignalEvent
+            portfolio: Portfolio state
+            current_price: Optional override for current price
+
+        Returns:
+            Position size (positive for long, negative for short)
+        """
+        # Skip neutral signals
+        if signal.get_signal_value() == SignalEvent.NEUTRAL:
+            return 0
+
+        # Get direction directly from signal
+        direction = signal.get_signal_value()
+
+        # Use provided price or signal price
+        price = current_price
+        if price is None:
+            price = signal.get_price()
+
+        if price is None or price <= 0:
+            logger.warning(f"Invalid price for position sizing: {price}")
+            return 0
+
+        # Use position sizer if available
+        if self.position_sizer:
+            size = self.position_sizer.calculate_position_size(signal, portfolio, price)
+            return size * direction if size > 0 else 0
+
+        # Default sizing if no position sizer available
+        equity = getattr(portfolio, 'equity', 100000)
+        risk_pct = 0.01  # Default to 1% risk
+
+        # Get stop loss from metadata if available
+        metadata = signal.get_metadata() if hasattr(signal, 'get_metadata') else {}
+        stop_loss = metadata.get('stop_loss')
+
+        if stop_loss:
+            # Calculate risk-based position size
+            risk_amount = equity * risk_pct
+            stop_distance = abs(price - stop_loss)
+
+            if stop_distance > 0:
+                size = risk_amount / stop_distance
+            else:
+                size = (equity * risk_pct) / price
+        else:
+            # Default to percentage of equity
+            size = (equity * risk_pct) / price
+
+        return size * direction
+
+ 
 
     def execute_position_action(self, action: Dict[str, Any], 
                               current_time: datetime.datetime) -> Optional[Dict[str, Any]]:

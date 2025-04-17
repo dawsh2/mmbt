@@ -3,11 +3,13 @@
 
 import datetime
 import logging
+import warnings
 from typing import Dict, List, Any, Optional
 
 from src.events.event_base import Event
 from src.events.event_bus import EventBus
-from src.events.event_types import EventType
+from src.events.event_types import EventType, BarEvent
+from src.events.signal_event import SignalEvent
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -89,42 +91,47 @@ class EventManager:
                               
         logger.info("Event handlers registered")
 
-
     def _create_bar_handler(self):
         """Create a handler for BAR events."""
         def handle_bar_event(event):
             """Extract bar data properly for strategy consumption."""
             try:
-                # Extract bar data from various event structures
-                bar_data = None
+                # Ensure we're working with an Event object
+                if not isinstance(event, Event):
+                    logger.warning(f"Expected Event object, got {type(event).__name__}")
+                    return
 
-                # Case 1: Event has bar data directly in data attribute
-                if hasattr(event, 'data') and isinstance(event.data, dict) and 'Close' in event.data:
-                    bar_data = event.data
-
-                # Case 2: Event data is a BarEvent with a bar attribute
-                elif hasattr(event, 'data') and hasattr(event.data, 'bar'):
-                    bar_data = event.data.bar
-
+                # Extract BarEvent with proper type checking
+                bar_event = None
+                
+                # Case 1: Event has a BarEvent in data attribute
+                if hasattr(event, 'data') and isinstance(event.data, BarEvent):
+                    bar_event = event.data
+                # Case 2: Event data is a dictionary (deprecated)
+                elif hasattr(event, 'data') and isinstance(event.data, dict) and 'Close' in event.data:
+                    warnings.warn(
+                        "Using dictionary for bar data is deprecated. Use BarEvent objects instead.",
+                        DeprecationWarning, stacklevel=2
+                    )
+                    bar_event = BarEvent(event.data)
                 # Case 3: Event is a BarEvent itself
-                elif hasattr(event, 'bar'):
-                    bar_data = event.bar
+                elif isinstance(event, BarEvent):
+                    bar_event = event
 
-                if bar_data is None:
-                    logger.warning(f"Could not extract bar data from event: {event}")
+                if bar_event is None:
+                    logger.warning(f"Could not extract BarEvent from event: {event}")
                     return
 
                 # Update price history
-                symbol = bar_data.get('symbol', 'UNKNOWN')
+                symbol = bar_event.get_symbol()
                 if symbol not in self.price_history:
                     self.price_history[symbol] = []
 
-                self.price_history[symbol].append(bar_data)
+                self.price_history[symbol].append(bar_event)
 
-                # Always wrap in a standard BarEvent
-                if not isinstance(event.data, BarEvent):
-                    bar_event = BarEvent(bar_data)
-                    event_to_pass = Event(EventType.BAR, bar_event, event.timestamp)
+                # Create standard Event with BarEvent if needed
+                if not isinstance(event, Event) or not isinstance(event.data, BarEvent):
+                    event_to_pass = Event(EventType.BAR, bar_event, bar_event.get_timestamp())
                 else:
                     event_to_pass = event
 
@@ -134,19 +141,23 @@ class EventManager:
                 elif hasattr(self.strategy, 'handle_event'):
                     self.strategy.handle_event(event_to_pass)
 
-                logger.debug(f"Processed bar: {symbol} at {bar_data.get('timestamp')}")
+                logger.debug(f"Processed bar: {symbol} at {bar_event.get_timestamp()}")
 
             except Exception as e:
                 logger.error(f"Error processing bar event: {str(e)}", exc_info=True)
 
         return handle_bar_event
 
-
     def _create_signal_handler(self):
         """Create a handler for SIGNAL events."""
         def handle_signal_event(event):
             """Process signals and create position actions."""
             try:
+                # Ensure we're working with a SignalEvent
+                if not hasattr(event, 'data') or not isinstance(event.data, SignalEvent):
+                    logger.warning(f"Expected SignalEvent in event.data, got {type(event.data).__name__ if hasattr(event, 'data') else 'None'}")
+                    return
+                
                 signal = event.data
 
                 # Store signal directly in history
@@ -161,11 +172,11 @@ class EventManager:
                         for action in actions:
                             self.position_manager.execute_position_action(
                                 action=action,
-                                current_time=signal_dict['timestamp']
+                                current_time=signal.timestamp
                             )
                 
-                logger.info(f"Processed signal: {signal_dict['symbol']} "
-                          f"type={signal_dict['signal_type']} price={signal_dict['price']}")
+                logger.info(f"Processed signal: {signal.get_symbol()} "
+                          f"type={signal.get_signal_value()} price={signal.get_price()}")
                           
             except Exception as e:
                 logger.error(f"Error processing signal event: {str(e)}", exc_info=True)
@@ -186,14 +197,25 @@ class EventManager:
                 if hasattr(self.execution_engine, 'on_order'):
                     self.execution_engine.on_order(event)
                 
-                logger.info(f"Processed order: {order.get('symbol', 'UNKNOWN')} "
-                          f"quantity={order.get('quantity', 0)} "
-                          f"price={order.get('price', 0)}")
+                # Log appropriate information based on order object type
+                if hasattr(order, 'get_symbol'):
+                    symbol = order.get_symbol()
+                    quantity = order.get_quantity()
+                    price = order.get_price()
+                else:
+                    # Dictionary-based order (deprecated)
+                    symbol = order.get('symbol', 'UNKNOWN')
+                    quantity = order.get('quantity', 0)
+                    price = order.get('price', 0)
+                
+                logger.info(f"Processed order: {symbol} "
+                          f"quantity={quantity} "
+                          f"price={price}")
                           
             except Exception as e:
                 logger.error(f"Error processing order event: {str(e)}", exc_info=True)
         
-        return handle_order_event
+        return handle_order_handler
     
     def _create_fill_handler(self):
         """Create a handler for FILL events."""
@@ -209,16 +231,25 @@ class EventManager:
                 if self.portfolio and hasattr(self.portfolio, 'on_fill'):
                     self.portfolio.on_fill(event)
                 
-                logger.info(f"Processed fill: {fill.get('symbol', 'UNKNOWN')} "
-                          f"quantity={fill.get('quantity', 0)} "
-                          f"price={fill.get('fill_price', 0)}")
+                # Log appropriate information based on fill object type
+                if hasattr(fill, 'get_symbol'):
+                    symbol = fill.get_symbol()
+                    quantity = fill.get_quantity()
+                    price = fill.get_price() or fill.get_fill_price()
+                else:
+                    # Dictionary-based fill (deprecated)
+                    symbol = fill.get('symbol', 'UNKNOWN')
+                    quantity = fill.get('quantity', 0)
+                    price = fill.get('fill_price', fill.get('price', 0))
+                
+                logger.info(f"Processed fill: {symbol} "
+                          f"quantity={quantity} "
+                          f"price={price}")
                           
             except Exception as e:
                 logger.error(f"Error processing fill event: {str(e)}", exc_info=True)
         
         return handle_fill_event
-
-    # In your event_manager.py
 
     def process_market_data(self, bar_data):
         """Process a single bar of market data.
@@ -226,18 +257,24 @@ class EventManager:
         Args:
             bar_data: Dictionary or BarEvent containing market data
         """
-        # Wrap in BarEvent if it's not already
-        if not isinstance(bar_data, BarEvent) and isinstance(bar_data, dict):
-            bar_event = BarEvent(bar_data)
+        # Ensure we're working with a BarEvent
+        if not isinstance(bar_data, BarEvent):
+            if isinstance(bar_data, dict):
+                warnings.warn(
+                    "Using dictionary for bar data is deprecated. Use BarEvent objects instead.",
+                    DeprecationWarning, stacklevel=2
+                )
+                bar_event = BarEvent(bar_data)
+            else:
+                logger.warning(f"Expected BarEvent or dictionary, got {type(bar_data).__name__}")
+                return
         else:
             bar_event = bar_data
 
         # Create and emit a BAR event
         event = Event(EventType.BAR, bar_event)
         self.event_bus.emit(event)
-
     
- 
     def get_status(self):
         """
         Get the current status of the trading system.

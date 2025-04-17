@@ -100,64 +100,158 @@ src/
 The proposed structure consolidates related modules into functional groups:
 
 ```
-src/
-├── core/                   # System infrastructure
-│   ├── config/             # Configuration management
-│   ├── events/             # Event system
-│   ├── logging/            # Logging system
-│   ├── system/             # System initialization and lifecycle
-│   ├── cache/              # Caching system
-│   │   ├── cache_manager.py    # Main cache interface
-│   │   ├── memory_cache.py     # In-memory caching implementation
-│   │   ├── disk_cache.py       # Persistent disk caching 
-│   │   ├── redis_cache.py      # Optional Redis-based caching
-│   │   └── decorators.py       # Cache decorators for functions
+trading_system/
+├── core/                                # System infrastructure
+│   ├── config/                         
+│   │   ├── __init__.py
+│   │   ├── config_manager.py            # Configuration management
+│   │   ├── schema.py                    # Configuration schema validation
+│   │   └── defaults.py                  # Default configurations
+│   ├── events/                         
+│   │   ├── __init__.py
+│   │   ├── event_bus.py                 # Central event bus
+│   │   ├── event_types.py               # Event type definitions
+│   │   ├── event_handlers.py            # Event handler base classes
+│   │   └── event_utils.py               # Event utility functions
+│   ├── logging/                        
+│   │   ├── __init__.py
+│   │   ├── logger.py                    # Logging setup
+│   │   ├── formatters.py                # Log formatters
+│   │   └── handlers.py                  # Log handlers
+│   └── cache/                          
+│       ├── __init__.py
+│       ├── cache_manager.py             # Main cache interface
+│       ├── memory_cache.py              # In-memory caching implementation
+│       ├── disk_cache.py                # Persistent disk caching 
+│       └── decorators.py                # Cache decorators for functions
 │
-├── data/                   # Data handling and processing
-│   ├── sources/            # Data sources (CSV, API, etc.)
-│   ├── transformers/       # Data transformation logic
-│   ├── handlers/           # Data handlers
-│   ├── connectors/         # External data service connectors
-│   ├── broker/             # Broker integration (future implementation)
+├── data/                                # Data sources and processing
+│   ├── sources/                        
+│   │   ├── __init__.py
+│   │   ├── csv_source.py                # CSV data source
+│   │   ├── sql_source.py                # SQL database source
+│   │   └── api_source.py                # External API source
+│   ├── handlers/                       
+│   │   ├── __init__.py
+│   │   ├── data_handler.py              # Main data handler
+│   │   ├── bar_handler.py               # OHLCV bar processing
+│   │   └── tick_handler.py              # Tick data processing
+│   └── transformers/                   
+│       ├── __init__.py
+│       ├── resampler.py                 # Time-based resampling
+│       ├── normalizer.py                # Data normalization
+│       └── filter.py                    # Data filtering
 │
-├── analysis/               # Analysis components
-│   ├── indicators/         # Technical indicators
-│   ├── features/           # Feature engineering
-│   │   ├── base.py                 # Base feature classes
-│   │   ├── technical_features.py   # Features from technical indicators
-│   │   ├── price_features.py       # Features from price data
-│   │   ├── ml_features/            # ML-specific feature engineering
-│   │   │   ├── transformers.py     # Scikit-learn compatible transformers
-│   │   │   ├── preprocessing.py    # Data preprocessing for ML
-│   │   │   ├── feature_selection.py # Feature selection algorithms
-│   │   │   └── dimensionality.py   # Dimensionality reduction techniques
-│   ├── ml_models/          # Machine learning models
-│   │   ├── model_base.py           # Base ML model classes
-│   │   ├── classifiers.py          # Classification models
-│   │   ├── regressors.py           # Regression models
-│   │   ├── ensemble.py             # Ensemble models
-│   │   └── evaluation.py           # Model evaluation utilities
-│   ├── signals/            # Signal generation and processing
-│   ├── rules/              # Trading rules
-│   ├── regime_detection/   # Market regime detection
+├── modeling/                            # Signal generation and processing
+│   ├── indicators/                     
+│   │   ├── __init__.py
+│   │   ├── trend.py                     # Trend indicators
+│   │   ├── momentum.py                  # Momentum indicators
+│   │   ├── volatility.py                # Volatility indicators
+│   │   └── volume.py                    # Volume indicators
+│   ├── features/                       
+│   │   ├── __init__.py
+│   │   ├── technical_features.py        # Features from technical indicators
+│   │   ├── price_features.py            # Features from price action
+│   │   └── volume_features.py           # Features from volume analysis
+│   ├── rules/                          
+│   │   ├── __init__.py
+│   │   ├── rule_base.py                 # Base rule class
+│   │   ├── technical_rules.py           # Technical analysis rules
+│   │   ├── pattern_rules.py             # Chart pattern rules
+│   │   └── composite_rules.py           # Rules composed of other rules
+│   ├── ml/                             
+│   │   ├── __init__.py
+│   │   ├── models/                      # ML model implementations
+│   │   │   ├── __init__.py
+│   │   │   ├── classifier.py            # Classification models
+│   │   │   ├── regressor.py             # Regression models
+│   │   │   └── ensemble.py              # Ensemble models
+│   │   ├── features/                    # ML-specific feature processing
+│   │   │   ├── __init__.py
+│   │   │   ├── transformers.py          # Feature transformers
+│   │   │   └── selection.py             # Feature selection
+│   │   └── evaluation/                  # ML model evaluation
+│   │       ├── __init__.py
+│   │       ├── cross_validation.py      # Cross-validation
+│   │       └── metrics.py               # Model evaluation metrics
+│   └── optimization/                   
+│       ├── __init__.py
+│       ├── algorithms/                  # Optimization algorithms
+│       │   ├── __init__.py
+│       │   ├── grid_search.py           # Grid search optimization
+│       │   ├── genetic.py               # Genetic algorithm
+│       │   └── bayesian.py              # Bayesian optimization
+│       ├── strategy_opt/                # Strategy parameter optimization
+│       │   ├── __init__.py
+│       │   ├── parameter_space.py       # Strategy parameter definition
+│       │   └── objective_functions.py   # Strategy optimization objectives
+│       └── risk_opt/                    # Risk parameter optimization
+│           ├── __init__.py
+│           ├── risk_space.py            # Risk parameter definition
+│           └── risk_objectives.py       # Risk optimization objectives
 │
-├── strategy/               # Strategy implementation
-│   ├── base/               # Strategy base classes
-│   ├── weighted/           # Weighted strategies
-│   ├── ensemble/           # Ensemble strategies
-│   ├── regime/             # Regime-based strategies
-│   ├── ml/                 # ML-based strategies
-│   ├── optimization/       # Strategy optimization 
+├── strategy/                            # Signal processing into decisions
+│   ├── __init__.py
+│   ├── base/                           
+│   │   ├── __init__.py
+│   │   ├── strategy.py                  # Base strategy class
+│   │   └── signal_processor.py          # Signal processing
+│   ├── ensemble/                       
+│   │   ├── __init__.py
+│   │   ├── weighted_strategy.py         # Weighted strategy combination
+│   │   └── voting_strategy.py           # Voting-based ensemble
+│   └── regime/                         
+│       ├── __init__.py
+│       ├── regime_detector.py           # Market regime detection
+│       └── regime_strategy.py           # Regime-based strategy switching
 │
-├── execution/              # Order execution and position management
-│   ├── position_mgmt/      # Position management
-│   ├── risk_mgmt/          # Risk management
-│   ├── portfolio/          # Portfolio tracking
-│   ├── market_simulator/   # Market simulation
+├── risk/                                # Position sizing and allocation
+│   ├── __init__.py
+│   ├── analyzer.py                      # Analyzes risk metrics (MAE/MFE/ETD)
+│   ├── collector.py                     # Collects risk metrics
+│   ├── parameter_optimizer.py           # Optimizes risk parameters
+│   ├── position_sizers.py               # Position sizing strategies
+│   ├── allocation.py                    # Capital allocation strategies
+│   └── risk_manager.py                  # Applies risk rules
 │
-├── backtesting/            # Backtesting framework
-│   ├── engine/             # Main backtester
-│   ├── analytics/          # Performance analytics
+├── execution/                           # Implementation of decisions
+│   ├── __init__.py
+│   ├── position.py                      # Position representation
+│   ├── portfolio.py                     # Portfolio tracking
+│   ├── execution_engine.py              # Order execution
+│   ├── market_simulator.py              # Market simulation for backtests
+│   ├── backtesting/                     # Backtesting execution
+│   │   ├── __init__.py
+│   │   ├── engine.py                    # Backtesting engine
+│   │   ├── simulator.py                 # Market simulator with slippage, etc.
+│   │   └── scenario_manager.py          # Scenario testing
+│   └── live/                            # Live execution (future)
+│       ├── __init__.py
+│       ├── broker.py                    # Broker interface
+│       └── monitoring.py                # Real-time monitoring
+│
+└── analysis/                            # Performance analysis and visualization
+    ├── __init__.py
+    ├── metrics/                         # Performance metrics calculation
+    │   ├── __init__.py
+    │   ├── returns.py                   # Return-based metrics
+    │   ├── risk.py                      # Risk-based metrics
+    │   ├── drawdown.py                  # Drawdown analysis
+    │   └── attribution.py               # Performance attribution
+    ├── visualization/                   # Data visualization
+    │   ├── __init__.py
+    │   ├── charts.py                    # Chart generation
+    │   ├── dashboards.py                # Dashboard components
+    │   └── interactive.py               # Interactive visualizations
+    └── reporting/                       # Report generation
+        ├── __init__.py
+        ├── templates/                   # Report templates
+        │   ├── __init__.py
+        │   ├── backtest_report.py       # Backtest report template
+        │   └── performance_report.py    # Performance report template
+        ├── generators.py                # Report generation logic
+        └── exporters.py                 # Export to different formast
 ```
 
 ## Migration Plan
@@ -190,63 +284,3 @@ src/
 
 This structure should make the codebase more maintainable while preserving the modular design of the system.
 
-## Even More Consolidated Version
-
-An even more simplified structure would further flatten the hierarchy by minimizing subdirectories:
-
-```
-src/
-├── core/          # System infrastructure
-│   ├── config.py
-│   ├── events.py
-│   ├── logging.py
-│   ├── system.py
-│   ├── cache.py   # Caching system
-│
-├── data/          # Data handling and broker integration
-│   ├── sources.py
-│   ├── handlers.py
-│   ├── transformers.py
-│   ├── broker.py
-│
-├── analysis/      # Analysis components
-│   ├── indicators.py
-│   ├── features.py                 # Basic feature engineering
-│   ├── ml_features.py              # ML-specific feature engineering
-│   ├── ml_models.py                # Machine learning models
-│   ├── signals.py
-│   ├── rules.py
-│   ├── regimes.py
-│
-├── strategy/      # Strategy implementation
-│   ├── base.py
-│   ├── weighted.py
-│   ├── ensemble.py
-│   ├── regime.py
-│   ├── ml_strategy.py              # ML-based strategies
-│   ├── optimization.py
-│
-├── execution/     # Order execution
-│   ├── positions.py
-│   ├── risk.py
-│   ├── portfolio.py
-│   ├── simulator.py
-│
-├── backtesting/   # Backtesting and analytics
-│   ├── engine.py
-│   ├── analytics.py
-```
-
-The key differences in this more consolidated version are:
-
-1. **Fewer Subdirectories**: Each main module contains Python files instead of subdirectories
-2. **Flatter Structure**: Maximum of two levels deep instead of three
-3. **Simplified Imports**: Imports would be more direct (e.g., `from analysis import indicators`)
-4. **Combined Functionality**: Related functionality combined into single files
-
-This ultra-consolidated version would be more appropriate for:
-- Smaller projects with less code per module
-- Teams with fewer developers
-- Projects where simplicity is valued over fine-grained organization
-
-The tradeoff is that as modules grow, individual files could become quite large and unwieldy. The previously proposed structure balances organization with simplicity better for medium to large projects.

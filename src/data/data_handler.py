@@ -85,35 +85,7 @@ class CSVDataSource(DataSource):
         self.data_cache = {}
 
 
-    # def get_data(self, symbol, start_date=None, end_date=None, timeframe=None):
-    #     """Get data for the specified symbol and date range."""
-    #     # Filter by date if requested
-    #     if start_date or end_date:
-    #         df = self.data.copy()
-
-    #         if start_date:
-    #             # Make start_date timezone-aware if the timestamps are
-    #             if 'timestamp' in df.columns and df['timestamp'].dt.tz is not None:
-    #                 import pytz
-    #                 if start_date.tzinfo is None:
-    #                     # Assume UTC if timestamp has timezone but start_date doesn't
-    #                     start_date = pytz.utc.localize(start_date)
-    #             df = df[df['timestamp'] >= start_date]
-
-    #         if end_date:
-    #             # Make end_date timezone-aware if the timestamps are
-    #             if 'timestamp' in df.columns and df['timestamp'].dt.tz is not None:
-    #                 import pytz
-    #                 if end_date.tzinfo is None:
-    #                     # Assume UTC if timestamp has timezone but end_date doesn't
-    #                     end_date = pytz.utc.localize(end_date)
-    #             df = df[df['timestamp'] <= end_date]
-
-    #         return df
-
-    #     return self.data
-        
-    def get_data(self, symbols: List[str], start_date: datetime, 
+     def get_data(self, symbols: List[str], start_date: datetime, 
                  end_date: datetime, timeframe: str) -> pd.DataFrame:
         """
         Load data from CSV files for the specified symbols and date range.
@@ -371,7 +343,7 @@ class DataHandler:
         self.reset_train()
         self.reset_test()
     
-    def iter_train(self, use_bar_events: bool = False):
+    def iter_train(self, use_bar_events: bool = True):
         """
         Iterator for training data.
         
@@ -393,7 +365,7 @@ class DataHandler:
             
             yield bar
     
-    def iter_test(self, use_bar_events: bool = False):
+    def iter_test(self, use_bar_events: bool = True):
         """
         Iterator for testing data.
         

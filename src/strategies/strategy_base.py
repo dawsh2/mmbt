@@ -59,9 +59,9 @@ class Strategy(ABC):
             # Extract bar data from event
             if isinstance(event.data, BarEvent):
                 bar_event = event.data
-            elif isinstance(event.data, dict) and 'Close' in event.data:
-                # Convert dictionary to BarEvent for backward compatibility
-                bar_event = BarEvent(event.data, event.timestamp)
+            # elif isinstance(event.data, dict) and 'Close' in event.data:
+            #     # Convert dictionary to BarEvent for backward compatibility
+            #     bar_event = BarEvent(event.data, event.timestamp)
             else:
                 bar_data = extract_bar_data(event)
                 if not bar_data:

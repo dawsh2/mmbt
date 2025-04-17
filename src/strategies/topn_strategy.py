@@ -33,7 +33,7 @@ class TopNStrategy(Strategy):
         self.rules = rule_objects
         self.last_signal = None
 
-    def generate_signals(self, bar_event: BarEvent) -> Optional[SignalEvent]:
+    def process_signals(self, bar_event: BarEvent) -> Optional[SignalEvent]:
         """Process a bar and generate a consensus signal.
         
         Args:
@@ -51,8 +51,6 @@ class TopNStrategy(Strategy):
                 # Pass bar event to each rule
                 if hasattr(rule, 'generate_signal'):
                     signal = rule.generate_signal(bar_event)
-                elif hasattr(rule, 'generate_signals'):
-                    signal = rule.generate_signals(bar_event)
                 elif hasattr(rule, 'on_bar'):
                     # Create event for rules expecting an Event object
                     event = Event(EventType.BAR, bar_event, bar_event.get_timestamp())
