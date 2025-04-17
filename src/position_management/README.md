@@ -387,6 +387,14 @@ Emit position closed event.
 Args:
     position_summary: Position summary dictionary
 
+###### `get_net_position(symbol)`
+
+Get net position for a symbol.
+
+###### `get_positions_by_symbol(symbol)`
+
+Get positions for a symbol.
+
 ## position
 
 Position Module
@@ -890,10 +898,10 @@ Returns:
 
 ## position_manager
 
-Modified Version of Position Manager
+Fixed Position Manager Implementation
 
-This is a modified version of the position_manager.py file,
-updated to correctly handle SignalEvent objects and perform proper type checking.
+This is a fixed version of the position manager that properly handles
+signals, creates position actions, and integrates with the portfolio.
 
 ### Classes
 
@@ -901,11 +909,8 @@ updated to correctly handle SignalEvent objects and perform proper type checking
 
 Manages trading positions, sizing, and allocation.
 
-The position manager integrates position sizing, allocation, and risk
-management to determine appropriate position sizes based on signals,
-market conditions, and portfolio state.
-
-This updated version works directly with SignalEvent objects with proper type checking.
+The position manager integrates with risk management to determine appropriate
+position sizes based on signals, market conditions, and portfolio state.
 
 ##### Methods
 
@@ -919,23 +924,21 @@ Args:
     allocation_strategy: Strategy for allocating capital across instruments
     risk_manager: Risk management component
     max_positions: Maximum number of positions (0 for unlimited)
-    event_bus: Optional event bus for emitting events
+    event_bus: Event bus for emitting events
 
-###### `on_signal(event_or_signal)`
+###### `on_signal(event)`
 
-*Returns:* `List[PositionActionEvent]`
-
-Process a signal and determine position actions.
+Process a signal event into position actions.
 
 Args:
-    event_or_signal: Either Event containing a SignalEvent or a SignalEvent directly
+    event: Event containing a SignalEvent or the SignalEvent directly
 
 Returns:
-    List of position action events
+    List of position actions
+
+*Returns:* List of position actions
 
 ###### `_process_signal(signal)`
-
-*Returns:* `List[Any]`
 
 Process a signal into position actions.
 
@@ -943,34 +946,34 @@ Args:
     signal: SignalEvent to process
 
 Returns:
-    List of PositionActionEvent objects
+    List of position action dictionaries
 
-###### `calculate_position_size(signal, portfolio, current_price=None)`
+*Returns:* List of position action dictionaries
 
-Calculate appropriate position size for a signal.
+###### `_calculate_position_size(signal)`
+
+Calculate position size based on signal and portfolio.
 
 Args:
-    signal: SignalEvent
-    portfolio: Portfolio state
-    current_price: Optional override for current price
+    signal: Trading signal
 
 Returns:
-    Position size (positive for long, negative for short)
+    Position size (positive for buy, negative for sell)
 
-*Returns:* Position size (positive for long, negative for short)
+*Returns:* Position size (positive for buy, negative for sell)
 
-###### `execute_position_action(action, current_time)`
-
-*Returns:* `Optional[Dict[str, Any]]`
+###### `execute_position_action(action, current_time=None)`
 
 Execute a position action.
 
 Args:
-    action: Position action dictionary or PositionActionEvent
-    current_time: Current timestamp
+    action: Position action dictionary
+    current_time: Current timestamp (defaults to now)
     
 Returns:
     Result dictionary or None if action failed
+
+*Returns:* Result dictionary or None if action failed
 
 ## position_sizers
 

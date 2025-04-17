@@ -441,3 +441,18 @@ class EventPortfolio(EventHandler):
         # Create and emit event
         closed_event = PositionClosedEvent(position_summary, position_summary.get('exit_time'))
         self.event_bus.emit(closed_event)
+
+
+
+
+    def get_net_position(self, symbol):
+        """Get net position for a symbol."""
+        net_position = 0
+        if symbol in self.positions_by_symbol:
+            for pos in self.positions_by_symbol[symbol]:
+                net_position += pos.quantity * pos.direction
+        return net_position
+
+    def get_positions_by_symbol(self, symbol):
+        """Get positions for a symbol."""
+        return self.positions_by_symbol.get(symbol, [])        
