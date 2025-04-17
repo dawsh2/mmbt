@@ -1228,6 +1228,26 @@ Args:
 Returns:
     Position size based on adaptive factors
 
+#### `AdjustedFixedSizer`
+
+Position sizer that adjusts fixed size based on price and available capital.
+
+##### Methods
+
+###### `calculate_position_size(signal, portfolio, current_price=None)`
+
+Calculate position size adjusted to maximize capital usage.
+
+Args:
+    signal: Trading signal
+    portfolio: Portfolio state
+    current_price: Optional override for current price
+    
+Returns:
+    Position size that fits within available capital
+
+*Returns:* Position size that fits within available capital
+
 #### `PositionSizerFactory`
 
 Factory for creating position sizers.

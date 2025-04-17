@@ -60,7 +60,6 @@ class FixedSizeSizer(PositionSizer):
         """
         self.fixed_size = fixed_size
 
-    # In position_sizers.py FixedSizeSizer.calculate_position_size method
     def calculate_position_size(self, signal, portfolio, current_price=None):
         """
         Calculate a fixed position size.
@@ -73,17 +72,16 @@ class FixedSizeSizer(PositionSizer):
         Returns:
             Fixed position size (positive for buy, negative for sell)
         """
-        # Get direction from signal (handle different signal formats)
+        # Get direction from signal
+        direction = 0
         if hasattr(signal, 'get_signal_value'):
             direction = signal.get_signal_value()
-        elif hasattr(signal, 'signal_type') and hasattr(signal.signal_type, 'value'):
-            direction = signal.signal_type.value
         else:
-            direction = 0  # Neutral if can't determine
+            # Fallback for compatibility with other signal formats
+            if hasattr(signal, 'signal_type') and hasattr(signal.signal_type, 'value'):
+                direction = signal.signal_type.value
 
         return direction * self.fixed_size
-        
- 
 
 
 class PercentOfEquitySizer(PositionSizer):
@@ -131,8 +129,10 @@ class PercentOfEquitySizer(PositionSizer):
         if equity <= 0:
             return 0
         
-        # Get direction from signal
-        direction = signal.signal_type.value if hasattr(signal.signal_type, 'value') else 0
+        # Get direction from signal using get_signal_value()
+        direction = 0
+        if hasattr(signal, 'get_signal_value'):
+            direction = signal.get_signal_value()
         
         # Skip neutral signals
         if direction == 0:
@@ -140,7 +140,10 @@ class PercentOfEquitySizer(PositionSizer):
         
         # Use price from signal if not provided
         if current_price is None:
-            current_price = signal.price
+            if hasattr(signal, 'get_price'):
+                current_price = signal.get_price()
+            elif hasattr(signal, 'price'):
+                current_price = signal.price
         
         if current_price is None or current_price <= 0:
             return 0
@@ -209,7 +212,10 @@ class VolatilityPositionSizer(PositionSizer):
             
         # Use provided price or get from signal
         if current_price is None:
-            current_price = signal.price
+            if hasattr(signal, 'get_price'):
+                current_price = signal.get_price()
+            elif hasattr(signal, 'price'):
+                current_price = signal.price
             
         if current_price is None or current_price <= 0:
             logger.warning("Current price is invalid")
@@ -249,8 +255,10 @@ class VolatilityPositionSizer(PositionSizer):
         max_units = (equity * (self.max_pct / 100)) / current_price
         units = min(units, max_units)
         
-        # Apply direction
-        direction = signal.signal_type.value if hasattr(signal.signal_type, 'value') else 0
+        # Apply direction - using get_signal_value()
+        direction = 0
+        if hasattr(signal, 'get_signal_value'):
+            direction = signal.get_signal_value()
             
         return units * direction
 
@@ -307,7 +315,10 @@ class KellyCriterionSizer(PositionSizer):
             
         # Use provided price or get from signal
         if current_price is None:
-            current_price = signal.price
+            if hasattr(signal, 'get_price'):
+                current_price = signal.get_price()
+            elif hasattr(signal, 'price'):
+                current_price = signal.price
             
         if current_price is None or current_price <= 0:
             return 0
@@ -343,8 +354,10 @@ class KellyCriterionSizer(PositionSizer):
             
         units = allocation / current_price
         
-        # Apply direction
-        direction = signal.signal_type.value if hasattr(signal.signal_type, 'value') else 0
+        # Apply direction - using get_signal_value()
+        direction = 0
+        if hasattr(signal, 'get_signal_value'):
+            direction = signal.get_signal_value()
             
         return units * direction
 
@@ -397,13 +410,16 @@ class RiskParityPositionSizer(PositionSizer):
             
         # Use provided price or get from signal
         if current_price is None:
-            current_price = signal.price
+            if hasattr(signal, 'get_price'):
+                current_price = signal.get_price()
+            elif hasattr(signal, 'price'):
+                current_price = signal.price
             
         if current_price is None or current_price <= 0:
             return 0
             
         # Get symbol
-        symbol = signal.symbol
+        symbol = signal.get_symbol() if hasattr(signal, 'get_symbol') else "unknown"
         
         # Get asset volatility from signal or use cached/default
         volatility = None
@@ -444,8 +460,10 @@ class RiskParityPositionSizer(PositionSizer):
         max_units = (equity * (self.max_pct / 100)) / current_price
         units = min(units, max_units)
         
-        # Apply direction
-        direction = signal.signal_type.value if hasattr(signal.signal_type, 'value') else 0
+        # Apply direction - using get_signal_value()
+        direction = 0
+        if hasattr(signal, 'get_signal_value'):
+            direction = signal.get_signal_value()
             
         return units * direction
 
@@ -502,7 +520,10 @@ class PSARPositionSizer(PositionSizer):
             
         # Use provided price or get from signal
         if current_price is None:
-            current_price = signal.price
+            if hasattr(signal, 'get_price'):
+                current_price = signal.get_price()
+            elif hasattr(signal, 'price'):
+                current_price = signal.price
             
         if current_price is None or current_price <= 0:
             return 0
@@ -515,11 +536,11 @@ class PSARPositionSizer(PositionSizer):
         if psar is None:
             logger.warning(f"No PSAR value provided in signal, using estimated stop distance")
             # Default to estimated stop distance based on price and direction
-            direction = signal.signal_type.value if hasattr(signal.signal_type, 'value') else 0
+            direction = signal.get_signal_value() if hasattr(signal, 'get_signal_value') else 0
             psar = current_price * 0.98 if direction > 0 else current_price * 1.02
             
         # Calculate stop distance
-        direction = signal.signal_type.value if hasattr(signal.signal_type, 'value') else 0
+        direction = signal.get_signal_value() if hasattr(signal, 'get_signal_value') else 0
         if direction == 0:
             return 0
             
@@ -598,7 +619,10 @@ class AdaptivePositionSizer(PositionSizer):
             
         # Use provided price or get from signal
         if current_price is None:
-            current_price = signal.price
+            if hasattr(signal, 'get_price'):
+                current_price = signal.get_price()
+            elif hasattr(signal, 'price'):
+                current_price = signal.price
             
         if current_price is None or current_price <= 0:
             return 0
@@ -623,7 +647,7 @@ class AdaptivePositionSizer(PositionSizer):
         volatility_adjustment = max(0.25, min(2.0, volatility_adjustment))  # Limit adjustment range
         
         # 2. Increase risk when trend is strong and aligned with position
-        direction = signal.signal_type.value if hasattr(signal.signal_type, 'value') else 0
+        direction = signal.get_signal_value() if hasattr(signal, 'get_signal_value') else 0
         if direction == 0:
             return 0
             
@@ -669,6 +693,72 @@ class AdaptivePositionSizer(PositionSizer):
         return units * direction
 
 
+class AdjustedFixedSizer(FixedSizeSizer):
+    """
+    Position sizer that adjusts fixed size based on price and available capital.
+    """
+    
+    def calculate_position_size(self, signal, portfolio, current_price=None):
+        """
+        Calculate position size adjusted to maximize capital usage.
+        
+        Args:
+            signal: Trading signal
+            portfolio: Portfolio state
+            current_price: Optional override for current price
+            
+        Returns:
+            Position size that fits within available capital
+        """
+        # Get direction from signal
+        direction = 0
+        if hasattr(signal, 'get_signal_value'):
+            direction = signal.get_signal_value()
+        else:
+            # Fallback for compatibility
+            if hasattr(signal, 'signal_type') and hasattr(signal.signal_type, 'value'):
+                direction = signal.signal_type.value
+        
+        # Skip neutral signals
+        if direction == 0:
+            return 0
+            
+        # Get equity and available cash
+        equity = 0
+        available_cash = 0
+        
+        if hasattr(portfolio, 'equity'):
+            equity = portfolio.equity
+            if hasattr(portfolio, 'cash'):
+                available_cash = portfolio.cash
+        elif isinstance(portfolio, dict):
+            equity = portfolio.get('equity', 0)
+            available_cash = portfolio.get('cash', equity)
+            
+        if equity <= 0:
+            return 0
+            
+        # Use provided price or get from signal
+        if current_price is None:
+            if hasattr(signal, 'get_price'):
+                current_price = signal.get_price()
+            elif hasattr(signal, 'price'):
+                current_price = signal.price
+                
+        if current_price is None or current_price <= 0:
+            return 0
+            
+        # Calculate max affordable shares (use at most 20% of portfolio equity)
+        max_capital = min(available_cash, equity * 0.2)
+        max_shares = int(max_capital / current_price)
+        
+        # Use the smaller of fixed size or max affordable
+        shares = min(self.fixed_size, max_shares)
+        
+        # Return sized position with direction
+        return shares * direction
+
+
 class PositionSizerFactory:
     """
     Factory for creating position sizers.
@@ -696,6 +786,10 @@ class PositionSizerFactory:
         
         if sizer_type == 'fixed':
             return FixedSizeSizer(
+                fixed_size=kwargs.get('fixed_size', 100)
+            )
+        elif sizer_type == 'adjusted_fixed':
+            return AdjustedFixedSizer(
                 fixed_size=kwargs.get('fixed_size', 100)
             )
         elif sizer_type == 'percent_equity':

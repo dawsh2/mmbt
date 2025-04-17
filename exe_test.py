@@ -23,7 +23,7 @@ from src.events.portfolio_events import PositionActionEvent
 
 from src.data.data_handler import DataHandler, CSVDataSource
 from src.rules.crossover_rules import SMACrossoverRule
-from src.position_management.position_sizers import FixedSizeSizer
+from src.position_management.position_sizers import AdjustedFixedSizer
 from src.position_management.portfolio import EventPortfolio
 from src.position_management.position_manager import PositionManager
 from src.engine.execution_engine import ExecutionEngine
@@ -77,12 +77,11 @@ def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe
     logger.info(f"Created portfolio with {initial_capital} capital")
     
     # Create position sizer and position manager
-    position_sizer = FixedSizeSizer(fixed_size=100)
+    position_sizer = AdjustedFixedSizer(fixed_size=10)
     position_manager = PositionManager(
         portfolio=portfolio,
         position_sizer=position_sizer,
-    )
-    
+    )    
     # CRITICAL: Set event bus on position manager
     position_manager.event_bus = event_bus
     logger.info("Created position manager with fixed sizer")
