@@ -1,61 +1,28 @@
 """
-Crossover Rules Module
+Standalone SMACrossoverRule implementation that doesn't rely on rule registration.
 
-This module implements various crossover-based trading rules such as
-moving average crossovers, price-MA crossovers, and other indicator crossovers.
+This implementation can be included directly in a test script without requiring imports
+from the rule registry system.
 """
 
-from typing import Dict, Any, List, Optional
+import logging
 import numpy as np
-from collections import deque
-
-from src.signals import Signal, SignalType
-from src.rules.rule_base import Rule
+from typing import Dict, Any, Optional
 from src.rules.rule_registry import register_rule
-from src.events.event_types import EventType, BarEvent
+from functools import wraps
+
+# Import necessary base components
+from src.events.event_types import BarEvent, EventType
 from src.events.event_base import Event
 from src.events.signal_event import SignalEvent
-
-
-"""
-Crossover Rules Module
-
-This module implements various crossover-based trading rules such as
-moving average crossovers, price-MA crossovers, and other indicator crossovers.
-"""
-
-import logging
-import numpy as np
-from typing import Dict, Any, Optional, List
-
-from src.events.event_types import BarEvent
-from src.events.signal_event import SignalEvent
 from src.rules.rule_base import Rule
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
 
-"""
-Crossover Rules Module
-
-This module implements various crossover-based trading rules such as
-moving average crossovers, price-MA crossovers, and other indicator crossovers.
-"""
-
-import logging
-import numpy as np
-from typing import Dict, Any, Optional, List
-
-from src.events.event_types import BarEvent
-from src.events.signal_event import SignalEvent
-from src.rules.rule_base import Rule
-
-# Set up logging
-logger = logging.getLogger(__name__)
-
-
-class SMACrossoverRule(Rule):
+@register_rule(category="crossover")
+class StandaloneSMACrossoverRule(Rule):
     """
     Simple Moving Average crossover rule.
 
@@ -100,34 +67,54 @@ class SMACrossoverRule(Rule):
             'last_signal_time': None,
             'last_signal_price': None
         }
-
-    @classmethod
-    def default_params(cls) -> Dict[str, Any]:
+    
+    def on_bar(self, event: Event) -> Optional[SignalEvent]:
         """
-        Get default parameters for SMA crossover rule.
+        Process a bar event and generate a trading signal directly.
         
+        This method bypasses the base class's event handling to ensure direct control 
+        over signal generation and event emission.
+        
+        Args:
+            event: Event containing a BarEvent in its data attribute
+            
         Returns:
-            Dictionary of default parameter values
+            SignalEvent if a signal is generated, None otherwise
         """
-        return {
-            'fast_window': 10,
-            'slow_window': 30,
-            'smooth_signals': False,  # Whether to generate signals on every bar or just on crossovers
-            'price_field': 'Close'    # Field to use for SMA calculation
-        }
+        # Extract BarEvent with type checking
+        if not isinstance(event, Event):
+            logger.error(f"Expected Event object, got {type(event).__name__}")
+            return None
 
-    def _validate_params(self) -> None:
-        """
-        Validate the parameters for this rule.
+        # Extract the bar event
+        if isinstance(event.data, BarEvent):
+            bar_event = event.data
+        elif isinstance(event.data, dict) and 'Close' in event.data:
+            # Convert dict to BarEvent
+            bar_event = BarEvent(event.data)
+            logger.warning(f"Rule {self.name}: Received dictionary instead of BarEvent, converting")
+        else:
+            logger.error(f"Rule {self.name}: Unable to extract BarEvent from {type(event.data).__name__}")
+            return None
         
-        Raises:
-            ValueError: If parameters are invalid
-        """
-        if self.params['fast_window'] >= self.params['slow_window']:
-            raise ValueError("Fast window must be smaller than slow window")
-        
-        if self.params['fast_window'] <= 0 or self.params['slow_window'] <= 0:
-            raise ValueError("Window sizes must be positive integers")
+        # Generate signal directly without going through base class
+        try:
+            signal = self.generate_signal(bar_event)
+            
+            # If signal was generated, store it
+            if signal is not None:
+                # Store in history
+                self.signals.append(signal)
+                logger.info(f"Rule {self.name}: Generated {signal.get_signal_name()} signal")
+                
+                # Emit signal event if we have an event bus
+                self._emit_signal(signal)
+            
+            return signal
+            
+        except Exception as e:
+            logger.error(f"Rule {self.name}: Error generating signal: {str(e)}", exc_info=True)
+            return None
 
     def generate_signal(self, bar_event: BarEvent) -> Optional[SignalEvent]:
         """
@@ -172,26 +159,24 @@ class SMACrossoverRule(Rule):
         slow_window = self.params['slow_window']
         
         # Update price history
-        # Use state dictionary for consistent state management
-        prices = self.state['prices']
-        prices.append(close_price)
+        self.state['prices'].append(close_price)
+        
+        # Log price history for debugging
+        logger.debug(f"Rule {self.name}: Added price {close_price}, history size: {len(self.state['prices'])}")
         
         # Keep only the necessary price history
         max_window = max(fast_window, slow_window)
-        if len(prices) > max_window + 10:  # Keep a few extra points
-            prices = prices[-(max_window + 10):]
-        
-        # Update state
-        self.state['prices'] = prices
+        if len(self.state['prices']) > max_window + 10:  # Keep a few extra points
+            self.state['prices'] = self.state['prices'][-(max_window + 10):]
         
         # Calculate SMAs if we have enough data
-        if len(prices) >= slow_window:
+        if len(self.state['prices']) >= slow_window:
             # Store previous SMAs for crossover detection
             self.state['previous_fast_sma'] = self.state['fast_sma']
             self.state['previous_slow_sma'] = self.state['slow_sma']
             
             # Calculate new SMAs
-            prices_array = np.array(prices)
+            prices_array = np.array(self.state['prices'])
             self.state['fast_sma'] = np.mean(prices_array[-fast_window:])
             self.state['slow_sma'] = np.mean(prices_array[-slow_window:])
             
@@ -207,6 +192,8 @@ class SMACrossoverRule(Rule):
                 # Calculate differences to detect crossovers
                 prev_diff = prev_fast_sma - prev_slow_sma
                 curr_diff = fast_sma - slow_sma
+                
+                logger.debug(f"Rule {self.name}: Crossover check - Prev diff: {prev_diff:.6f}, Curr diff: {curr_diff:.6f}")
                 
                 # Create metadata for signal
                 metadata = {
@@ -239,9 +226,6 @@ class SMACrossoverRule(Rule):
                         timestamp=timestamp
                     )
                     
-                    # Emit signal if event bus is available
-                    self._emit_signal(signal)
-                    
                     return signal
                 
                 # Bearish crossover (fast SMA crosses below slow SMA)
@@ -265,9 +249,6 @@ class SMACrossoverRule(Rule):
                         timestamp=timestamp
                     )
                     
-                    # Emit signal if event bus is available
-                    self._emit_signal(signal)
-                    
                     return signal
                 
                 # Optional: Generate continuous signals based on current alignment
@@ -285,10 +266,6 @@ class SMACrossoverRule(Rule):
                             timestamp=timestamp
                         )
                         
-                        # We don't count alignment signals in the generated count
-                        # But we do emit them
-                        self._emit_signal(signal)
-                        
                         return signal
                     else:
                         # Fast below slow - bearish
@@ -302,10 +279,6 @@ class SMACrossoverRule(Rule):
                             metadata=metadata,
                             timestamp=timestamp
                         )
-                        
-                        # We don't count alignment signals in the generated count
-                        # But we do emit them
-                        self._emit_signal(signal)
                         
                         return signal
         
@@ -323,26 +296,9 @@ class SMACrossoverRule(Rule):
             try:
                 signal_event = Event(EventType.SIGNAL, signal)
                 self.event_bus.emit(signal_event)
+                logger.debug(f"Rule {self.name}: Emitted signal event: {signal_event}")
             except Exception as e:
                 logger.error(f"Rule {self.name}: Error emitting signal: {str(e)}")
-    
-    def on_bar(self, event: Event) -> Optional[SignalEvent]:
-        """
-        Process a bar event and generate a trading signal.
-        
-        This method overrides the base class to ensure signals are emitted.
-        
-        Args:
-            event: Event containing a BarEvent in its data attribute
-            
-        Returns:
-            SignalEvent if a signal is generated, None otherwise
-        """
-        # Use the base class implementation to process the bar
-        signal = super().on_bar(event)
-        
-        # We don't need to emit the signal here since generate_signal does it
-        return signal
         
     def reset(self) -> None:
         """Reset the rule's internal state."""
@@ -356,6 +312,8 @@ class SMACrossoverRule(Rule):
             'last_signal_time': None,
             'last_signal_price': None
         }
+        # Also reset the signals list in the base class
+        self.signals = []
 # Previous version kept for reference 
 # @register_rule(category="crossover")
 # class SMAcrossoverRule(Rule):

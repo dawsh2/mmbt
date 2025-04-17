@@ -17,14 +17,14 @@ based on technical indicators.
 
 ## crossover_rules
 
-Crossover Rules Module
+Standalone SMACrossoverRule implementation that doesn't rely on rule registration.
 
-This module implements various crossover-based trading rules such as
-moving average crossovers, price-MA crossovers, and other indicator crossovers.
+This implementation can be included directly in a test script without requiring imports
+from the rule registry system.
 
 ### Classes
 
-#### `SMACrossoverRule`
+#### `StandaloneSMACrossoverRule`
 
 Simple Moving Average crossover rule.
 
@@ -45,23 +45,20 @@ Args:
     description: Rule description
     event_bus: Optional event bus for emitting signals
 
-###### `default_params(cls)`
+###### `on_bar(event)`
 
-*Returns:* `Dict[str, Any]`
+*Returns:* `Optional[SignalEvent]`
 
-Get default parameters for SMA crossover rule.
+Process a bar event and generate a trading signal directly.
 
+This method bypasses the base class's event handling to ensure direct control 
+over signal generation and event emission.
+
+Args:
+    event: Event containing a BarEvent in its data attribute
+    
 Returns:
-    Dictionary of default parameter values
-
-###### `_validate_params()`
-
-*Returns:* `None`
-
-Validate the parameters for this rule.
-
-Raises:
-    ValueError: If parameters are invalid
+    SignalEvent if a signal is generated, None otherwise
 
 ###### `generate_signal(bar_event)`
 
@@ -87,20 +84,6 @@ Emit a signal event to the event bus if available.
 
 Args:
     signal: SignalEvent to emit
-
-###### `on_bar(event)`
-
-*Returns:* `Optional[SignalEvent]`
-
-Process a bar event and generate a trading signal.
-
-This method overrides the base class to ensure signals are emitted.
-
-Args:
-    event: Event containing a BarEvent in its data attribute
-    
-Returns:
-    SignalEvent if a signal is generated, None otherwise
 
 ###### `reset()`
 
