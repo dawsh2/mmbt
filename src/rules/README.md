@@ -33,7 +33,7 @@ and sell signals when it crosses below.
 
 ##### Methods
 
-###### `__init__(name, params=None, description='')`
+###### `__init__(name, params=None, description='', event_bus=None)`
 
 Initialize SMA crossover rule.
 
@@ -43,6 +43,25 @@ Args:
         - fast_window: Window size for fast SMA (default: 10)
         - slow_window: Window size for slow SMA (default: 30)
     description: Rule description
+    event_bus: Optional event bus for emitting signals
+
+###### `default_params(cls)`
+
+*Returns:* `Dict[str, Any]`
+
+Get default parameters for SMA crossover rule.
+
+Returns:
+    Dictionary of default parameter values
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this rule.
+
+Raises:
+    ValueError: If parameters are invalid
 
 ###### `generate_signal(bar_event)`
 
@@ -50,11 +69,38 @@ Args:
 
 Generate a signal based on SMA crossover.
 
+This method implements the SMA crossover strategy logic:
+1. Update price history with the latest price
+2. Calculate fast and slow SMAs if enough data
+3. Check for crossover between SMAs
+4. Generate appropriate signals on crossover
+
 Args:
     bar_event: BarEvent containing market data
     
 Returns:
     SignalEvent if crossover occurs, None otherwise
+
+###### `_emit_signal(signal)`
+
+Emit a signal event to the event bus if available.
+
+Args:
+    signal: SignalEvent to emit
+
+###### `on_bar(event)`
+
+*Returns:* `Optional[SignalEvent]`
+
+Process a bar event and generate a trading signal.
+
+This method overrides the base class to ensure signals are emitted.
+
+Args:
+    event: Event containing a BarEvent in its data attribute
+    
+Returns:
+    SignalEvent if a signal is generated, None otherwise
 
 ###### `reset()`
 
@@ -560,7 +606,7 @@ Each rule encapsulates a specific trading strategy or signal generation logic.
 
 ##### Methods
 
-###### `__init__(name, params=None, description='')`
+###### `__init__(name, params=None, description='', event_bus=None)`
 
 Initialize a rule.
 
@@ -568,6 +614,7 @@ Args:
     name: Unique identifier for this rule
     params: Dictionary of configuration parameters
     description: Human-readable description of the rule
+    event_bus: Optional event bus for emitting signals
 
 ###### `_validate_params()`
 
@@ -615,14 +662,22 @@ Returns:
 
 Process a bar event and generate a trading signal.
 
-This method extracts the bar data from the event and passes it to
-generate_signal() for the actual signal generation logic.
+This method extracts the bar data from the event, passes it to
+generate_signal() for signal generation, and emits any signals
+to the event bus.
 
 Args:
     event: Event containing a BarEvent in its data attribute
     
 Returns:
     SignalEvent if a signal is generated, None otherwise
+
+###### `set_event_bus(event_bus)`
+
+Set the event bus for this rule.
+
+Args:
+    event_bus: Event bus for emitting signals
 
 ###### `update_state(key, value)`
 
@@ -677,7 +732,7 @@ aggregation method to produce a final signal.
 
 ##### Methods
 
-###### `__init__(name, rules, aggregation_method='majority', params=None, description='')`
+###### `__init__(name, rules, aggregation_method='majority', params=None, description='', event_bus=None)`
 
 Initialize a composite rule.
 
@@ -687,6 +742,7 @@ Args:
     aggregation_method: Method to combine signals ('majority', 'unanimous', 'weighted')
     params: Dictionary of parameters
     description: Human-readable description
+    event_bus: Optional event bus for emitting signals
 
 ###### `_validate_params()`
 
@@ -734,7 +790,7 @@ abstracting away the direct handling of price data and indicators.
 
 ##### Methods
 
-###### `__init__(name, feature_names, params=None, description='')`
+###### `__init__(name, feature_names, params=None, description='', event_bus=None)`
 
 Initialize a feature-based rule.
 
@@ -743,58 +799,7 @@ Args:
     feature_names: List of feature names this rule depends on
     params: Dictionary of parameters
     description: Human-readable description
-
-###### `generate_signal(bar_event)`
-
-*Returns:* `Optional[SignalEvent]`
-
-Generate a trading signal based on features.
-
-Args:
-    bar_event: BarEvent containing market data
-         
-Returns:
-    SignalEvent representing the trading decision, or None if no signal
-
-###### `make_decision(features, bar_event)`
-
-*Returns:* `Optional[SignalEvent]`
-
-Make a trading decision based on the features.
-
-This method should be implemented by subclasses to define
-the specific decision logic using features.
-
-Args:
-    features: Dictionary of feature values
-    bar_event: Original bar event
-         
-Returns:
-    SignalEvent representing the trading decision, or None if no signal
-
-###### `_validate_param_application()`
-
-Validate that parameters were correctly applied to this instance.
-Called after initialization.
-
-#### `FeatureBasedRule`
-
-A rule that generates signals based on features.
-
-FeatureBasedRule uses a list of features to generate trading signals,
-abstracting away the direct handling of price data and indicators.
-
-##### Methods
-
-###### `__init__(name, feature_names, params=None, description='')`
-
-Initialize a feature-based rule.
-
-Args:
-    name: Unique identifier for the rule
-    feature_names: List of feature names this rule depends on
-    params: Dictionary of parameters
-    description: Human-readable description
+    event_bus: Optional event bus for emitting signals
 
 ###### `generate_signal(bar_event)`
 

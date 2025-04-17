@@ -21,8 +21,6 @@ from src.events.signal_event import SignalEvent
 logger = logging.getLogger(__name__)
 
 
-
-
 class Rule(ABC):
     """
     Base class for all trading rules in the system.
@@ -30,7 +28,8 @@ class Rule(ABC):
     Rules transform market data into trading signals by applying decision logic.
     Each rule encapsulates a specific trading strategy or signal generation logic.
     """
-    def __init__(self, name: str, params: Optional[Dict[str, Any]] = None, description: str = ""):
+    def __init__(self, name: str, params: Optional[Dict[str, Any]] = None, 
+                 description: str = "", event_bus=None):
         """
         Initialize a rule.
         
@@ -38,12 +37,14 @@ class Rule(ABC):
             name: Unique identifier for this rule
             params: Dictionary of configuration parameters
             description: Human-readable description of the rule
+            event_bus: Optional event bus for emitting signals
         """
         self.name = name
         self.params = params or self.default_params()
         self.description = description
         self.state = {}
         self.signals = []
+        self.event_bus = event_bus
         self._validate_params()
         
     def _validate_params(self) -> None:
@@ -92,8 +93,9 @@ class Rule(ABC):
         """
         Process a bar event and generate a trading signal.
         
-        This method extracts the bar data from the event and passes it to
-        generate_signal() for the actual signal generation logic.
+        This method extracts the bar data from the event, passes it to
+        generate_signal() for signal generation, and emits any signals
+        to the event bus.
         
         Args:
             event: Event containing a BarEvent in its data attribute
@@ -101,7 +103,7 @@ class Rule(ABC):
         Returns:
             SignalEvent if a signal is generated, None otherwise
         """
-        # Extract BarEvent properly with strong type checking
+        # Extract BarEvent with type checking
         if not isinstance(event, Event):
             logger.error(f"Expected Event object, got {type(event).__name__}")
             return None
@@ -122,16 +124,36 @@ class Rule(ABC):
         try:
             signal = self.generate_signal(bar_event)
             
-            # Store in history
+            # If signal was generated, store it and emit it
             if signal is not None:
+                # Store in history
                 self.signals.append(signal)
                 logger.info(f"Rule {self.name}: Generated {signal.get_signal_name()} signal")
+                
+                # Emit signal event if we have an event bus
+                if self.event_bus is not None:
+                    try:
+                        # Create and emit signal event
+                        signal_event = Event(EventType.SIGNAL, signal)
+                        self.event_bus.emit(signal_event)
+                        logger.debug(f"Rule {self.name}: Emitted signal event: {signal_event}")
+                    except Exception as e:
+                        logger.error(f"Rule {self.name}: Error emitting signal event: {str(e)}", exc_info=True)
             
             return signal
             
         except Exception as e:
             logger.error(f"Rule {self.name}: Error generating signal: {str(e)}", exc_info=True)
             return None
+
+    def set_event_bus(self, event_bus):
+        """
+        Set the event bus for this rule.
+        
+        Args:
+            event_bus: Event bus for emitting signals
+        """
+        self.event_bus = event_bus
 
     def update_state(self, key: str, value: Any) -> None:
         """
@@ -190,7 +212,8 @@ class CompositeRule(Rule):
                  rules: List[Rule],
                  aggregation_method: str = "majority",
                  params: Optional[Dict[str, Any]] = None,
-                 description: str = ""):
+                 description: str = "",
+                 event_bus=None):
         """
         Initialize a composite rule.
         
@@ -200,10 +223,15 @@ class CompositeRule(Rule):
             aggregation_method: Method to combine signals ('majority', 'unanimous', 'weighted')
             params: Dictionary of parameters
             description: Human-readable description
+            event_bus: Optional event bus for emitting signals
         """
         self.rules = rules
         self.aggregation_method = aggregation_method
-        super().__init__(name, params, description)
+        super().__init__(name, params, description, event_bus)
+        
+        # Set event_bus on all component rules
+        for rule in self.rules:
+            rule.set_event_bus(None)  # Disable direct emission from sub-rules
         
     def _validate_params(self) -> None:
         """Validate the parameters for this composite rule."""
@@ -306,27 +334,13 @@ class CompositeRule(Rule):
             timestamp=bar_event.get_timestamp()
         )
     
-    # Other vote methods remain similar, just with direct SignalEvent creation
-    # Each method would directly create and return a SignalEvent
-
+    # Other voting methods would go here with similar implementations
+    
     def reset(self) -> None:
         """Reset this rule and all sub-rules."""
         super().reset()
         for rule in self.rules:
             rule.reset()
-"""
-Implementation Notes:
-
-1. The method 'generate_signal' properly reflects that rules analyze market
-   data to generate trading signals.
-
-2. No helper methods for creating signals - rules should directly use
-   the SignalEvent constructor when needed.
-
-3. Updated voting methods to work directly with SignalEvent objects.
-
-4. Clear documentation explaining the role of rules in the signal flow.
-"""
 
 
 class FeatureBasedRule(Rule):
@@ -341,7 +355,8 @@ class FeatureBasedRule(Rule):
                  name: str, 
                  feature_names: List[str],
                  params: Optional[Dict[str, Any]] = None,
-                 description: str = ""):
+                 description: str = "",
+                 event_bus=None):
         """
         Initialize a feature-based rule.
         
@@ -350,95 +365,10 @@ class FeatureBasedRule(Rule):
             feature_names: List of feature names this rule depends on
             params: Dictionary of parameters
             description: Human-readable description
+            event_bus: Optional event bus for emitting signals
         """
         self.feature_names = feature_names
-        super().__init__(name, params, description)
-    
-    def generate_signal(self, bar_event: BarEvent) -> Optional[SignalEvent]:
-        """
-        Generate a trading signal based on features.
-        
-        Args:
-            bar_event: BarEvent containing market data
-                 
-        Returns:
-            SignalEvent representing the trading decision, or None if no signal
-        """
-        # Extract raw bar data
-        bar_data = bar_event.get_data()
-        
-        # Extract features from data
-        features = {}
-        for feature_name in self.feature_names:
-            if feature_name in bar_data:
-                features[feature_name] = bar_data[feature_name]
-            else:
-                # If a required feature is missing, return None
-                logger.warning(f"Rule {self.name}: Missing required feature: {feature_name}")
-                return None
-        
-        # Call the rule's decision method with the features
-        return self.make_decision(features, bar_event)
-    
-    @abstractmethod
-    def make_decision(self, features: Dict[str, Any], bar_event: BarEvent) -> Optional[SignalEvent]:
-        """
-        Make a trading decision based on the features.
-        
-        This method should be implemented by subclasses to define
-        the specific decision logic using features.
-        
-        Args:
-            features: Dictionary of feature values
-            bar_event: Original bar event
-                 
-        Returns:
-            SignalEvent representing the trading decision, or None if no signal
-        """
-        pass
-
-    def _validate_param_application(self):
-        """
-        Validate that parameters were correctly applied to this instance.
-        Called after initialization.
-        """
-        if self.params is None:
-            raise ValueError(f"Parameters were not properly applied to {self.name}")
-
-        # Check if any parameter is None when it shouldn't be
-        for param_name, param_value in self.params.items():
-            if param_value is None:
-                default_params = self.default_params()
-                if param_name in default_params and default_params[param_name] is not None:
-                    raise ValueError(f"Parameter {param_name} is None but should have a value")
-
-
-
-
-class FeatureBasedRule(Rule):
-    """
-    A rule that generates signals based on features.
-    
-    FeatureBasedRule uses a list of features to generate trading signals,
-    abstracting away the direct handling of price data and indicators.
-    """
-    
-    def __init__(self, 
-                 name: str, 
-                 feature_names: List[str],
-                 params: Optional[Dict[str, Any]] = None,
-                 description: str = ""):
-        """
-        Initialize a feature-based rule.
-        
-        Args:
-            name: Unique identifier for the rule
-            feature_names: List of feature names this rule depends on
-            params: Dictionary of parameters
-            description: Human-readable description
-        """
-        self.feature_names = feature_names
-        super().__init__(name, params, description)
+        super().__init__(name, params, description, event_bus)
     
     def generate_signal(self, bar_event: BarEvent) -> Optional[SignalEvent]:
         """
@@ -497,4 +427,5 @@ class FeatureBasedRule(Rule):
             if param_value is None:
                 default_params = self.default_params()
                 if param_name in default_params and default_params[param_name] is not None:
-                    raise ValueError(f"Parameter {param_name} is None but should have a value")                
+                    raise ValueError(f"Parameter {param_name} is None but should have a value")
+
