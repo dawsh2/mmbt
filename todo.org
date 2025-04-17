@@ -1,10 +1,21 @@
+Current aim is to get a basic run script running that acts as a 'tour de france' of the system. Features will be iteratively added and debugged unitl we have everything working. After everything is working, we can refactor to the final file/directory structure. 
+
+
+Checklist [2/3]:
+- [X] get data loading working 
+- [X] get Rule working
+- [ ] get Backtest engine working with single Rule
+
 ** TODO [TOP-LEVEL TASK] Get Performance Up
 No idea why it's so bad. The returns are terrible. 
 *** NEXT Manually Verify Returns Calculation
 *** NEXT Use a contrived data set and compatible rule to validate returns - genius! 
 ** Codebase
+*** Update other Rule class instances to work with system
+As of now, only SMACrossoverRule is properly structured.
 *** NEXT Migrate to Python's ta or talipp library?
 *** NEXT Create README w/ Class overview, data flow, etc
+
 ** Futures Trading Integration
 *** TODO Work with Tradovate API (or another) for futures paper trading
 ** Workflow

@@ -24,7 +24,28 @@ from the rule registry system.
 
 ### Classes
 
-#### `StandaloneSMACrossoverRule`
+#### `FixedSMACrossoverRule`
+
+Simple Moving Average crossover rule - fixed implementation.
+
+Generates buy signals when the fast SMA crosses above the slow SMA,
+and sell signals when it crosses below.
+
+##### Methods
+
+###### `__init__(name, params=None, description='', event_bus=None)`
+
+No docstring provided.
+
+###### `generate_signal(bar_event)`
+
+Generate a signal based on SMA crossover.
+
+###### `reset()`
+
+Reset the rule's internal state.
+
+#### `SMACrossoverRule`
 
 Simple Moving Average crossover rule.
 
@@ -45,21 +66,6 @@ Args:
     description: Rule description
     event_bus: Optional event bus for emitting signals
 
-###### `on_bar(event)`
-
-*Returns:* `Optional[SignalEvent]`
-
-Process a bar event and generate a trading signal directly.
-
-This method bypasses the base class's event handling to ensure direct control 
-over signal generation and event emission.
-
-Args:
-    event: Event containing a BarEvent in its data attribute
-    
-Returns:
-    SignalEvent if a signal is generated, None otherwise
-
 ###### `generate_signal(bar_event)`
 
 *Returns:* `Optional[SignalEvent]`
@@ -77,13 +83,6 @@ Args:
     
 Returns:
     SignalEvent if crossover occurs, None otherwise
-
-###### `_emit_signal(signal)`
-
-Emit a signal event to the event bus if available.
-
-Args:
-    signal: SignalEvent to emit
 
 ###### `reset()`
 
@@ -126,7 +125,7 @@ Validate the parameters for this rule.
 
 ###### `generate_signal(data)`
 
-*Returns:* `Signal`
+*Returns:* `SignalEvent`
 
 Generate a trading signal based on EMA crossover.
 
@@ -178,7 +177,7 @@ Validate the parameters for this rule.
 
 ###### `generate_signal(data)`
 
-*Returns:* `Signal`
+*Returns:* `SignalEvent`
 
 Generate a trading signal based on MACD crossover.
 
@@ -229,7 +228,7 @@ Validate the parameters for this rule.
 
 ###### `generate_signal(data)`
 
-*Returns:* `Signal`
+*Returns:* `SignalEvent`
 
 Generate a trading signal based on price-MA crossover.
 
@@ -280,7 +279,7 @@ Validate the parameters for this rule.
 
 ###### `generate_signal(data)`
 
-*Returns:* `Signal`
+*Returns:* `SignalEvent`
 
 Generate a trading signal based on Bollinger Bands crossover.
 
@@ -333,7 +332,7 @@ Validate the parameters for this rule.
 
 ###### `generate_signal(data)`
 
-*Returns:* `Signal`
+*Returns:* `SignalEvent`
 
 Generate a trading signal based on Stochastic crossover.
 

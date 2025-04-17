@@ -149,11 +149,22 @@ class Rule(ABC):
     def set_event_bus(self, event_bus):
         """
         Set the event bus for this rule.
-        
+
         Args:
             event_bus: Event bus for emitting signals
         """
         self.event_bus = event_bus
+
+        # Auto-register with event bus
+        if event_bus is not None:
+            # Create a function handler that delegates to on_bar
+            def handler_func(event):
+                return self.on_bar(event)
+
+            # Register the handler
+            event_bus.register(EventType.BAR, handler_func)
+        
+
 
     def update_state(self, key: str, value: Any) -> None:
         """

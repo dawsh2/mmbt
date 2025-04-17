@@ -137,9 +137,6 @@ Args:
 
 Dispatch an event to all registered handlers.
 
-Args:
-    event: Event to dispatch
-
 ###### `_add_to_history(event)`
 
 *Returns:* `None`

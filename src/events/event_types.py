@@ -8,6 +8,7 @@ It provides the EventType enumeration and utility functions for event type opera
 import datetime
 from enum import Enum, auto
 from typing import Dict, List, Optional, Union, Set, Any
+import uuid 
 
 from src.events.event_base import Event
 
