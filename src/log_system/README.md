@@ -1,730 +1,832 @@
-# Log System Documentation
+# Log_system Module
 
-The Log System module provides a structured logging framework for different components of the trading system with configurable log levels, formatting, and output destinations.
+Logging Module for Trading System.
 
-## Directory Structure
+This module provides a unified logging interface for all components 
+of the trading system with configurable formatters and handlers.
 
-```
-src/log_system/
-├── __init__.py             # Package exports and TradeLogger interface
-├── log_config.py           # Configuration management for logging
-├── log_formatters.py       # Custom log formatters (JSON, Structured, etc.)
-└── log_handlers.py         # Specialized log handlers
-```
+## Contents
 
-## Core Concepts
+- [log_config](#log_config)
+- [log_formatters](#log_formatters)
+- [log_handlers](#log_handlers)
+- [logging](#logging)
 
-**TradeLogger**: Main logger interface that provides unified logging across system components.  
-**JsonFormatter**: Custom formatter that outputs structured JSON log records.  
-**StructuredFormatter**: Formatter that extends standard formatter with context data support.  
-**LogContext**: Context manager for adding contextual information to logs.  
-**LogHandler**: Base class for custom log handlers with specialized processing.
+## log_config
 
-## Basic Usage
+Configuration handling for the logging system.
 
-```python
-from src.log_system import TradeLogger
+This module provides functions for loading, validating, and applying
+logging configurations.
 
-# Get a logger
-logger = TradeLogger.get_logger('trading.strategy')
+### Functions
 
-# Log at different levels
-logger.info("Strategy initialized")
-logger.debug("Processing bar data: %s", bar_data)
-logger.warning("Potential signal conflict detected")
-logger.error("Failed to execute trade: %s", error_message)
+#### `load_config_from_file(config_file)`
 
-# Configure from file
-TradeLogger.configure_from_file('logging_config.json')
+*Returns:* `Dict[str, Any]`
 
-# Add context to logs
-from src.log_system import LogContext
+Load logging configuration from a file.
 
-with LogContext(strategy_id='ma_crossover', symbol='AAPL'):
-    logger.info("Signal generated")  # Will include strategy_id and symbol
-```
+Args:
+    config_file (str): Path to configuration file (JSON or YAML)
+    
+Returns:
+    dict: Loaded configuration
+    
+Raises:
+    FileNotFoundError: If the file doesn't exist
+    ValueError: If the file format is invalid
 
-## API Reference
+#### `validate_config(config)`
 
-### TradeLogger
+*Returns:* `None`
 
-Main logger interface for the trading system, providing a unified approach for logging across different components.
+Validate logging configuration.
 
-**Static Methods:**
-- `get_logger(name)`: Get a logger instance with the specified name
-  - `name` (str): Logger name, typically using dot notation (e.g., 'trading.strategy')
-  - Returns: Logger instance
+Args:
+    config (dict): Logging configuration dictionary
+    
+Raises:
+    ValueError: If the configuration is invalid
 
-- `configure_from_file(config_file)`: Configure logging from a configuration file
-  - `config_file` (str): Path to configuration file (JSON or YAML)
+#### `apply_config(config)`
 
-- `configure(config=None)`: Configure logging with the provided configuration
-  - `config` (dict, optional): Logging configuration dictionary
+*Returns:* `None`
 
-- `set_level(name, level)`: Set the log level for a specific logger
-  - `name` (str): Logger name
-  - `level` (str|int): Log level (e.g., 'DEBUG', 'INFO', logging.DEBUG)
+Apply logging configuration.
 
-- `add_file_handler(name, filename, level='DEBUG', formatter='detailed', max_bytes=10485760, backup_count=5)`: Add a file handler to a logger
-  - `name` (str): Logger name
-  - `filename` (str): Log file path
-  - `level` (str|int, optional): Log level for the handler
-  - `formatter` (str, optional): Formatter name
-  - `max_bytes` (int, optional): Maximum file size before rotation
-  - `backup_count` (int, optional): Number of backup files to keep
+Args:
+    config (dict): Logging configuration dictionary
 
-- `add_console_handler(name, level='INFO', formatter='standard')`: Add a console handler to a logger
-  - `name` (str): Logger name
-  - `level` (str|int, optional): Log level for the handler
-  - `formatter` (str, optional): Formatter name
+#### `get_default_config()`
 
-**Example:**
-```python
-# Get and configure a logger
-logger = TradeLogger.get_logger('trading.strategy')
-TradeLogger.set_level('trading.strategy', 'DEBUG')
-TradeLogger.add_file_handler('trading.strategy', 'logs/strategy.log')
+*Returns:* `Dict[str, Any]`
 
-# Log messages
-logger.info("Starting strategy")
-logger.debug("Processing data: %s", data)
-```
+Get default logging configuration.
 
-### JsonFormatter
+Returns:
+    dict: Default configuration
 
-Custom formatter that outputs log records as JSON for structured logging.
+#### `create_logger_config(name, level='INFO', handlers=None, propagate=False)`
 
-**Constructor Parameters:**
-- `include_extra` (bool, optional): Whether to include extra fields from the log record (default: True)
+*Returns:* `Dict[str, Any]`
 
-**Methods:**
-- `format(record)`: Format a log record as JSON
-  - `record` (LogRecord): Log record to format
-  - Returns: JSON-formatted log message
+Create a logger configuration.
 
-**Example:**
-```python
-import logging
-from src.log_system.log_formatters import JsonFormatter
+Args:
+    name (str): Logger name
+    level (str, optional): Log level
+    handlers (list, optional): List of handler names
+    propagate (bool, optional): Whether to propagate to parent
+    
+Returns:
+    dict: Logger configuration
 
-# Create a formatter
-formatter = JsonFormatter()
+#### `create_handler_config(handler_type, level='INFO', formatter='standard')`
 
-# Create a handler with the formatter
-handler = logging.StreamHandler()
-handler.setFormatter(formatter)
+*Returns:* `Dict[str, Any]`
 
-# Add handler to logger
-logger = logging.getLogger('trading.strategy')
-logger.addHandler(handler)
-```
+Create a handler configuration.
 
-### StructuredFormatter
+Args:
+    handler_type (str): Handler type ('console', 'file', etc.)
+    level (str, optional): Log level
+    formatter (str, optional): Formatter name
+    **kwargs: Additional handler-specific parameters
+    
+Returns:
+    dict: Handler configuration
 
-Format log records with a structured format string, supporting context data.
+## log_formatters
 
-**Constructor Parameters:**
-- `fmt` (str, optional): Format string (default: '%(asctime)s [%(levelname)s] [%(name)s] %(message)s %(context)s')
-- `datefmt` (str, optional): Date format string
+Custom log formatters for the logging system.
 
-**Methods:**
-- `format(record)`: Format a log record with structured data
-  - `record` (LogRecord): Log record to format
-  - Returns: Formatted log message
-- `formatException(ei)`: Format an exception for structured output
-  - `ei`: Exception info tuple
-  - Returns: Formatted exception
+This module provides formatters for different logging output formats,
+including JSON and structured formats.
 
-**Example:**
-```python
-import logging
-from src.log_system.log_formatters import StructuredFormatter
+### Classes
 
-# Create a formatter
-formatter = StructuredFormatter('%(asctime)s [%(levelname)s] [%(name)s] %(message)s [%(context)s]')
+#### `JsonFormatter`
 
-# Create a handler with the formatter
-handler = logging.StreamHandler()
-handler.setFormatter(formatter)
+Format log records as JSON.
 
-# Add handler to logger
-logger = logging.getLogger('trading.strategy')
-logger.addHandler(handler)
-```
+This formatter converts log records to JSON format, which is useful
+for structured logging and log analysis.
 
-### LogContext
+##### Methods
+
+###### `__init__(include_extra=True)`
+
+Initialize formatter.
+
+Args:
+    include_extra (bool, optional): Whether to include extra fields
+                                   from the log record
+
+###### `format(record)`
+
+*Returns:* `str`
+
+Format a log record as JSON.
+
+Args:
+    record (LogRecord): Log record to format
+    
+Returns:
+    str: JSON-formatted log message
+
+###### `format_time(timestamp)`
+
+*Returns:* `str`
+
+Format a timestamp as ISO 8601.
+
+Args:
+    timestamp (float): UNIX timestamp
+    
+Returns:
+    str: Formatted timestamp
+
+###### `format_traceback(tb)`
+
+*Returns:* `List[str]`
+
+Format a traceback as a list of strings.
+
+Args:
+    tb: Traceback object
+    
+Returns:
+    list: List of traceback lines
+
+###### `_add_context_fields(record, log_data)`
+
+*Returns:* `None`
+
+Add context fields to log data.
+
+Args:
+    record (LogRecord): Log record
+    log_data (dict): Log data dictionary to update
+
+###### `_add_extra_fields(record, log_data)`
+
+*Returns:* `None`
+
+Add extra fields from record to log data.
+
+Args:
+    record (LogRecord): Log record
+    log_data (dict): Log data dictionary to update
+
+#### `StructuredFormatter`
+
+Format log records with a structured format string.
+
+This formatter extends the standard formatter with support for
+context data and better exception formatting.
+
+##### Methods
+
+###### `__init__(fmt=None, datefmt=None)`
+
+Initialize formatter.
+
+Args:
+    fmt (str, optional): Format string
+    datefmt (str, optional): Date format string
+
+###### `format(record)`
+
+*Returns:* `str`
+
+Format a log record with structured data.
+
+Args:
+    record (LogRecord): Log record to format
+    
+Returns:
+    str: Formatted log message
+
+###### `formatException(ei)`
+
+*Returns:* `str`
+
+Format an exception for structured output.
+
+Args:
+    ei: Exception info tuple
+    
+Returns:
+    str: Formatted exception
+
+###### `_format_context(record)`
+
+*Returns:* `str`
+
+Format context data as a string.
+
+Args:
+    record (LogRecord): Log record
+    
+Returns:
+    str: Formatted context data
+
+## log_handlers
+
+Custom log handlers for the logging system.
+
+This module provides specialized log handlers for different outputs
+and processing of log records.
+
+### Classes
+
+#### `LogContext`
 
 Context manager for adding contextual information to logs.
 
-**Constructor Parameters:**
-- `**kwargs`: Contextual information to add to logs
+This class allows adding context data to log records, which can be
+used by log formatters to include additional information.
 
-**Methods:**
-- `__enter__()`: Enter the context and set contextual data
-- `__exit__(exc_type, exc_val, exc_tb)`: Exit the context and restore previous data
+##### Methods
 
-**Static Methods:**
-- `get_context_data()`: Get the current context data
-  - Returns: Dictionary containing context data
+###### `__init__()`
 
-- `add_context_data(**kwargs)`: Add data to the current context
-  - `**kwargs`: Data to add to context
+Initialize with contextual data.
 
-- `clear_context_data()`: Clear all context data
+Args:
+    **kwargs: Contextual information to add to logs
 
-**Example:**
-```python
-from src.log_system import LogContext, TradeLogger
+###### `__enter__()`
 
-logger = TradeLogger.get_logger('trading.execution')
+Enter the context and set contextual data.
 
-# Use as context manager
-with LogContext(trade_id='123', symbol='AAPL'):
-    logger.info("Executing order")  # Will include trade_id and symbol in log
+Returns:
+    LogContext: Self for context manager
 
-# Add context directly
-LogContext.add_context_data(portfolio_id='main')
-logger.info("Updating positions")  # Will include portfolio_id in log
+*Returns:* LogContext: Self for context manager
 
-# Clear context
-LogContext.clear_context_data()
-```
+###### `__exit__(exc_type, exc_val, exc_tb)`
 
-### ContextFilter
+Exit the context and restore previous data.
+
+Args:
+    exc_type: Exception type
+    exc_val: Exception value
+    exc_tb: Exception traceback
+
+###### `get_context_data(cls)`
+
+*Returns:* `Dict[str, Any]`
+
+Get the current context data.
+
+Returns:
+    dict: Dictionary containing context data
+
+###### `add_context_data(cls)`
+
+Add data to the current context.
+
+Args:
+    **kwargs: Data to add to context
+
+###### `clear_context_data(cls)`
+
+Clear all context data.
+
+#### `ContextFilter`
 
 Filter that adds context data to log records.
 
-**Methods:**
-- `filter(record)`: Add context data to the log record
-  - `record` (LogRecord): Log record to add context data to
-  - Returns: True (always passes the filter)
+This filter adds context data from LogContext to each log record
+it processes.
 
-### LogHandler
+##### Methods
 
-Base class for custom log handlers with specialized processing.
+###### `filter(record)`
 
-**Constructor Parameters:**
-- `logger_name` (str, optional): Name of logger to attach to
-- `level` (str|int, optional): Minimum log level to process (default: logging.INFO)
+*Returns:* `bool`
 
-**Methods:**
-- `handle(record)`: Handle a log record
-  - `record` (LogRecord): Log record to handle
+Add context data to the log record.
 
-- `process(record)`: Process a log record (abstract method)
-  - `record` (LogRecord): Log record to process
+Args:
+    record (LogRecord): Log record to add context data to
+    
+Returns:
+    bool: True (always passes the filter)
 
-- `attach()`: Attach this handler to the logger
+#### `LogHandler`
 
-- `detach()`: Detach this handler from the logger
+Base class for custom log handlers.
 
-- `enable()`: Enable the handler
+This class provides a foundation for creating custom log handlers
+that process log records in specific ways.
 
-- `disable()`: Disable the handler
+##### Methods
 
-**Example:**
-```python
-from src.log_system.log_handlers import LogHandler
+###### `__init__(logger_name=None, level)`
 
-class CustomHandler(LogHandler):
-    def __init__(self, logger_name="trading"):
-        super().__init__(logger_name, "WARNING")
-        
-    def process(self, record):
-        # Custom processing logic
-        if record.levelno >= logging.ERROR:
-            # Send notification for errors
-            send_notification(record.getMessage())
+Initialize handler.
 
-# Create and attach handler
-handler = CustomHandler()
-handler.attach()
-```
+Args:
+    logger_name (str, optional): Name of logger to attach to
+    level (str|int, optional): Minimum log level to process
 
-### AlertHandler
+###### `handle(record)`
+
+*Returns:* `None`
+
+Handle a log record.
+
+Args:
+    record (LogRecord): Log record to handle
+
+###### `process(record)`
+
+*Returns:* `None`
+
+Process a log record (abstract method).
+
+Args:
+    record (LogRecord): Log record to process
+
+###### `attach()`
+
+*Returns:* `None`
+
+Attach this handler to the logger.
+
+###### `detach()`
+
+*Returns:* `None`
+
+Detach this handler from the logger.
+
+###### `enable()`
+
+*Returns:* `None`
+
+Enable the handler.
+
+###### `disable()`
+
+*Returns:* `None`
+
+Disable the handler.
+
+#### `AlertHandler`
 
 Handler for generating alerts based on log messages.
 
-**Constructor Parameters:**
-- `logger_name` (str, optional): Name of logger to attach to
-- `level` (str|int, optional): Minimum log level for alerts (default: logging.ERROR)
-- `alert_callback` (callable, optional): Function to call for alerts
-- `alert_keywords` (list, optional): Keywords to trigger alerts on
+This handler can generate alerts when log messages match certain
+criteria, and can call a callback function to handle the alerts.
 
-**Methods:**
-- `process(record)`: Process a log record and generate alerts if needed
-  - `record` (LogRecord): Log record to process
+##### Methods
 
-**Example:**
-```python
-from src.log_system.log_handlers import AlertHandler
+###### `__init__(logger_name=None, level, alert_callback=None, alert_keywords=None)`
 
-def send_alert(alert_info):
-    # Send alert via email, SMS, etc.
-    print(f"ALERT: {alert_info['message']}")
+Initialize alert handler.
 
-# Create alert handler
-alert_handler = AlertHandler(
-    logger_name="trading.strategy",
-    level="WARNING",
-    alert_callback=send_alert,
-    alert_keywords=["margin call", "connection lost", "timeout"]
-)
+Args:
+    logger_name (str, optional): Name of logger to attach to
+    level (str|int, optional): Minimum log level for alerts
+    alert_callback (callable, optional): Function to call for alerts
+    alert_keywords (list, optional): Keywords to trigger alerts on
 
-# Attach it
-alert_handler.attach()
-```
+###### `process(record)`
 
-### DatabaseHandler
+*Returns:* `None`
+
+Process a log record and generate alerts if needed.
+
+Args:
+    record (LogRecord): Log record to process
+
+#### `DatabaseHandler`
 
 Handler for storing log records in a database.
 
-**Constructor Parameters:**
-- `logger_name` (str, optional): Name of logger to attach to
-- `level` (str|int, optional): Minimum log level to store (default: logging.INFO)
-- `db_connection` (object, optional): Database connection
-- `table_name` (str, optional): Table name for logs (default: 'logs')
+This handler stores log records in a database table, which can be
+useful for long-term storage and analysis.
 
-**Methods:**
-- `process(record)`: Process a log record and store it in the database
-  - `record` (LogRecord): Log record to process
+##### Methods
 
-**Example:**
-```python
-import sqlite3
-from src.log_system.log_handlers import DatabaseHandler
+###### `__init__(logger_name=None, level, db_connection=None, table_name='logs')`
 
-# Create database connection
-conn = sqlite3.connect('trading_logs.db')
+Initialize database handler.
 
-# Create handler
-db_handler = DatabaseHandler(
-    logger_name="trading",
-    level="INFO",
-    db_connection=conn,
-    table_name="system_logs"
-)
+Args:
+    logger_name (str, optional): Name of logger to attach to
+    level (str|int, optional): Minimum log level to store
+    db_connection (object, optional): Database connection
+    table_name (str, optional): Table name for logs
 
-# Attach it
-db_handler.attach()
-```
+###### `process(record)`
 
-### MemoryHandler
+*Returns:* `None`
 
-Handler that stores log records in memory for testing and analysis.
+Process a log record and store it in the database.
 
-**Constructor Parameters:**
-- `logger_name` (str, optional): Name of logger to attach to
-- `level` (str|int, optional): Minimum log level to store (default: logging.INFO)
-- `max_records` (int, optional): Maximum number of records to store (default: 1000)
+Args:
+    record (LogRecord): Log record to process
 
-**Methods:**
-- `process(record)`: Process a log record and store it in memory
-  - `record` (LogRecord): Log record to process
-- `get_records(level=None, logger=None)`: Get stored records with optional filtering
-  - `level` (str|int, optional): Filter by level
-  - `logger` (str, optional): Filter by logger name
-  - Returns: List of filtered log records
-- `clear()`: Clear all stored records
+###### `_initialize_table()`
 
-**Example:**
-```python
-from src.log_system.log_handlers import MemoryHandler
-import logging
+*Returns:* `None`
 
-# Create memory handler for tests
-memory_handler = MemoryHandler(
-    logger_name="trading.strategy",
-    level=logging.DEBUG,
-    max_records=500
-)
+Initialize database table if it doesn't exist.
 
-# Attach it
-memory_handler.attach()
+###### `_get_connection()`
 
-# Later, in tests
-def test_strategy_logging():
-    # ... run strategy code ...
+*Returns:* `Any`
+
+Get a database connection for the current thread.
+
+Returns:
+    object: Database connection
+
+###### `_format_record(record)`
+
+*Returns:* `Dict[str, Any]`
+
+Format a log record for database storage.
+
+Args:
+    record (LogRecord): Log record to format
     
-    # Get logged records
-    error_logs = memory_handler.get_records(level="ERROR")
-    assert len(error_logs) == 0, "Strategy produced error logs"
+Returns:
+    dict: Formatted log data
+
+#### `MemoryHandler`
+
+Handler that stores log records in memory.
+
+This handler is useful for testing and for capturing logs for
+later analysis within the application.
+
+##### Methods
+
+###### `__init__(logger_name=None, level, max_records=1000)`
+
+Initialize memory handler.
+
+Args:
+    logger_name (str, optional): Name of logger to attach to
+    level (str|int, optional): Minimum log level to store
+    max_records (int, optional): Maximum number of records to store
+
+###### `process(record)`
+
+*Returns:* `None`
+
+Process a log record and store it in memory.
+
+Args:
+    record (LogRecord): Log record to process
+
+###### `get_records(level=None, logger=None)`
+
+*Returns:* `List[logging.LogRecord]`
+
+Get stored records with optional filtering.
+
+Args:
+    level (str|int, optional): Filter by level
+    logger (str, optional): Filter by logger name
     
-    # Clear for next test
-    memory_handler.clear()
-```
+Returns:
+    list: Filtered log records
 
-### Utility Decorators
+###### `clear()`
 
-#### log_execution_time
+*Returns:* `None`
+
+Clear all stored records.
+
+## logging
+
+Logging system for the trading application.
+
+This module provides a structured logging framework for different
+components of the trading system with configurable log levels,
+formatting, and output destinations.
+
+### Functions
+
+#### `log_execution_time(logger=None, level)`
 
 Decorator to log the execution time of a function.
 
-**Parameters:**
-- `logger` (Logger|str, optional): Logger to use (or logger name)
-- `level` (int, optional): Log level to use (default: logging.DEBUG)
+Args:
+    logger: Logger to use (or logger name)
+    level: Log level to use
+    
+Returns:
+    Decorator function
 
-**Example:**
-```python
-from src.log_system import log_execution_time, TradeLogger
+*Returns:* Decorator function
 
-logger = TradeLogger.get_logger('trading.performance')
-
-@log_execution_time(logger=logger, level=logging.INFO)
-def process_market_data(data):
-    # Process data
-    return processed_data
-```
-
-#### log_method_calls
+#### `log_method_calls(logger=None, entry_level, exit_level, arg_level)`
 
 Decorator to log method entry and exit with arguments.
 
-**Parameters:**
-- `logger` (Logger|str, optional): Logger to use (or logger name)
-- `entry_level` (int, optional): Log level for method entry (default: logging.DEBUG)
-- `exit_level` (int, optional): Log level for method exit (default: logging.DEBUG)
-- `arg_level` (int, optional): Log level for arguments (default: logging.DEBUG)
-
-**Example:**
-```python
-from src.log_system import log_method_calls
-
-@log_method_calls(logger="trading.strategy", entry_level=logging.INFO)
-def execute_trade(symbol, price, quantity):
-    # Execute trade
-    return trade_id
-```
-
-## Advanced Usage
-
-### Custom Configuration
-
-```python
-from src.log_system import TradeLogger
-import logging
-
-# Custom configuration
-config = {
-    'version': 1,
-    'formatters': {
-        'brief': {
-            'format': '%(asctime)s [%(levelname)s] %(message)s',
-            'datefmt': '%H:%M:%S'
-        },
-        'detailed': {
-            'format': '%(asctime)s [%(levelname)s] [%(name)s:%(lineno)d] %(message)s',
-            'datefmt': '%Y-%m-%d %H:%M:%S'
-        }
-    },
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-            'level': 'INFO',
-            'formatter': 'brief',
-            'stream': 'ext://sys.stdout'
-        },
-        'strategy_file': {
-            'class': 'logging.handlers.RotatingFileHandler',
-            'level': 'DEBUG',
-            'formatter': 'detailed',
-            'filename': 'logs/strategy.log',
-            'maxBytes': 10485760,
-            'backupCount': 3
-        },
-        'trade_file': {
-            'class': 'logging.handlers.RotatingFileHandler',
-            'level': 'INFO',
-            'formatter': 'detailed',
-            'filename': 'logs/trades.log',
-            'maxBytes': 10485760,
-            'backupCount': 5
-        }
-    },
-    'loggers': {
-        'trading.strategy': {
-            'handlers': ['console', 'strategy_file'],
-            'level': 'DEBUG',
-            'propagate': False
-        },
-        'trading.execution': {
-            'handlers': ['console', 'trade_file'],
-            'level': 'INFO',
-            'propagate': False
-        }
-    }
-}
-
-# Apply configuration
-TradeLogger.configure(config)
-```
-
-### Using Helper Functions for Configuration
-
-The log_config module provides helper functions to create configuration elements:
-
-```python
-from src.log_system.log_config import create_logger_config, create_handler_config, get_default_config
-
-# Get default configuration
-base_config = get_default_config()
-
-# Create a logger configuration
-strategy_logger_config = create_logger_config(
-    name="trading.strategy",
-    level="DEBUG",
-    handlers=["console", "file"],
-    propagate=False
-)
-
-# Create a handler configuration
-file_handler_config = create_handler_config(
-    handler_type="file",
-    level="DEBUG",
-    formatter="detailed",
-    filename="logs/detailed.log",
-    max_bytes=20485760,
-    backup_count=10
-)
-
-# Update base configuration
-base_config["loggers"]["trading.strategy"] = strategy_logger_config
-base_config["handlers"]["detailed_file"] = file_handler_config
-
-# Apply configuration
-from src.log_system import TradeLogger
-TradeLogger.configure(base_config)
-```
-
-### Creating Custom Log Handlers
-
-```python
-from src.log_system.log_handlers import LogHandler
-import logging
-import json
-import requests
-
-class WebhookHandler(LogHandler):
-    """Handler that sends log events to a webhook."""
+Args:
+    logger: Logger to use (or logger name)
+    entry_level: Log level for method entry
+    exit_level: Log level for method exit
+    arg_level: Log level for arguments
     
-    def __init__(self, webhook_url, logger_name=None, level=logging.ERROR):
-        super().__init__(logger_name, level)
-        self.webhook_url = webhook_url
-        
-    def process(self, record):
-        # Format record as JSON
-        log_data = {
-            'timestamp': record.created,
-            'level': record.levelname,
-            'logger': record.name,
-            'message': record.getMessage(),
-            'module': record.module,
-            'line': record.lineno
-        }
-        
-        # Add exception info if present
-        if record.exc_info:
-            log_data['exception'] = {
-                'type': record.exc_info[0].__name__,
-                'message': str(record.exc_info[1])
-            }
-            
-        # Send to webhook
-        try:
-            requests.post(
-                self.webhook_url,
-                json=log_data,
-                headers={'Content-Type': 'application/json'},
-                timeout=1  # Don't block for too long
-            )
-        except Exception as e:
-            # Log to standard error but don't raise
-            import sys
-            print(f"Failed to send log to webhook: {e}", file=sys.stderr)
+Returns:
+    Decorator function
 
-# Usage
-webhook_handler = WebhookHandler(
-    webhook_url='https://example.com/log_webhook',
-    logger_name='trading.strategy',
-    level=logging.WARNING
-)
-webhook_handler.attach()
-```
+*Returns:* Decorator function
 
-### Structured Logging with Context
+### Classes
 
-```python
-from src.log_system import TradeLogger, LogContext
-from src.log_system.log_formatters import JsonFormatter
-import logging
+#### `TradeLogger`
 
-# Configure logging for JSON output
-logger = TradeLogger.get_logger('trading.execution')
+Main logger interface for the trading system.
 
-# Add JSON handler
-handler = logging.StreamHandler()
-handler.setFormatter(JsonFormatter())
-logger.addHandler(handler)
+This class provides a unified interface for logging across
+different components with support for multiple output formats
+and destinations.
 
-# Log structured events during trade execution
-def execute_order(order):
-    # Create a context with common attributes
-    with LogContext(
-        order_id=order.id,
-        symbol=order.symbol,
-        quantity=order.quantity,
-        side=order.side
-    ):
-        logger.info("Processing order")
-        
-        try:
-            # Execute order logic here
-            price = get_market_price(order.symbol)
-            
-            # Add more context for fill
-            LogContext.add_context_data(
-                price=price,
-                execution_time=get_current_time()
-            )
-            
-            logger.info("Order filled")
-            
-            # All logs include the full context:
-            # {
-            #   "timestamp": "2023-06-15 10:30:45.123",
-            #   "level": "INFO",
-            #   "logger": "trading.execution",
-            #   "message": "Order filled",
-            #   "order_id": "12345",
-            #   "symbol": "AAPL",
-            #   "quantity": 100,
-            #   "side": "BUY",
-            #   "price": 152.50,
-            #   "execution_time": "2023-06-15 10:30:45.000"
-            # }
-            
-        except Exception as e:
-            logger.error(f"Order execution failed: {str(e)}", exc_info=True)
-```
+##### Methods
 
-### In-Memory Logging for Testing
+###### `get_logger(cls, name)`
 
-```python
-from src.log_system.log_handlers import MemoryHandler
-import logging
+*Returns:* `logging.Logger`
 
-# Create a memory handler for capturing logs during tests
-memory_handler = MemoryHandler(level=logging.DEBUG)
-memory_handler.attach()
+Get a logger instance with the specified name.
 
-def test_strategy_execution():
-    # Clear previous logs
-    memory_handler.clear()
+Args:
+    name: Logger name, typically using dot notation (e.g., 'trading.strategy')
     
-    # Execute strategy
-    strategy.execute()
+Returns:
+    Logger instance
+
+###### `configure_from_file(cls, config_file)`
+
+*Returns:* `None`
+
+Configure logging from a configuration file.
+
+Args:
+    config_file: Path to configuration file (JSON or YAML)
+
+###### `configure(cls, config=None)`
+
+*Returns:* `None`
+
+Configure logging with the provided configuration.
+
+Args:
+    config: Logging configuration dictionary
+
+###### `set_level(cls, name, level)`
+
+*Returns:* `None`
+
+Set the log level for a specific logger.
+
+Args:
+    name: Logger name
+    level: Log level (e.g., 'DEBUG', 'INFO', logging.DEBUG)
+
+###### `add_file_handler(cls, name, filename, level='DEBUG', formatter='detailed', max_bytes=10485760, backup_count=5)`
+
+*Returns:* `None`
+
+Add a file handler to a logger.
+
+Args:
+    name: Logger name
+    filename: Log file path
+    level: Log level for the handler
+    formatter: Formatter name
+    max_bytes: Maximum file size before rotation
+    backup_count: Number of backup files to keep
+
+###### `add_console_handler(cls, name, level='INFO', formatter='standard')`
+
+*Returns:* `None`
+
+Add a console handler to a logger.
+
+Args:
+    name: Logger name
+    level: Log level for the handler
+    formatter: Formatter name
+
+#### `JsonFormatter`
+
+Custom formatter that outputs log records as JSON.
+
+This enables structured logging which is useful for log parsing and analysis.
+
+##### Methods
+
+###### `format(record)`
+
+*Returns:* `str`
+
+Format a log record as JSON.
+
+Args:
+    record: Log record to format
     
-    # Verify logs
-    error_logs = memory_handler.get_records(level=logging.ERROR)
-    assert len(error_logs) == 0, "Strategy execution produced errors"
+Returns:
+    JSON-formatted log message
+
+#### `LogContext`
+
+Context manager for adding contextual information to logs.
+
+This allows for adding extra information to log records within a specific context.
+
+##### Methods
+
+###### `__init__()`
+
+Initialize the log context.
+
+Args:
+    **kwargs: Contextual information to add to logs
+
+###### `__enter__()`
+
+Enter the context and set contextual data.
+
+###### `__exit__(exc_type, exc_val, exc_tb)`
+
+Exit the context and restore previous data.
+
+###### `get_context_data(cls)`
+
+*Returns:* `Dict[str, Any]`
+
+Get the current context data.
+
+Returns:
+    Dictionary containing context data
+
+###### `add_context_data(cls)`
+
+*Returns:* `None`
+
+Add data to the current context.
+
+Args:
+    **kwargs: Data to add to context
+
+###### `clear_context_data(cls)`
+
+*Returns:* `None`
+
+Clear all context data.
+
+#### `ContextFilter`
+
+Filter that adds context data to log records.
+
+This filter adds any context data from LogContext to log records
+as they are emitted.
+
+##### Methods
+
+###### `filter(record)`
+
+*Returns:* `bool`
+
+Add context data to the log record.
+
+Args:
+    record: Log record to add context data to
     
-    # Check for specific log message
-    info_logs = memory_handler.get_records(level=logging.INFO)
-    signal_logs = [log for log in info_logs if "Signal generated" in log.getMessage()]
-    assert len(signal_logs) > 0, "No signals were generated"
-```
+Returns:
+    True (always passes the filter)
 
-### Real-time Monitoring with AlertHandler
+#### `LogHandler`
 
-```python
-from src.log_system import TradeLogger
-from src.log_system.log_handlers import AlertHandler
-import logging
-import smtplib
-from email.message import EmailMessage
+Base class for custom log handlers with specialized processing.
 
-def email_alert(alert_info):
-    """Send email alert for critical issues."""
-    msg = EmailMessage()
-    msg['Subject'] = f"TRADING ALERT: {alert_info['level']}"
-    msg['From'] = "alerts@example.com"
-    msg['To'] = "trader@example.com"
-    
-    # Format message body
-    body = f"""
-    Alert Time: {alert_info['timestamp']}
-    Level: {alert_info['level']}
-    Source: {alert_info['logger']} ({alert_info['source']})
-    
-    Message: {alert_info['message']}
-    """
-    
-    if 'exception' in alert_info:
-        body += f"""
-        Exception: {alert_info['exception']['type']}
-        Error: {alert_info['exception']['message']}
-        """
-    
-    msg.set_content(body)
-    
-    # Send email
-    with smtplib.SMTP('smtp.example.com', 587) as server:
-        server.starttls()
-        server.login('alerts@example.com', 'password')
-        server.send_message(msg)
+This class serves as a base for creating custom handlers that
+can perform additional processing on log records.
 
-# Create alert handler
-alert_handler = AlertHandler(
-    logger_name="trading",
-    level=logging.ERROR,
-    alert_callback=email_alert,
-    alert_keywords=["connection lost", "API error", "margin call"]
-)
+##### Methods
 
-# Attach to logger
-alert_handler.attach()
-```
+###### `__init__(logger_name=None, level)`
 
-## Thread Safety
+Initialize the log handler.
 
-The logging system is designed to be thread-safe:
+Args:
+    logger_name: Name of logger to attach to
+    level: Minimum log level to process
 
-1. The `LogContext` class uses thread-local storage to ensure context data is isolated between threads.
-2. The standard Python logging module handles concurrent access to loggers and handlers.
-3. The `DatabaseHandler` maintains a separate database connection for each thread.
+###### `handle(record)`
 
-This allows the logging system to be safely used in multi-threaded environments without risk of context pollution between threads.
+*Returns:* `None`
 
-## Integration with Python Standard Logging
+Handle a log record.
 
-The log system is built on top of the Python standard logging module, which means:
+Args:
+    record: Log record to handle
 
-1. It's compatible with existing Python logging configurations
-2. Standard logging handlers can be used alongside custom handlers
-3. It follows the same hierarchical logger structure (e.g., 'trading.strategy' is a child of 'trading')
-4. Log levels follow the standard Python logging levels (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+###### `process(record)`
 
-## Best Practices
+*Returns:* `None`
 
-1. **Use hierarchical logger names** to organize logs by component (e.g., 'trading.strategy.momentum', 'trading.execution.api')
+Process a log record.
 
-2. **Set appropriate log levels** for development (DEBUG) vs. production (INFO/WARNING)
+Args:
+    record: Log record to process
 
-3. **Use LogContext for grouping related logs** rather than repeating the same information in each log message
+###### `attach()`
 
-4. **Include structured data** to make logs easier to search and analyze
+*Returns:* `None`
 
-5. **Configure different handlers for different purposes**:
-   - Console for interactive monitoring
-   - Files for historical records
-   - Specialized handlers for alerts and metrics
+Attach this handler to the logger.
 
-6. **Use decorators** to consistently log method calls and execution times across the application
+###### `enable()`
 
-7. **Implement error handling** in custom handlers to prevent logging failures from affecting the application
+*Returns:* `None`
 
-8. **Periodically rotate log files** to manage disk space and make logs easier to archive
+Enable the handler.
 
-9. **Be mindful of performance** when logging in high-frequency components
+###### `disable()`
 
-10. **Create consistent log message formats** to make logs easier to read and parse
+*Returns:* `None`
+
+Disable the handler.
+
+#### `AlertHandler`
+
+Handler for generating alerts based on log messages.
+
+This handler monitors log records and triggers alerts for
+records that meet specific criteria.
+
+##### Methods
+
+###### `__init__(logger_name=None, level, alert_callback=None, alert_keywords=None)`
+
+Initialize the alert handler.
+
+Args:
+    logger_name: Name of logger to attach to
+    level: Minimum log level for alerts
+    alert_callback: Function to call for alerts
+    alert_keywords: Keywords to trigger alerts on
+
+###### `process(record)`
+
+*Returns:* `None`
+
+Process a log record and generate alerts if needed.
+
+Args:
+    record: Log record to process
+
+###### `_generate_alert(record)`
+
+*Returns:* `None`
+
+Generate an alert for a log record.
+
+Args:
+    record: Log record to generate alert for
+
+#### `DatabaseHandler`
+
+Handler for storing log records in a database.
+
+This handler saves log records to a database for persistent storage
+and later analysis.
+
+##### Methods
+
+###### `__init__(logger_name=None, level, db_connection=None, table_name='logs')`
+
+Initialize the database handler.
+
+Args:
+    logger_name: Name of logger to attach to
+    level: Minimum log level to store
+    db_connection: Database connection
+    table_name: Table name for logs
+
+###### `_create_table()`
+
+*Returns:* `None`
+
+Create the log table if it doesn't exist.
+
+###### `process(record)`
+
+*Returns:* `None`
+
+Process a log record and store it in the database.
+
+Args:
+    record: Log record to process

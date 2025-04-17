@@ -1,426 +1,770 @@
-# Engine Module Documentation
+# Engine Module
 
-The Engine module is the core execution component of the trading system, handling backtesting, market simulation, order execution, and portfolio tracking. It transforms trading signals into orders, manages their execution with realistic market conditions, and tracks performance metrics.
+No module overview available.
 
-## Core Concepts
+## Contents
 
-**Backtester**: Orchestrates the backtesting process, connecting data, strategy, and execution components.  
-**ExecutionEngine**: Handles order execution, position tracking, and portfolio management.  
-**MarketSimulator**: Simulates realistic market conditions including slippage and transaction costs.  
-**Event System**: Passes events (bars, signals, orders, fills) between system components.
+- [backtester](#backtester)
+- [execution_engine](#execution_engine)
+- [market_simulator](#market_simulator)
+- [position_manager](#position_manager)
 
-## Event Flow in Backtesting
+## backtester
 
-The complete event flow in the system follows this sequence:
+Backtester for Trading System - Standardized Version
 
-1. `BAR` events are emitted for each bar of market data
-2. Strategy components receive the bar events via their `on_bar(event)` methods
-3. If a strategy generates a signal, it is emitted as a `SIGNAL` event
-4. The PositionManager receives signal events via its `on_signal(event)` method
-5. If the PositionManager decides to act on the signal, it generates an `ORDER` event
-6. The ExecutionEngine receives order events via its `on_order(event)` method
-7. The ExecutionEngine simulates execution and emits a `FILL` event
-8. The Portfolio is updated with the fill information
+This module provides the main Backtester class which orchestrates the backtesting process,
+using standardized event objects throughout the workflow.
 
-This event flow ensures that each component is responsible only for its specific role in the trading process.
+### Classes
 
-## Basic Usage
+#### `Backtester`
 
-```python
-from src.engine import Backtester, MarketSimulator
-from src.data.data_handler import CSVDataHandler
-from src.strategy import WeightedStrategy
-from src.config import ConfigManager
-from src.position_management.position_manager import PositionManager
+Main orchestration class that coordinates the backtest execution.
+Acts as the facade for the backtesting subsystem.
 
-# Create data handler
-data_handler = CSVDataHandler('data/AAPL_daily.csv')
+##### Methods
 
-# Create a strategy
-strategy = WeightedStrategy(rules=rule_objects, weights=[0.4, 0.3, 0.3])
+###### `__init__(config, data_handler, strategy, position_manager=None)`
 
-# Create configuration
-config = ConfigManager()
-config.set('backtester.initial_capital', 100000)
-config.set('backtester.market_simulation.slippage_model', 'fixed')
-config.set('backtester.market_simulation.slippage_bps', 5)
+Initialize the backtester with configuration and dependencies.
 
-# Create position manager
-position_manager = PositionManager()
+Args:
+    config: Configuration dictionary or ConfigManager instance
+    data_handler: Data handler providing market data
+    strategy: Trading strategy to test
+    position_manager: Optional position manager for risk management
 
-# Create and run backtester
-backtester = Backtester(config, data_handler, strategy, position_manager)
-results = backtester.run()
+###### `_extract_market_sim_config(config)`
 
-# Analyze results
-print(f"Total Return: {results['total_percent_return']:.2f}%")
-print(f"Number of Trades: {results['num_trades']}")
-print(f"Sharpe Ratio: {backtester.calculate_sharpe():.4f}")
+Extract market simulation configuration.
 
-# Access trade history
-for trade in results['trades'][:5]:  # First 5 trades
-    print(f"Entry: {trade[0]}, Direction: {trade[1]}, Exit: {trade[3]}, Return: {trade[5]:.4f}")
+###### `_extract_initial_capital(config)`
 
-# Access portfolio history
-portfolio_history = results['portfolio_history']
-```
+Extract initial capital from configuration.
 
-## API Reference
+###### `_setup_event_handlers()`
 
-### Backtester
+Set up event handlers for backtesting.
 
-The main orchestration class that coordinates the backtesting process.
-
-**Constructor Parameters:**
-- `config` (ConfigManager/dict): Configuration for the backtest
-- `data_handler` (DataHandler): Data handler providing market data
-- `strategy` (Strategy): Trading strategy to test
-- `position_manager` (PositionManager, optional): Position manager for risk management
-
-**Methods:**
-
-#### run(use_test_data=False)
+###### `run(use_test_data=False)`
 
 Run the backtest.
 
-**Parameters:**
-- `use_test_data` (bool, optional): Whether to use test data (True) or training data (False)
+Args:
+    use_test_data: Whether to use test data (True) or training data (False)
+    
+Returns:
+    dict: Backtest results
 
-**Returns:**
-- `dict`: Backtest results containing trades, portfolio history, and performance metrics
+*Returns:* dict: Backtest results
 
-**Result Dictionary:**
-- `trades` (list): List of executed trades as tuples (entry_time, direction, entry_price, exit_time, exit_price, log_return)
-- `num_trades` (int): Number of trades executed
-- `total_log_return` (float): Total logarithmic return
-- `total_percent_return` (float): Total percentage return
-- `average_log_return` (float): Average logarithmic return per trade
-- `portfolio_history` (list): Snapshot of portfolio at each bar
-- `signals` (list): Signal history
-- `config` (dict): Configuration used for the backtest
+###### `_on_signal(event)`
 
-**Example:**
-```python
-backtester = Backtester(config, data_handler, strategy, position_manager)
-results = backtester.run(use_test_data=True)  # Run on test data
-```
+Handle signal events by generating orders.
 
-#### calculate_sharpe()
+Args:
+    event: Signal event
 
-Calculate the Sharpe ratio for the backtest.
+###### `_on_order(event)`
 
-**Returns:**
-- `float`: Sharpe ratio value
+Handle order events.
 
-**Example:**
-```python
-sharpe_ratio = backtester.calculate_sharpe()
-```
+Args:
+    event: Order event
 
-#### reset()
+###### `_on_fill(event)`
+
+Handle fill events.
+
+Args:
+    event: Fill event
+
+###### `_process_signal(signal_event, bar_event)`
+
+Process a single signal.
+
+Args:
+    signal_event: Signal to process
+    bar_event: Current bar data
+
+###### `reset()`
 
 Reset the backtester state.
 
-**Example:**
-```python
-backtester.reset()  # Reset before running another backtest
-```
+###### `collect_results()`
 
-### ExecutionEngine
+Collect backtest results for analysis.
+
+Returns:
+    dict: Results dictionary with trades, portfolio history, etc.
+
+*Returns:* dict: Results dictionary with trades, portfolio history, etc.
+
+###### `_process_trades(trade_history)`
+
+Process trade history into a standardized format.
+
+###### `_calculate_performance_metrics(processed_trades)`
+
+Calculate performance metrics from processed trades.
+
+###### `calculate_sharpe(risk_free_rate=0.0, annualization_factor=252)`
+
+Calculate Sharpe ratio for the backtest results.
+
+###### `calculate_max_drawdown()`
+
+Calculate maximum drawdown for the backtest.
+
+## execution_engine
+
+Execution Engine with Standardized Event Objects
+
+This is a reference implementation of the ExecutionEngine class
+that uses standardized event objects throughout.
+
+### Classes
+
+#### `ExecutionEngine`
 
 Handles order execution, position tracking, and portfolio management.
 
-**Constructor Parameters:**
-- `position_manager` (PositionManager, optional): Position manager for position sizing
+##### Methods
 
-**Methods:**
+###### `__init__(position_manager=None, market_simulator=None)`
 
-#### on_order(event)
+Initialize the execution engine.
+
+###### `on_signal(event)`
+
+Process a signal and convert to an order if appropriate.
+
+Args:
+    event: Event containing a SignalEvent
+
+Returns:
+    OrderEvent if order was created, None otherwise
+
+*Returns:* OrderEvent if order was created, None otherwise
+
+###### `on_order(event)`
 
 Handle incoming order events.
 
-**Parameters:**
-- `event` (Event): Order event
+Args:
+    event: Order event
 
-**Example:**
-```python
-execution_engine = ExecutionEngine(position_manager)
-execution_engine.on_order(order_event)
-```
-
-#### execute_pending_orders(bar, market_simulator)
+###### `execute_pending_orders(bar, market_simulator=None)`
 
 Execute any pending orders based on current bar data.
 
-**Parameters:**
-- `bar` (dict): Current bar data
-- `market_simulator` (MarketSimulator): Simulator for market effects
-
-**Example:**
-```python
-execution_engine.execute_pending_orders(current_bar, market_simulator)
-```
-
-#### update(bar)
-
-Update portfolio with latest market data and record portfolio state.
-
-**Parameters:**
-- `bar` (dict): Current bar data containing at minimum 'symbol' and 'Close' keys
-
-**Example:**
-```python
-execution_engine.update(current_bar)
-```
-
-### Updating Portfolio with Market Data
-
-The ExecutionEngine is responsible for updating the portfolio with current market data:
-
-```python
-def update(self, bar_data):
-    """
-    Update portfolio with latest market data.
+Args:
+    bar: Current market data (BarEvent or dict)
+    market_simulator: Optional market simulator for calculating execution prices
     
-    Parameters:
-    -----------
-    bar_data : dict
-        Current bar data with at minimum 'symbol' and 'Close' keys
-    """
-    # Update last known prices
-    self.last_known_prices[bar_data['symbol']] = bar_data['Close']
+Returns:
+    List of Fill objects for executed orders
+
+*Returns:* List of Fill objects for executed orders
+
+###### `_execute_order(order, price, timestamp, commission=0.0)`
+
+Execute a single order and update portfolio.
+
+Args:
+    order: OrderEvent to execute
+    price: Execution price
+    timestamp: Execution timestamp
+    commission: Commission cost
     
-    # Record portfolio state for history
-    self._record_portfolio_state(bar_data['timestamp'])
-```
+Returns:
+    FillEvent if successful
 
-This method should be called for each new bar to ensure the portfolio state is updated with current market prices.
+*Returns:* FillEvent if successful
 
-#### get_trade_history()
+###### `_emit_fill_event(fill)`
+
+Emit fill event to the event bus.
+
+###### `_get_last_known_price(symbol)`
+
+Get the last known price for a symbol.
+
+###### `update(bar)`
+
+Update portfolio with latest market data.
+
+Args:
+    bar: Current market data (BarEvent or dict)
+
+###### `get_trade_history()`
 
 Get the history of all executed trades.
 
-**Returns:**
-- `list`: List of Fill objects representing executed trades
-
-**Example:**
-```python
-trades = execution_engine.get_trade_history()
-```
-
-#### get_portfolio_history()
+###### `get_portfolio_history()`
 
 Get the history of portfolio states.
 
-**Returns:**
-- `list`: List of portfolio state dictionaries
+###### `get_signal_history()`
 
-**Example:**
-```python
-portfolio_history = execution_engine.get_portfolio_history()
-```
+Get the history of signals received.
 
-#### reset()
+###### `reset()`
 
 Reset the execution engine state.
 
-**Example:**
-```python
-execution_engine.reset()
-```
+## market_simulator
 
-### MarketSimulator
+Market Simulator for Trading System
 
-Simulates realistic market conditions including slippage and transaction costs.
+This module simulates realistic market conditions including slippage, transaction
+costs, and other market effects that impact trade execution in the backtesting system.
 
-**Constructor Parameters:**
-- `config` (dict, optional): Configuration dictionary for market simulation
+### Classes
 
-**Methods:**
+#### `SlippageModel`
 
-#### calculate_execution_price(order, bar)
+Base class for slippage models.
+
+##### Methods
+
+###### `apply_slippage(price, quantity, direction, bar)`
+
+*Returns:* `float`
+
+Apply slippage to a base price.
+
+Args:
+    price: Base price
+    quantity: Order quantity
+    direction: Order direction (1 for buy, -1 for sell)
+    bar: Current bar data
+    
+Returns:
+    float: Price after slippage
+
+#### `NoSlippageModel`
+
+No slippage model - returns the base price unchanged.
+
+##### Methods
+
+###### `apply_slippage(price, quantity, direction, bar)`
+
+*Returns:* `float`
+
+No docstring provided.
+
+#### `FixedSlippageModel`
+
+Fixed slippage model - applies a fixed basis point slippage to the price.
+
+A basis point (BPS) is 1/100th of a percent. So 5 BPS = 0.05%.
+
+##### Methods
+
+###### `__init__(slippage_bps=5)`
+
+Initialize with slippage in basis points.
+
+Args:
+    slippage_bps: Slippage in basis points (5 = 0.05%)
+
+###### `apply_slippage(price, quantity, direction, bar)`
+
+*Returns:* `float`
+
+No docstring provided.
+
+#### `VolumeBasedSlippageModel`
+
+Volume-based slippage model that scales with order size relative to volume.
+
+Uses a price impact formula based on the square root of the ratio of
+order quantity to bar volume, scaled by the price impact parameter.
+
+##### Methods
+
+###### `__init__(price_impact=0.1)`
+
+Initialize with price impact parameter.
+
+Args:
+    price_impact: Price impact parameter (higher = more slippage)
+
+###### `apply_slippage(price, quantity, direction, bar)`
+
+*Returns:* `float`
+
+No docstring provided.
+
+#### `FeeModel`
+
+Base class for fee models.
+
+##### Methods
+
+###### `calculate_fee(quantity, price)`
+
+*Returns:* `float`
+
+Calculate transaction fee.
+
+Args:
+    quantity: Order quantity
+    price: Execution price
+    
+Returns:
+    float: Fee amount
+
+#### `NoFeeModel`
+
+No fee model - returns zero fees.
+
+##### Methods
+
+###### `calculate_fee(quantity, price)`
+
+*Returns:* `float`
+
+No docstring provided.
+
+#### `FixedFeeModel`
+
+Fixed fee model - applies a fixed basis point fee to the transaction value.
+
+##### Methods
+
+###### `__init__(fee_bps=10)`
+
+Initialize with fee in basis points.
+
+Args:
+    fee_bps: Fee in basis points (10 = 0.1%)
+
+###### `calculate_fee(quantity, price)`
+
+*Returns:* `float`
+
+No docstring provided.
+
+#### `TieredFeeModel`
+
+Tiered fee model with different fees based on transaction value.
+
+For example:
+- Transactions under $10,000: 0.1%
+- Transactions $10,000-$100,000: 0.05%
+- Transactions over $100,000: 0.03%
+
+##### Methods
+
+###### `__init__(tier_thresholds=None, tier_fees_bps=None)`
+
+Initialize with tier thresholds and fees.
+
+Args:
+    tier_thresholds: List of tier thresholds in ascending order
+    tier_fees_bps: List of fees in basis points for each tier
+
+###### `calculate_fee(quantity, price)`
+
+*Returns:* `float`
+
+No docstring provided.
+
+#### `MarketSimulator`
+
+Simulates market effects like slippage, delays, and transaction costs.
+
+##### Methods
+
+###### `__init__(config=None)`
+
+Initialize the market simulator.
+
+Args:
+    config: Optional configuration dictionary
+
+###### `_get_slippage_model()`
+
+*Returns:* `SlippageModel`
+
+Create the slippage model based on configuration.
+
+###### `_get_fee_model()`
+
+*Returns:* `FeeModel`
+
+Create the fee model based on configuration.
+
+###### `calculate_execution_price(order, bar)`
+
+*Returns:* `float`
 
 Calculate the execution price including slippage.
 
-**Parameters:**
-- `order` (Order): Order object with quantity and direction
-- `bar` (dict): Current bar data
+Args:
+    order: Order object with quantity and direction
+    bar: Current bar data
+    
+Returns:
+    float: Execution price with slippage
 
-**Returns:**
-- `float`: Execution price with slippage
+###### `calculate_fees(order, execution_price)`
 
-**Example:**
-```python
-market_simulator = MarketSimulator({'slippage_model': 'fixed', 'slippage_bps': 5})
-execution_price = market_simulator.calculate_execution_price(order, bar)
-```
-
-#### calculate_fees(order, execution_price)
+*Returns:* `float`
 
 Calculate transaction fees.
 
-**Parameters:**
-- `order` (Order): Order object with quantity
-- `execution_price` (float): Price after slippage
-
-**Returns:**
-- `float`: Fee amount
-
-**Example:**
-```python
-fees = market_simulator.calculate_fees(order, execution_price)
-```
-
-## Integration with Other Modules
-
-### Using Position Manager with Signal Processor
-
-```python
-from src.engine import MarketSimulator
-from src.position_management.position_manager import PositionManager
-from src.signals import SignalProcessor
-from src.config import ConfigManager
-
-# Create configuration
-config = ConfigManager()
-config.set('signals.confidence.use_confidence_score', True)
-config.set('signals.confidence.min_confidence', 0.6)
-
-# Create signal processor
-signal_processor = SignalProcessor(config)
-
-# Create position manager
-position_manager = PositionManager()
-
-def process_signal_with_position_sizing(raw_signal, portfolio):
-    """
-    Process a raw signal and determine appropriate position size.
+Args:
+    order: Order object with quantity
+    execution_price: Price after slippage
     
-    Args:
-        raw_signal: Raw signal from strategy
-        portfolio: Current portfolio state
-        
-    Returns:
-        tuple: (processed_signal, position_size)
-    """
-    # Process signal for confidence scoring and filtering
-    processed_signal = signal_processor.process_signal(raw_signal)
+Returns:
+    float: Fee amount
+
+## position_manager
+
+Position Management Module for Trading System
+
+This module provides position sizing, risk management, and allocation strategies
+for controlling how signals are converted into actual trading positions.
+
+### Classes
+
+#### `SizingStrategy`
+
+Base class for position sizing strategies.
+
+##### Methods
+
+###### `calculate_size(signal, portfolio)`
+
+Calculate position size based on signal and portfolio.
+
+Args:
+    signal: Trading signal
+    portfolio: Current portfolio state
     
-    # Check if signal meets confidence threshold
-    if processed_signal.confidence >= config.get('signals.confidence.min_confidence'):
-        # Calculate position size
-        position_size = position_manager.calculate_position_size(processed_signal, portfolio)
-        return processed_signal, position_size
-    else:
-        # Signal doesn't meet confidence threshold
-        return processed_signal, 0
-```
+Returns:
+    float: Position size (positive for buy, negative for sell)
 
-### Integration with Regime Detection
+*Returns:* float: Position size (positive for buy, negative for sell)
 
-```python
-from src.engine import Backtester, MarketSimulator
-from src.position_management.position_manager import PositionManager
-from src.regime_detection import RegimeType, VolatilityRegimeDetector
+#### `FixedSizingStrategy`
 
-# Create regime detector and position manager
-regime_detector = VolatilityRegimeDetector(lookback_period=20, volatility_threshold=0.015)
-position_manager = PositionManager()
+Position sizing using a fixed number of units.
 
-# Update position manager with regime data
-def update_position_manager_with_regime(signal, position_manager, regime_detector):
-    """
-    Update position manager with current regime data.
+##### Methods
+
+###### `__init__(fixed_size=100)`
+
+Initialize with fixed size.
+
+Args:
+    fixed_size: Number of units to trade
+
+###### `calculate_size(signal, portfolio)`
+
+Calculate position size.
+
+#### `PercentOfEquitySizing`
+
+Size position as a percentage of portfolio equity.
+
+##### Methods
+
+###### `__init__(percent=0.02)`
+
+Initialize with percent of equity to risk.
+
+Args:
+    percent: Percentage of equity to allocate (0.02 = 2%)
+
+###### `calculate_size(signal, portfolio)`
+
+Calculate position size.
+
+#### `VolatilityBasedSizing`
+
+Size positions based on asset volatility.
+
+##### Methods
+
+###### `__init__(risk_pct=0.01, lookback_period=20)`
+
+Initialize with risk percentage and lookback.
+
+Args:
+    risk_pct: Percentage of equity to risk per unit of volatility
+    lookback_period: Period for calculating volatility
+
+###### `calculate_size(signal, portfolio)`
+
+Calculate position size based on volatility.
+
+#### `KellySizingStrategy`
+
+Position sizing based on the Kelly Criterion.
+
+##### Methods
+
+###### `__init__(win_rate=0.5, win_loss_ratio=1.0, fraction=0.5)`
+
+Initialize with Kelly parameters.
+
+Args:
+    win_rate: Historical win rate (0-1)
+    win_loss_ratio: Ratio of average win to average loss
+    fraction: Fraction of Kelly to use (0-1, lower is more conservative)
+
+###### `update_parameters(trade_history)`
+
+Update win rate and win/loss ratio based on trade history.
+
+Args:
+    trade_history: List of trade results
+
+###### `calculate_size(signal, portfolio)`
+
+Calculate position size using Kelly formula.
+
+#### `RiskManager`
+
+Manages risk controls and limits for trading.
+
+##### Methods
+
+###### `__init__(max_position_pct=0.25, max_drawdown_pct=0.1, max_concentration_pct=None, use_stop_loss=False, stop_loss_pct=0.05, use_take_profit=False, take_profit_pct=0.1)`
+
+Initialize with risk parameters.
+
+Args:
+    max_position_pct: Maximum position size as percentage of portfolio
+    max_drawdown_pct: Maximum allowable drawdown from peak equity
+    max_concentration_pct: Maximum allocation to a single instrument
+    use_stop_loss: Whether to use stop losses
+    stop_loss_pct: Stop loss percentage from entry
+    use_take_profit: Whether to use take profits
+    take_profit_pct: Take profit percentage from entry
+
+###### `check_signal(signal, portfolio)`
+
+Check if a signal should be acted upon given risk constraints.
+
+Args:
+    signal: Trading signal
+    portfolio: Current portfolio state
     
-    Args:
-        signal: Trading signal
-        position_manager: Position manager instance
-        regime_detector: Regime detector instance
-    """
-    # Get current regime
-    current_regime = regime_detector.current_regime
+Returns:
+    bool: True if signal passes risk checks, False otherwise
+
+*Returns:* bool: True if signal passes risk checks, False otherwise
+
+###### `adjust_position_size(symbol, size, portfolio)`
+
+Adjust position size to comply with risk limits.
+
+Args:
+    symbol: Instrument symbol
+    size: Calculated position size
+    portfolio: Current portfolio state
     
-    # Add regime to signal metadata
-    if hasattr(signal, 'metadata'):
-        signal.metadata['regime'] = current_regime
+Returns:
+    float: Adjusted position size
+
+*Returns:* float: Adjusted position size
+
+###### `get_risk_metrics(portfolio)`
+
+Get current risk metrics for the portfolio.
+
+Args:
+    portfolio: Current portfolio state
     
-    return signal
+Returns:
+    dict: Risk metrics
 
-# Create backtester with regime-aware position sizing
-backtester = Backtester(config, data_handler, strategy, position_manager)
-```
+*Returns:* dict: Risk metrics
 
-## Event System
+###### `set_stop_loss(symbol, entry_price, direction)`
 
-The engine module uses an event-driven architecture for communication between components. Events are imported from the `src.events.event_types` module.
+Set stop loss and take profit levels for a new position.
 
-```python
-from src.events.event_bus import Event, EventBus
-from src.events.event_types import EventType
-from src.engine import Backtester
+Args:
+    symbol: Instrument symbol
+    entry_price: Entry price
+    direction: Trade direction (1 for long, -1 for short)
 
-# Create an event bus
-event_bus = EventBus()
+###### `check_stops(symbol, current_price, direction)`
 
-# Register an event handler
-event_bus.register(EventType.FILL, my_fill_handler)
+Check if stop loss or take profit levels have been hit.
 
-# Create an event
-bar_event = Event(EventType.BAR, bar_data)
+Args:
+    symbol: Instrument symbol
+    current_price: Current market price
+    direction: Position direction (1 for long, -1 for short)
+    
+Returns:
+    bool: True if stop or take profit hit, False otherwise
 
-# Emit an event
-event_bus.emit(bar_event)
-```
+*Returns:* bool: True if stop or take profit hit, False otherwise
 
-## Market Simulation Models
+###### `reset()`
 
-The engine module provides several models for simulating market effects:
+Reset risk manager state.
 
-### Slippage Models
+#### `AllocationStrategy`
 
-**NoSlippageModel**: Returns the base price unchanged.
-**FixedSlippageModel**: Applies a fixed basis point slippage to the price.
-**VolumeBasedSlippageModel**: Scales slippage with order size relative to volume.
+Base class for portfolio allocation strategies.
 
-```python
-from src.engine.market_simulator import VolumeBasedSlippageModel
+##### Methods
 
-# Create a volume-based slippage model
-slippage_model = VolumeBasedSlippageModel(price_impact=0.1)
-```
+###### `adjust_allocation(symbol, size, portfolio)`
 
-### Fee Models
+Adjust position size based on portfolio allocation constraints.
 
-**NoFeeModel**: Returns zero fees.
-**FixedFeeModel**: Applies a fixed basis point fee to the transaction value.
-**TieredFeeModel**: Uses different fees based on transaction value.
+Args:
+    symbol: Instrument symbol
+    size: Calculated position size
+    portfolio: Current portfolio state
+    
+Returns:
+    float: Adjusted position size
 
-```python
-from src.engine.market_simulator import TieredFeeModel
+*Returns:* float: Adjusted position size
 
-# Create a tiered fee model
-fee_model = TieredFeeModel(
-    tier_thresholds=[10000, 100000],  # $10K, $100K thresholds
-    tier_fees_bps=[10, 5, 3]          # 0.1%, 0.05%, 0.03% fees
-)
-```
+#### `EqualAllocationStrategy`
 
-## Best Practices
+Allocate capital equally across instruments.
 
-1. **Always use realistic slippage and fees**: Configure the MarketSimulator with realistic parameters to avoid overly optimistic results
+This strategy ensures that no instrument uses more than its fair share
+of the portfolio, based on the maximum number of simultaneous positions.
 
-2. **Test with conservative risk management**: Start with conservative risk parameters and gradually relax them rather than the opposite
+##### Methods
 
-3. **Reset state between backtests**: Always call `reset()` on all components when running multiple backtests
+###### `__init__(max_instruments=10)`
 
-4. **Validate position sizing logic**: Verify that position sizing behaves as expected by checking allocation across different market conditions
+Initialize with maximum number of instruments.
 
-5. **Monitor execution details**: Keep track of execution prices vs. signal prices to understand the impact of slippage
+Args:
+    max_instruments: Maximum number of simultaneous positions
 
-6. **Use event handlers for custom analytics**: Leverage the event system to monitor specific aspects of the backtest
+###### `adjust_allocation(symbol, size, portfolio)`
 
-7. **Separate parameter optimization from backtesting**: Use the backtester to evaluate strategies with pre-optimized parameters rather than doing both at once
+Adjust position size for equal allocation.
 
-8. **Maintain proper event flow**: Ensure all components receive and process events correctly according to the defined event flow
+#### `VolatilityParityAllocation`
 
-9. **Update portfolio regularly**: Call the `update()` method with each new bar to keep the portfolio state current
+Allocate capital based on relative volatility of instruments.
+
+This strategy allocates more capital to less volatile instruments
+and less capital to more volatile ones, targeting equal risk contribution.
+
+##### Methods
+
+###### `__init__(lookback_period=20, target_portfolio_vol=0.01)`
+
+Initialize with volatility parameters.
+
+Args:
+    lookback_period: Period for calculating volatility
+    target_portfolio_vol: Target portfolio volatility
+
+###### `update_volatility(symbol, price)`
+
+Update volatility estimate for an instrument.
+
+Args:
+    symbol: Instrument symbol
+    price: Current price
+
+###### `adjust_allocation(symbol, size, portfolio)`
+
+Adjust position size for volatility parity.
+
+#### `PositionManager`
+
+Manages position sizing, risk, and allocation decisions.
+
+##### Methods
+
+###### `__init__(sizing_strategy=None, risk_manager=None, allocation_strategy=None)`
+
+Initialize the position manager.
+
+Args:
+    sizing_strategy: Strategy for determining position size
+    risk_manager: Risk management controls
+    allocation_strategy: Portfolio allocation strategy
+
+###### `calculate_position_size(signal, portfolio)`
+
+Calculate the appropriate position size for a signal.
+
+Args:
+    signal: The trading signal
+    portfolio: Current portfolio state
+    
+Returns:
+    float: Position size (positive for buy, negative for sell, 0 for no trade)
+
+*Returns:* float: Position size (positive for buy, negative for sell, 0 for no trade)
+
+###### `get_risk_metrics(portfolio)`
+
+Get current risk metrics for the portfolio.
+
+Args:
+    portfolio: Current portfolio state
+    
+Returns:
+    dict: Risk metrics
+
+*Returns:* dict: Risk metrics
+
+###### `update_stops(bar_data, portfolio)`
+
+Update and check stop losses and take profits.
+
+Args:
+    bar_data: Current bar data
+    portfolio: Current portfolio state
+    
+Returns:
+    dict: Positions to close due to stops {symbol: reason}
+
+*Returns:* dict: Positions to close due to stops {symbol: reason}
+
+###### `reset()`
+
+Reset position manager state.
+
+#### `DefaultPositionManager`
+
+Default position manager that implements basic functionality.
+Used as a fallback if no position manager is provided.
+
+##### Methods
+
+###### `calculate_position_size(signal, portfolio)`
+
+Calculate position size based on signal.
+
+This simple implementation just returns a fixed position size
+in the direction of the signal.
+
+Args:
+    signal: Trading signal
+    portfolio: Current portfolio
+    
+Returns:
+    float: Position size (positive for buy, negative for sell)
+
+*Returns:* float: Position size (positive for buy, negative for sell)
+
+###### `reset()`
+
+Reset the position manager state.

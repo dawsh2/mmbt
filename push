@@ -1,5 +1,9 @@
 #!/bin/bash
-# Script to stage, commit, and push changes with a custom commit message
+# Script to generate documentation, stage, commit, and push changes with a custom commit message
+
+# Generate documentation
+echo "Generating module documentation..."
+python3 ~/mmbt/autodocs.py  # Replace with the actual path to your script
 
 # Show current branch
 echo "Current branch: $(git branch --show-current)"

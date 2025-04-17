@@ -1,858 +1,1515 @@
-# Rules Module Documentation
+# Rules Module
 
-The rules module provides a framework for creating trading rules that generate signals based on technical indicators.
+Rules Module
 
-## Core Concepts
+This module provides a framework for creating trading rules that generate signals
+based on technical indicators.
 
-### Rule
-Each rule:
-- Maintains internal state and history
-- Processes bar data (OHLCV)
-- Returns standardized Signal objects
-- Has validation logic for parameters
-- Provides state management capabilities
+## Contents
 
-### Signal
-Each signal contains:
-- Signal type (BUY, SELL, NEUTRAL)
-- Confidence score (0.0-1.0)
-- Price at generation
-- Metadata with calculations
+- [crossover_rules](#crossover_rules)
+- [oscillator_rules](#oscillator_rules)
+- [rule_base](#rule_base)
+- [rule_factory](#rule_factory)
+- [rule_registry](#rule_registry)
+- [trend_rules](#trend_rules)
+- [volatility_rules](#volatility_rules)
 
-### RuleRegistry
-A central registry that:
-- Maintains a catalog of available rule types
-- Allows rules to be organized by category
-- Provides factory methods for rule instantiation
+## crossover_rules
 
-## Basic Usage
+Crossover Rules Module
 
-```python
-from src.rules import create_rule
+This module implements various crossover-based trading rules such as
+moving average crossovers, price-MA crossovers, and other indicator crossovers.
 
-# Create a rule
-sma_rule = create_rule('SMAcrossoverRule', {
-    'fast_window': 10,
-    'slow_window': 30
-})
+### Classes
 
-# Process a bar
-bar_data = {
-    'timestamp': datetime.now(),
-    'Open': 100.0, 'High': 102.0, 
-    'Low': 99.5, 'Close': 101.2
-}
+#### `SMACrossoverRule`
 
-# Generate a signal directly
-signal = sma_rule.generate_signal(bar_data)
-
-# Alternatively, you can process through on_bar which handles both raw data and events
-signal = sma_rule.on_bar(bar_data)
-
-# Or with an event object
-from src.events import Event, EventType
-bar_event = Event(EventType.BAR, bar_data)
-signal = sma_rule.on_bar(bar_event)  # on_bar will extract data from the event automatically
-
-# Use the signal
-if signal and signal.signal_type == SignalType.BUY:
-    print(f"Buy signal with {signal.confidence:.2f} confidence")
-```
-
-### Creating Composite Rules
-```python
-from src.rules import create_composite_rule
-
-# Combine multiple rules into a composite rule
-composite = create_composite_rule(
-    name="my_composite_rule",
-    rule_configs=[
-        'SMAcrossoverRule',  # Use default parameters
-        {'name': 'RSIRule', 'params': {'rsi_period': 14, 'overbought': 75}},
-        existing_rule_instance  # Can also pass existing rule objects
-    ],
-    aggregation_method="majority"  # How to combine signals
-)
-```
-
-### State Management
-
-Rules maintain internal state that can be reset or manipulated:
-
-```python
-# Reset a rule's state (e.g., when starting a new symbol or timeframe)
-rule.reset()
-
-# Access a rule's state
-current_state = rule.get_state('position')
-
-# Update a rule's state
-rule.update_state('position', 1)  # 1 for long, -1 for short, 0 for flat
-```
-
-### Error Handling
-
-Rules validate their parameters and throw descriptive exceptions:
-
-```python
-try:
-    invalid_rule = create_rule('SMAcrossoverRule', {'fast_window': 50, 'slow_window': 10})
-except ValueError as e:
-    print(f"Invalid parameters: {e}")
-    # Will print: "Invalid parameters: Fast window must be smaller than slow window"
-```
-
-### Integration with Signal Filters
-
-Rules generate signals that can be further processed by signal filters:
-
-```python
-from src.signals.signal_processing import MovingAverageFilter
-from src.rules import create_rule
-
-# Create a rule and a filter
-rule = create_rule('RSIRule')
-signal_filter = MovingAverageFilter(window_size=3)
-
-# Process bar data and filter the signal
-raw_signal = rule.generate_signal(bar_data)
-filtered_signal = signal_filter.filter(raw_signal)
-
-# Or with events
-event = Event(EventType.BAR, bar_data)
-raw_signal = rule.on_bar(event)  # on_bar extracts data from the event
-filtered_signal = signal_filter.filter(raw_signal)
-```
-
-## Rule Interface
-
-When creating custom rules, you should implement the `generate_signal(data)` method, which receives a dictionary of bar data:
-
-```python
-class MyCustomRule(Rule):
-    @classmethod
-    def default_params(cls):
-        return {
-            'parameter1': 10,
-            'parameter2': 20
-        }
-    
-    def _validate_params(self):
-        if self.params['parameter1'] <= 0:
-            raise ValueError("parameter1 must be positive")
-    
-    def generate_signal(self, data):
-        """
-        Generate a trading signal from the provided data.
-        
-        Args:
-            data: Dictionary containing price data and indicators
-                 
-        Returns:
-            Signal object representing the trading decision
-        """
-        # Custom signal generation logic
-        if data["Close"] > data["Open"] * (1 + self.params['parameter1']/100):
-            return Signal(
-                timestamp=data.get('timestamp'),
-                signal_type=SignalType.BUY,  # or SELL or NEUTRAL
-                price=data.get('Close'),
-                rule_id=self.name,
-                confidence=0.7  # 0.0 to 1.0
-            )
-        
-        # Return None or a NEUTRAL signal if no conditions are met
-        return None
-```
-
-The base `Rule` class handles both event objects and raw data in its `on_bar` method:
-
-```python
-def on_bar(self, event_or_data):
-    """
-    Process a bar event or data and generate a trading signal.
-    
-    This method can accept either an Event object or raw bar data.
-    If an Event object is provided, it automatically extracts the data before
-    passing it to generate_signal().
-    
-    Args:
-        event_or_data: Event object or dictionary with bar data
-                 
-    Returns:
-        Signal object with the trading decision
-    """
-    # Extract data if given an Event object
-    if hasattr(event_or_data, 'data'):
-        bar_data = event_or_data.data
-    else:
-        bar_data = event_or_data
-        
-    # Generate signal using specific rule logic
-    signal = self.generate_signal(bar_data)
-    self.signals.append(signal)
-    return signal
-```
-
-## Rule Class Hierarchy
-
-The module provides several types of rules:
-
-- **Rule**: The base abstract class for all rules
-- **CompositeRule**: Combines multiple rules with aggregation methods
-- **FeatureBasedRule**: Uses pre-computed features rather than calculating indicators
-
-## Rule Reference
-
-The system includes the following rules with their parameters:
-
-### Crossover Rules
-
-#### SMAcrossoverRule
 Simple Moving Average crossover rule.
 
-**Parameters:**
-- `fast_window`: Window size for fast SMA (default: 5)
-- `slow_window`: Window size for slow SMA (default: 20)
-- `smooth_signals`: Whether to generate signals when MAs are aligned (default: False)
+Generates buy signals when the fast SMA crosses above the slow SMA,
+and sell signals when it crosses below.
 
-```python
-sma_rule = create_rule('SMAcrossoverRule', {
-    'fast_window': 10,
-    'slow_window': 30,
-    'smooth_signals': True
-})
-```
+##### Methods
 
-#### ExponentialMACrossoverRule
-Exponential Moving Average crossover rule.
+###### `__init__(name, params=None, description='', enabled=True)`
 
-**Parameters:**
-- `fast_period`: Period for fast EMA (default: 12)
-- `slow_period`: Period for slow EMA (default: 26)
-- `smooth_signals`: Whether to generate signals when MAs are aligned (default: False)
+Initialize SMA crossover rule.
 
-```python
-ema_rule = create_rule('ExponentialMACrossoverRule', {
-    'fast_period': 12,
-    'slow_period': 26,
-    'smooth_signals': True
-})
-```
+Args:
+    name: Rule name
+    params: Rule parameters including:
+        - fast_window: Window size for fast SMA (default: 10)
+        - slow_window: Window size for slow SMA (default: 30)
+    description: Rule description
+    enabled: Whether the rule is enabled
 
-#### MACDCrossoverRule
-MACD line crossing signal line rule.
+###### `generate_signal(bar_event)`
 
-**Parameters:**
-- `fast_period`: Period for fast EMA (default: 12)
-- `slow_period`: Period for slow EMA (default: 26)
-- `signal_period`: Period for signal line (default: 9)
-- `use_histogram`: Whether to use MACD histogram for signals (default: False)
+*Returns:* `Optional[SignalEvent]`
 
-```python
-macd_rule = create_rule('MACDCrossoverRule', {
-    'fast_period': 12,
-    'slow_period': 26,
-    'signal_period': 9,
-    'use_histogram': True
-})
-```
+Generate a signal based on SMA crossover.
 
-#### PriceMACrossoverRule
-Price crossing a moving average rule.
-
-**Parameters:**
-- `ma_period`: Period for the moving average (default: 20)
-- `ma_type`: Type of moving average ('sma', 'ema') (default: 'sma')
-- `smooth_signals`: Whether to generate signals when price and MA are aligned (default: False)
-
-```python
-price_ma_rule = create_rule('PriceMACrossoverRule', {
-    'ma_period': 20,
-    'ma_type': 'ema',
-    'smooth_signals': True
-})
-```
-
-#### BollingerBandsCrossoverRule
-Price crossing Bollinger Bands rule.
-
-**Parameters:**
-- `period`: Period for the moving average (default: 20)
-- `num_std_dev`: Number of standard deviations for bands (default: 2.0)
-- `use_middle_band`: Whether to also generate signals on middle band crosses (default: False)
-
-```python
-bbands_rule = create_rule('BollingerBandsCrossoverRule', {
-    'period': 20,
-    'num_std_dev': 2.0,
-    'use_middle_band': True
-})
-```
-
-#### StochasticCrossoverRule
-%K crossing %D in Stochastic Oscillator rule.
-
-**Parameters:**
-- `k_period`: Period for %K calculation (default: 14)
-- `d_period`: Period for %D calculation (default: 3)
-- `slowing`: Slowing period for %K (default: 3)
-- `use_extremes`: Whether to also generate signals on overbought/oversold levels (default: True)
-- `overbought`: Overbought level (default: 80)
-- `oversold`: Oversold level (default: 20)
-
-```python
-stoch_cross_rule = create_rule('StochasticCrossoverRule', {
-    'k_period': 14,
-    'd_period': 3,
-    'slowing': 3,
-    'use_extremes': True,
-    'overbought': 80,
-    'oversold': 20
-})
-```
-
-### Oscillator Rules
-
-#### RSIRule
-Relative Strength Index (RSI) rule.
-
-**Parameters:**
-- `rsi_period`: Period for RSI calculation (default: 14)
-- `overbought`: Overbought level (default: 70)
-- `oversold`: Oversold level (default: 30)
-- `signal_type`: Signal generation method ('levels', 'divergence', 'midline') (default: 'levels')
-
-```python
-
-rsi_rule = create_rule('RSIRule', {
-    'rsi_period': 14,
-    'overbought': 70,
-    'oversold': 30,
-    'signal_type': 'levels'
-})
-```
-
-#### StochasticRule
-Stochastic Oscillator rule.
-
-**Parameters:**
-- `k_period`: %K period (default: 14)
-- `k_slowing`: %K slowing period (default: 3)
-- `j_period`: J-Line period (default: 3)
-- `d_period`: %D period (default: 3)
-- `overbought`: Overbought level (default: 80)
-- `oversold`: Oversold level (default: 20)
-- `signal_type`: Signal generation method ('levels', 'crossover', 'both') (default: 'both')
-
-```python
-stoch_rule = create_rule('StochasticRule', {
-    'k_period': 14,
-    'k_slowing': 3,
-    'd_period': 3,
-    'overbought': 80,
-    'oversold': 20,
-    'signal_type': 'both'
-})
-```
-
-#### CCIRule
-Commodity Channel Index (CCI) rule.
-
-**Parameters:**
-- `period`: CCI calculation period (default: 20)
-- `overbought`: Overbought level (default: 100)
-- `oversold`: Oversold level (default: -100)
-- `extreme_overbought`: Extreme overbought level (default: 200)
-- `extreme_oversold`: Extreme oversold level (default: -200)
-- `zero_line_cross`: Whether to use zero line crossovers (default: True)
-
-```python
-cci_rule = create_rule('CCIRule', {
-    'period': 20,
-    'overbought': 100,
-    'oversold': -100,
-    'extreme_overbought': 200,
-    'extreme_oversold': -200,
-    'zero_line_cross': True
-})
-```
-
-#### MACDHistogramRule
-MACD histogram signal rule.
-
-**Parameters:**
-- `fast_period`: Fast EMA period (default: 12)
-- `slow_period`: Slow EMA period (default: 26)
-- `signal_period`: Signal line period (default: 9)
-- `zero_line_cross`: Whether to use zero line crossovers (default: True)
-- `divergence`: Whether to detect divergence (default: True)
-
-```python
-macd_hist_rule = create_rule('MACDHistogramRule', {
-    'fast_period': 12,
-    'slow_period': 26,
-    'signal_period': 9,
-    'zero_line_cross': True,
-    'divergence': True
-})
-```
-
-### Trend Rules
-
-#### ADXRule
-Average Directional Index (ADX) rule.
-
-**Parameters:**
-- `adx_period`: Period for ADX calculation (default: 14)
-- `adx_threshold`: Threshold to consider a trend strong (default: 25)
-- `use_di_cross`: Whether to use DI crossovers for signals (default: True)
-
-```python
-adx_rule = create_rule('ADXRule', {
-    'adx_period': 14,
-    'adx_threshold': 25,
-    'use_di_cross': True
-})
-```
-
-#### IchimokuRule
-Ichimoku Cloud rule.
-
-**Parameters:**
-- `tenkan_period`: Tenkan-sen period (default: 9)
-- `kijun_period`: Kijun-sen period (default: 26)
-- `senkou_span_b_period`: Senkou Span B period (default: 52)
-- `signal_type`: Signal generation method ('cloud', 'tk_cross', 'price_cross') (default: 'cloud')
-
-```python
-ichimoku_rule = create_rule('IchimokuRule', {
-    'tenkan_period': 9,
-    'kijun_period': 26,
-    'senkou_span_b_period': 52,
-    'signal_type': 'cloud'
-})
-```
-
-#### VortexRule
-Vortex Indicator rule.
-
-**Parameters:**
-- `period`: Calculation period for VI+ and VI- (default: 14)
-- `smooth_signals`: Whether to generate signals when VIs are aligned (default: True)
-
-```python
-vortex_rule = create_rule('VortexRule', {
-    'period': 14,
-    'smooth_signals': True
-})
-```
-
-### Volatility Rules
-
-#### BollingerBandRule
-Volatility-based signals using Bollinger Bands.
-
-**Parameters:**
-- `period`: Period for SMA calculation (default: 20)
-- `std_dev`: Number of standard deviations for bands (default: 2.0)
-- `signal_type`: Signal generation method ('band_touch', 'band_cross', 'squeeze') (default: 'band_cross')
-
-```python
-bb_rule = create_rule('BollingerBandRule', {
-    'period': 20,
-    'std_dev': 2.0,
-    'signal_type': 'band_cross'
-})
-```
-
-#### ATRTrailingStopRule
-ATR-based trailing stop rule.
-
-**Parameters:**
-- `atr_period`: Period for ATR calculation (default: 14)
-- `atr_multiplier`: Multiplier for ATR to set stop distance (default: 3.0)
-- `use_trend_filter`: Whether to use trend filter for entries (default: True)
-- `trend_ma_period`: Period for trend moving average (default: 50)
-
-```python
-atr_stop_rule = create_rule('ATRTrailingStopRule', {
-    'atr_period': 14,
-    'atr_multiplier': 3.0,
-    'use_trend_filter': True,
-    'trend_ma_period': 50
-})
-```
-
-#### VolatilityBreakoutRule
-Breakouts from volatility ranges rule.
-
-**Parameters:**
-- `lookback_period`: Period for calculating the range (default: 20)
-- `volatility_measure`: Method to measure volatility ('atr', 'stdev', 'range') (default: 'atr')
-- `breakout_multiplier`: Multiplier for breakout threshold (default: 1.5)
-- `require_confirmation`: Whether to require confirmation (default: True)
-
-```python
-vol_breakout_rule = create_rule('VolatilityBreakoutRule', {
-    'lookback_period': 20,
-    'volatility_measure': 'atr',
-    'breakout_multiplier': 1.5,
-    'require_confirmation': True
-})
-```
-
-#### KeltnerChannelRule
-Keltner Channels for volatility rule.
-
-**Parameters:**
-- `ema_period`: Period for EMA calculation (default: 20)
-- `atr_period`: Period for ATR calculation (default: 10)
-- `multiplier`: Multiplier for channels (default: 2.0)
-- `signal_type`: Signal generation method ('channel_cross', 'channel_touch') (default: 'channel_cross')
-
-```python
-keltner_rule = create_rule('KeltnerChannelRule', {
-    'ema_period': 20,
-    'atr_period': 10,
-    'multiplier': 2.0,
-    'signal_type': 'channel_cross'
-})
-```
-
-## Rule Aggregation Methods
-
-When creating composite rules, the following aggregation methods are available:
-
-- **majority**: Signal type with the most votes wins
-- **unanimous**: Signals only when all rules agree
-- **weighted**: Weight each rule's signal (requires weights parameter)
-- **any**: Signal when any rule gives a non-neutral signal
-- **sequence**: Signal when rules trigger in sequence
-
-## Rule Factory
-
-The RuleFactory provides advanced methods for creating rules:
-
-```python
-from src.rules import RuleFactory
-
-factory = RuleFactory()
-
-# Create multiple variants of a rule with different parameters
-sma_variants = factory.create_rule_variants(
-    rule_name='SMAcrossoverRule',
-    param_grid={
-        'fast_window': [5, 10, 15],
-        'slow_window': [20, 30, 50]
-    }
-)
-
-# Create a rule from a configuration dictionary
-rule = factory.create_from_config({
-    'type': 'RSIRule',
-    'params': {
-        'rsi_period': 14,
-        'overbought': 70,
-        'oversold': 30
-    },
-    'name': 'my_rsi_rule'
-})
-```
-
-## Rule Registry
-
-The RuleRegistry maintains a catalog of all available rule types:
-
-```python
-from src.rules import get_registry
-
-# Get the registry
-registry = get_registry()
-
-# List all available rules
-all_rules = registry.list_rules()
-
-# List rules by category
-volatility_rules = registry.list_rules(category="volatility")
-
-# List all rule categories
-categories = registry.list_categories()
-
-# Create a rule using the registry directly
-rule = registry.create_rule(
-    name="RSIRule",
-    params={"rsi_period": 10},
-    rule_name="custom_rsi"
-)
-```
-
-## Rule Optimization
-
-Rules can be optimized to find optimal parameters:
-
-```python
-from src.rules import RuleOptimizer
-
-def evaluate_rule(rule):
-    # Custom evaluation function
-    # Returns a performance score
-    return performance_score
-
-optimizer = RuleOptimizer(
-    rule_factory=RuleFactory(),
-    evaluation_func=evaluate_rule
-)
-
-# Grid search optimization
-best_params, best_score = optimizer.optimize_grid_search(
-    rule_name='SMAcrossoverRule',
-    param_grid={
-        'fast_window': [5, 10, 15],
-        'slow_window': [20, 30, 50]
-    }
-)
-
-# Random search optimization
-best_params, best_score = optimizer.optimize_random_search(
-    rule_name='RSIRule',
-    param_distributions={
-        'rsi_period': [7, 14, 21],
-        'overbought': lambda: np.random.randint(70, 85),
-        'oversold': lambda: np.random.randint(15, 30)
-    },
-    n_iterations=20
-)
-```
-
-## Advanced Usage
-
-### Creating Custom Rules
-
-You can create custom rules by subclassing the Rule base class:
-
-```python
-from src.rules import Rule, register_rule
-from src.signals import Signal, SignalType
-
-@register_rule(category="custom")
-class MyCustomRule(Rule):
-    @classmethod
-    def default_params(cls):
-        return {
-            'parameter1': 10,
-            'parameter2': 20
-        }
+Args:
+    bar_event: BarEvent containing market data
     
-    def _validate_params(self):
-        if self.params['parameter1'] <= 0:
-            raise ValueError("parameter1 must be positive")
+Returns:
+    SignalEvent if crossover occurs, None otherwise
+
+###### `reset()`
+
+*Returns:* `None`
+
+Reset the rule's internal state.
+
+#### `ExponentialMACrossoverRule`
+
+Exponential Moving Average (EMA) Crossover Rule.
+
+This rule generates buy signals when a faster EMA crosses above a slower EMA,
+and sell signals when the faster EMA crosses below the slower EMA.
+
+##### Methods
+
+###### `__init__(name='ema_crossover', params=None, description='EMA crossover rule')`
+
+Initialize the EMA crossover rule.
+
+Args:
+    name: Rule name
+    params: Dictionary containing:
+        - fast_period: Period for fast EMA (default: 12)
+        - slow_period: Period for slow EMA (default: 26)
+        - smooth_signals: Whether to generate signals when MAs are aligned (default: False)
+    description: Rule description
+
+###### `default_params(cls)`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for the rule.
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this rule.
+
+###### `generate_signal(data)`
+
+*Returns:* `Signal`
+
+Generate a trading signal based on EMA crossover.
+
+Args:
+    data: Dictionary containing price data
+         
+Returns:
+    Signal object representing the trading decision
+
+###### `reset()`
+
+*Returns:* `None`
+
+Reset the rule's internal state.
+
+#### `MACDCrossoverRule`
+
+Moving Average Convergence Divergence (MACD) Crossover Rule.
+
+This rule generates buy signals when the MACD line crosses above the signal line,
+and sell signals when the MACD line crosses below the signal line.
+
+##### Methods
+
+###### `__init__(name='macd_crossover', params=None, description='MACD crossover rule')`
+
+Initialize the MACD crossover rule.
+
+Args:
+    name: Rule name
+    params: Dictionary containing:
+        - fast_period: Period for fast EMA (default: 12)
+        - slow_period: Period for slow EMA (default: 26)
+        - signal_period: Period for signal line (default: 9)
+        - use_histogram: Whether to use MACD histogram for signals (default: False)
+    description: Rule description
+
+###### `default_params(cls)`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for the rule.
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this rule.
+
+###### `generate_signal(data)`
+
+*Returns:* `Signal`
+
+Generate a trading signal based on MACD crossover.
+
+Args:
+    data: Dictionary containing price data
+         
+Returns:
+    Signal object representing the trading decision
+
+###### `reset()`
+
+*Returns:* `None`
+
+Reset the rule's internal state.
+
+#### `PriceMACrossoverRule`
+
+Price-Moving Average Crossover Rule.
+
+This rule generates buy signals when the price crosses above a moving average,
+and sell signals when the price crosses below.
+
+##### Methods
+
+###### `__init__(name='price_ma_crossover', params=None, description='Price-MA crossover rule')`
+
+Initialize the Price-MA crossover rule.
+
+Args:
+    name: Rule name
+    params: Dictionary containing:
+        - ma_period: Period for the moving average (default: 20)
+        - ma_type: Type of moving average ('sma', 'ema') (default: 'sma')
+        - smooth_signals: Whether to generate signals when price and MA are aligned (default: False)
+    description: Rule description
+
+###### `default_params(cls)`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for the rule.
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this rule.
+
+###### `generate_signal(data)`
+
+*Returns:* `Signal`
+
+Generate a trading signal based on price-MA crossover.
+
+Args:
+    data: Dictionary containing price data
+         
+Returns:
+    Signal object representing the trading decision
+
+###### `reset()`
+
+*Returns:* `None`
+
+Reset the rule's internal state.
+
+#### `BollingerBandsCrossoverRule`
+
+Bollinger Bands Crossover Rule.
+
+This rule generates buy signals when price crosses below the lower band
+and sell signals when price crosses above the upper band.
+
+##### Methods
+
+###### `__init__(name='bollinger_bands_crossover', params=None, description='Bollinger Bands crossover rule')`
+
+Initialize the Bollinger Bands crossover rule.
+
+Args:
+    name: Rule name
+    params: Dictionary containing:
+        - period: Period for the moving average (default: 20)
+        - num_std_dev: Number of standard deviations for bands (default: 2.0)
+        - use_middle_band: Whether to also generate signals on middle band crosses (default: False)
+    description: Rule description
+
+###### `default_params(cls)`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for the rule.
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this rule.
+
+###### `generate_signal(data)`
+
+*Returns:* `Signal`
+
+Generate a trading signal based on Bollinger Bands crossover.
+
+Args:
+    data: Dictionary containing price data
+         
+Returns:
+    Signal object representing the trading decision
+
+###### `reset()`
+
+*Returns:* `None`
+
+Reset the rule's internal state.
+
+#### `StochasticCrossoverRule`
+
+Stochastic Oscillator Crossover Rule.
+
+This rule generates signals based on %K crossing %D in the Stochastic Oscillator.
+
+##### Methods
+
+###### `__init__(name='stochastic_crossover', params=None, description='Stochastic crossover rule')`
+
+Initialize the Stochastic crossover rule.
+
+Args:
+    name: Rule name
+    params: Dictionary containing:
+        - k_period: Period for %K calculation (default: 14)
+        - d_period: Period for %D calculation (default: 3)
+        - slowing: Slowing period for %K (default: 3)
+        - use_extremes: Whether to also generate signals on overbought/oversold levels (default: True)
+        - overbought: Overbought level (default: 80)
+        - oversold: Oversold level (default: 20)
+    description: Rule description
+
+###### `default_params(cls)`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for the rule.
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this rule.
+
+###### `generate_signal(data)`
+
+*Returns:* `Signal`
+
+Generate a trading signal based on Stochastic crossover.
+
+Args:
+    data: Dictionary containing price data
+         
+Returns:
+    Signal object representing the trading decision
+
+###### `reset()`
+
+*Returns:* `None`
+
+Reset the rule's internal state.
+
+## oscillator_rules
+
+Oscillator Rules Module
+
+This module implements various oscillator-based trading rules such as
+RSI, Stochastic, CCI, and other momentum oscillators.
+
+### Classes
+
+#### `RSIRule`
+
+Relative Strength Index (RSI) Rule.
+
+This rule generates signals based on RSI, an oscillator that measures the 
+speed and change of price movements on a scale of 0 to 100.
+
+##### Methods
+
+###### `__init__(name='rsi_rule', params=None, description='RSI overbought/oversold rule')`
+
+Initialize the RSI rule.
+
+Args:
+    name: Rule name
+    params: Dictionary containing:
+        - rsi_period: Period for RSI calculation (default: 14)
+        - overbought: Overbought level (default: 70)
+        - oversold: Oversold level (default: 30)
+        - signal_type: Signal generation method ('levels', 'divergence', 'midline') (default: 'levels')
+    description: Rule description
+
+###### `default_params(cls)`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for the rule.
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this rule.
+
+###### `generate_signal(data)`
+
+*Returns:* `Signal`
+
+Generate a trading signal based on RSI.
+
+Args:
+    data: Dictionary containing price data
+         
+Returns:
+    Signal object representing the trading decision
+
+###### `reset()`
+
+*Returns:* `None`
+
+Reset the rule's internal state.
+
+#### `StochasticRule`
+
+Stochastic Oscillator Rule.
+
+This rule generates signals based on the Stochastic Oscillator, which measures
+the current price relative to the price range over a period of time.
+
+##### Methods
+
+###### `__init__(name='stochastic_rule', params=None, description='Stochastic oscillator rule')`
+
+Initialize the Stochastic Oscillator rule.
+
+Args:
+    name: Rule name
+    params: Dictionary containing:
+        - k_period: %K period (default: 14)
+        - k_slowing: %K slowing period (default: 3)
+        - d_period: %D period (default: 3)
+        - overbought: Overbought level (default: 80)
+        - oversold: Oversold level (default: 20)
+        - signal_type: Signal generation method ('levels', 'crossover', 'both') (default: 'both')
+    description: Rule description
+
+###### `default_params(cls)`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for the rule.
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this rule.
+
+###### `generate_signal(data)`
+
+*Returns:* `Signal`
+
+Generate a trading signal based on Stochastic Oscillator.
+
+Args:
+    data: Dictionary containing price data
+         
+Returns:
+    Signal object representing the trading decision
+
+###### `reset()`
+
+*Returns:* `None`
+
+Reset the rule's internal state.
+
+#### `CCIRule`
+
+Commodity Channel Index (CCI) Rule.
+
+This rule uses the CCI oscillator to identify overbought and oversold 
+conditions as well as trend strength and potential reversals.
+
+##### Methods
+
+###### `__init__(name='cci_rule', params=None, description='CCI oscillator rule')`
+
+Initialize the CCI rule.
+
+Args:
+    name: Rule name
+    params: Dictionary containing:
+        - period: CCI calculation period (default: 20)
+        - overbought: Overbought level (default: 100)
+        - oversold: Oversold level (default: -100)
+        - extreme_overbought: Extreme overbought level (default: 200)
+        - extreme_oversold: Extreme oversold level (default: -200)
+        - zero_line_cross: Whether to use zero line crossovers (default: True)
+    description: Rule description
+
+###### `default_params(cls)`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for the rule.
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this rule.
+
+###### `generate_signal(data)`
+
+*Returns:* `Signal`
+
+Generate a trading signal based on CCI.
+
+Args:
+    data: Dictionary containing price data
+         
+Returns:
+    Signal object representing the trading decision
+
+###### `reset()`
+
+*Returns:* `None`
+
+Reset the rule's internal state.
+
+#### `MACDHistogramRule`
+
+MACD Histogram Rule.
+
+This rule uses the MACD histogram to identify momentum shifts in a trend,
+focusing on changes in the histogram rather than just MACD line crossovers.
+
+##### Methods
+
+###### `__init__(name='macd_histogram', params=None, description='MACD histogram rule')`
+
+Initialize the MACD Histogram rule.
+
+Args:
+    name: Rule name
+    params: Dictionary containing:
+        - fast_period: Fast EMA period (default: 12)
+        - slow_period: Slow EMA period (default: 26)
+        - signal_period: Signal line period (default: 9)
+        - zero_line_cross: Whether to use zero line crossovers (default: True)
+        - divergence: Whether to detect divergence (default: True)
+    description: Rule description
+
+###### `default_params(cls)`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for the rule.
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this rule.
+
+###### `generate_signal(data)`
+
+*Returns:* `Signal`
+
+Generate a trading signal based on MACD histogram.
+
+Args:
+    data: Dictionary containing price data
+         
+Returns:
+    Signal object representing the trading decision
+
+###### `reset()`
+
+*Returns:* `None`
+
+Reset the rule's internal state.
+
+## rule_base
+
+Rule Base Module
+
+This module defines the base Rule class and related abstractions for the rules layer
+of the trading system. Rules analyze market data to generate trading signals.
+
+### Classes
+
+#### `Rule`
+
+Base class for all trading rules in the system.
+
+Rules transform market data into trading signals by applying decision logic.
+Each rule encapsulates a specific trading strategy or signal generation logic.
+
+##### Methods
+
+###### `__init__(name, params=None, description='')`
+
+Initialize a rule.
+
+Args:
+    name: Unique identifier for this rule
+    params: Dictionary of configuration parameters
+    description: Human-readable description of the rule
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters provided to the rule.
+
+This method should be overridden by subclasses to provide
+specific parameter validation logic.
+
+Raises:
+    ValueError: If parameters are invalid
+
+###### `default_params(cls)`
+
+*Returns:* `Dict[str, Any]`
+
+Get the default parameters for this rule.
+
+Returns:
+    Dictionary of default parameter values
+
+###### `generate_signal(bar_event)`
+
+*Returns:* `Optional[SignalEvent]`
+
+Analyze market data and generate a trading signal.
+
+This method is responsible for the signal generation process:
+1. Analyzing the bar data 
+2. Determining if a signal should be generated
+3. Creating and returning the appropriate SignalEvent
+
+Subclasses must implement this method with their specific trading logic.
+
+Args:
+    bar_event: BarEvent containing market data
+         
+Returns:
+    SignalEvent if conditions warrant a signal, None otherwise
+
+###### `on_bar(event)`
+
+*Returns:* `Optional[SignalEvent]`
+
+Process a bar event and generate a trading signal.
+
+This method extracts the bar data from the event and passes it to
+generate_signal() for the actual signal generation logic.
+
+Args:
+    event: Event containing a BarEvent in its data attribute
     
-    def generate_signal(self, data):
-        """
-        Generate a trading signal from the provided data.
-        
-        Note: Implement generate_signal, not on_bar. The base class handles
-        event object conversion in on_bar automatically.
-        
-        Args:
-            data: Dictionary containing price data and indicators
-                 
-        Returns:
-            Signal object or None
-        """
-        # Custom signal generation logic
-        if data["Close"] > data["Open"] * (1 + self.params['parameter1']/100):
-            return Signal(
-                timestamp=data.get('timestamp'),
-                signal_type=SignalType.BUY,
-                price=data.get('Close'),
-                rule_id=self.name,
-                confidence=0.7
-            )
-        
-        # Return None for no signal
-        return None
-```
+Returns:
+    SignalEvent if a signal is generated, None otherwise
 
-### AlwaysBuyRule - Useful for Testing
+###### `update_state(key, value)`
 
-A simple rule that always generates buy signals at a specified frequency:
+*Returns:* `None`
 
-```python
-class AlwaysBuyRule(Rule):
-    """
-    A debugging rule that always generates buy signals at a specified frequency.
+Update the rule's internal state.
+
+Args:
+    key: State dictionary key
+    value: Value to store
+
+###### `get_state(key=None, default=None)`
+
+*Returns:* `Any`
+
+Get a value from the rule's state or the entire state dict.
+
+Args:
+    key: State dictionary key, or None to get the entire state
+    default: Default value if key is not found
     
-    This rule is intended for testing and debugging purposes only, and should
-    not be used for actual trading.
+Returns:
+    The value from state or default, or the entire state dict
+
+###### `reset()`
+
+*Returns:* `None`
+
+Reset the rule's internal state and signal history.
+
+This method should be called when reusing a rule instance
+for a new backtest or trading session.
+
+###### `__str__()`
+
+*Returns:* `str`
+
+String representation of the rule.
+
+###### `__repr__()`
+
+*Returns:* `str`
+
+Detailed representation of the rule.
+
+#### `CompositeRule`
+
+A rule composed of multiple sub-rules.
+
+CompositeRule combines signals from multiple rules using a specified
+aggregation method to produce a final signal.
+
+##### Methods
+
+###### `__init__(name, rules, aggregation_method='majority', params=None, description='')`
+
+Initialize a composite rule.
+
+Args:
+    name: Unique identifier for the rule
+    rules: List of component rules
+    aggregation_method: Method to combine signals ('majority', 'unanimous', 'weighted')
+    params: Dictionary of parameters
+    description: Human-readable description
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this composite rule.
+
+###### `generate_signal(bar_event)`
+
+*Returns:* `Optional[SignalEvent]`
+
+Generate a composite signal by combining signals from sub-rules.
+
+Args:
+    bar_event: BarEvent containing market data
+         
+Returns:
+    SignalEvent representing the combined decision, or None if no signal
+
+###### `_majority_vote(signals, bar_event)`
+
+*Returns:* `SignalEvent`
+
+Combine signals using a majority vote.
+
+Args:
+    signals: List of signals from sub-rules
+    bar_event: Original bar event
     
-    Parameters:
-    -----------
-    frequency : int
-        Generate a signal every 'frequency' bars (default: 2)
-    confidence : float
-        Confidence level for generated signals (default: 1.0)
-    """
+Returns:
+    Combined signal
+
+###### `reset()`
+
+*Returns:* `None`
+
+Reset this rule and all sub-rules.
+
+#### `FeatureBasedRule`
+
+A rule that generates signals based on features.
+
+FeatureBasedRule uses a list of features to generate trading signals,
+abstracting away the direct handling of price data and indicators.
+
+##### Methods
+
+###### `__init__(name, feature_names, params=None, description='')`
+
+Initialize a feature-based rule.
+
+Args:
+    name: Unique identifier for the rule
+    feature_names: List of feature names this rule depends on
+    params: Dictionary of parameters
+    description: Human-readable description
+
+###### `generate_signal(bar_event)`
+
+*Returns:* `Optional[SignalEvent]`
+
+Generate a trading signal based on features.
+
+Args:
+    bar_event: BarEvent containing market data
+         
+Returns:
+    SignalEvent representing the trading decision, or None if no signal
+
+###### `make_decision(features, bar_event)`
+
+*Returns:* `Optional[SignalEvent]`
+
+Make a trading decision based on the features.
+
+This method should be implemented by subclasses to define
+the specific decision logic using features.
+
+Args:
+    features: Dictionary of feature values
+    bar_event: Original bar event
+         
+Returns:
+    SignalEvent representing the trading decision, or None if no signal
+
+###### `_validate_param_application()`
+
+Validate that parameters were correctly applied to this instance.
+Called after initialization.
+
+#### `FeatureBasedRule`
+
+A rule that generates signals based on features.
+
+FeatureBasedRule uses a list of features to generate trading signals,
+abstracting away the direct handling of price data and indicators.
+
+##### Methods
+
+###### `__init__(name, feature_names, params=None, description='')`
+
+Initialize a feature-based rule.
+
+Args:
+    name: Unique identifier for the rule
+    feature_names: List of feature names this rule depends on
+    params: Dictionary of parameters
+    description: Human-readable description
+
+###### `generate_signal(bar_event)`
+
+*Returns:* `Optional[SignalEvent]`
+
+Generate a trading signal based on features.
+
+Args:
+    bar_event: BarEvent containing market data
+         
+Returns:
+    SignalEvent representing the trading decision, or None if no signal
+
+###### `make_decision(features, bar_event)`
+
+*Returns:* `Optional[SignalEvent]`
+
+Make a trading decision based on the features.
+
+This method should be implemented by subclasses to define
+the specific decision logic using features. It should directly
+return a SignalEvent object when appropriate.
+
+Args:
+    features: Dictionary of feature values
+    bar_event: Original bar event
+         
+Returns:
+    SignalEvent representing the trading decision, or None if no signal
+
+###### `_validate_param_application()`
+
+Validate that parameters were correctly applied to this instance.
+Called after initialization.
+
+## rule_factory
+
+Rule Factory Module
+
+This module provides factory functions for creating and configuring rule instances
+with proper parameter handling and validation.
+
+### Functions
+
+#### `create_rule(rule_name, params=None)`
+
+*Returns:* `Rule`
+
+Create a rule instance using the global registry.
+
+Args:
+    rule_name: Name of the rule class to instantiate
+    params: Parameters for the rule
+    **kwargs: Additional keyword arguments for the rule constructor
     
-    @classmethod
-    def default_params(cls):
-        return {
-            'frequency': 2,   # Generate signals every 2 bars by default
-            'confidence': 1.0  # Full confidence for testing
-        }
+Returns:
+    Instantiated rule
+
+#### `create_composite_rule(name, rule_configs, aggregation_method='majority', params=None)`
+
+*Returns:* `CompositeRule`
+
+Create a composite rule from multiple rule configurations.
+
+Args:
+    name: Name for the composite rule
+    rule_configs: List of rule configurations
+    aggregation_method: Method to combine signals
+    params: Parameters for the composite rule
     
-    def __init__(self, name="always_buy", params=None, description=""):
-        super().__init__(name, params or self.default_params(), description or "Debug rule that always generates buy signals")
-        self.bar_count = 0
-        self.last_signal = None
+Returns:
+    CompositeRule instance
+
+### Classes
+
+#### `RuleFactory`
+
+Factory for creating rule instances with proper parameter handling.
+
+This class provides methods for creating rule instances with various
+parameter combinations and validation.
+
+##### Methods
+
+###### `__init__(registry=None)`
+
+Initialize the rule factory.
+
+Args:
+    registry: Optional rule registry to use (defaults to global registry)
+
+###### `create_rule(rule_name, params=None, instance_name=None)`
+
+*Returns:* `Rule`
+
+Create a rule instance with the given parameters.
+
+Args:
+    rule_name: Name of the rule class to instantiate
+    params: Parameters for the rule
+    instance_name: Optional name for the rule instance
+    **kwargs: Additional keyword arguments for the rule constructor
     
-    def _validate_params(self):
-        """Validate the parameters."""
-        if self.params['frequency'] <= 0:
-            raise ValueError("Frequency must be positive")
-        if not 0 <= self.params['confidence'] <= 1:
-            raise ValueError("Confidence must be between 0 and 1")
+Returns:
+    Instantiated rule
     
-    def reset(self):
-        """Reset the rule state."""
-        super().reset()
-        self.bar_count = 0
-        self.last_signal = None
+Raises:
+    KeyError: If rule is not found in registry
+
+###### `create_rule_variants(rule_name, param_grid, base_params=None, name_format='{rule}_{param}_{value}')`
+
+*Returns:* `List[Rule]`
+
+Create multiple rule instances with different parameter combinations.
+
+Args:
+    rule_name: Name of the rule class to instantiate
+    param_grid: Dictionary mapping parameter names to lists of values
+    base_params: Base parameters to use for all variants
+    name_format: Format string for naming rule instances
     
-    def generate_signal(self, data):
-        """
-        Generate a buy signal at the specified frequency.
-        
-        Args:
-            data: Dictionary containing bar data
-            
-        Returns:
-            Signal or None
-        """
-        # Increment bar counter
-        self.bar_count += 1
-        
-        # Get current bar info
-        timestamp = data.get("timestamp")
-        close_price = data.get("Close")
-        
-        # Generate a buy signal at the specified frequency
-        if self.bar_count % self.params['frequency'] == 0:
-            # Create signal object
-            signal = Signal(
-                timestamp=timestamp,
-                signal_type=SignalType.BUY,
-                price=close_price,
-                rule_id=self.name,
-                confidence=self.params['confidence'],
-                metadata={"bar_count": self.bar_count}
-            )
-            
-            # Store last signal
-            self.last_signal = signal
-            
-            return signal
-        
-        # No signal for this bar
-        return None
+Returns:
+    List of rule instances with different parameter combinations
+
+###### `create_composite_rule(name, rule_configs, aggregation_method='majority', params=None)`
+
+*Returns:* `CompositeRule`
+
+Create a composite rule from multiple rule configurations.
+
+Args:
+    name: Name for the composite rule
+    rule_configs: List of rule configurations, which can be:
+                  - Rule instance
+                  - Rule name (string)
+                  - Dict with 'name' and optional 'params' keys
+    aggregation_method: Method to combine signals
+    params: Parameters for the composite rule
     
-    def get_state(self, key=None):
-        """
-        Get the current state of the rule.
-        
-        Args:
-            key: Optional specific state key to retrieve
-            
-        Returns:
-            State dictionary or specific value
-        """
-        state = {
-            'bar_count': self.bar_count,
-            'last_signal': self.last_signal,
-        }
-        
-        if key is not None:
-            return state.get(key)
-        
-        return state
-```
-
-### Creating Feature-Based Rules
-
-For rules that work on pre-computed features rather than raw price data:
-
-```python
-from src.rules.rule_base import FeatureBasedRule
-from src.rules import register_rule
-
-@register_rule(category="feature_based")
-class MyFeatureRule(FeatureBasedRule):
-    def __init__(self, name="my_feature_rule", params=None, description=""):
-        # Define which features this rule needs
-        feature_names = ['feature1', 'feature2']
-        super().__init__(name, feature_names, params, description)
+Returns:
+    CompositeRule instance
     
-    def make_decision(self, features, data):
-        # Logic using features instead of calculating indicators
-        if features['feature1'] > features['feature2']:
-            return Signal(
-                timestamp=data.get('timestamp'),
-                signal_type=SignalType.BUY,
-                price=data.get('Close'),
-                rule_id=self.name
-            )
-        # ...
-```
+Raises:
+    ValueError: If rule_configs is empty
 
-### Resetting Rule State
+###### `create_from_config(config)`
 
-Rules maintain state between bars. Reset them when starting a new analysis:
+*Returns:* `Rule`
 
-```python
-# Reset a rule's internal state
-rule.reset()
+Create a rule from a configuration dictionary.
 
-# Reset all rules in a composite rule
-composite_rule.reset()
-```
-
-### Analyzing Signal Quality
-
-You can inspect the signals generated by rules:
-
-```python
-# Get confidence level from a signal
-confidence = signal.confidence
-
-# Extract calculation details from metadata
-metadata = signal.metadata
-if 'vi_plus' in metadata:
-    vi_plus = metadata['vi_plus']
-    vi_minus = metadata['vi_minus']
+Args:
+    config: Dictionary with rule configuration
     
-# Check if a signal came from a filtered source
-is_filtered = metadata.get('filtered', False)
-```
+Returns:
+    Rule instance
+    
+Raises:
+    ValueError: If config is invalid
 
-## Best Practices
+#### `RuleOptimizer`
 
-1. **Reset Rules Between Symbols**: Always reset rules when switching to a new symbol or timeframe.
+Optimizer for rule parameters based on performance metrics.
 
-2. **Validate Parameters**: Check that rule parameters are reasonable for your data frequency.
+This class provides methods for optimizing rule parameters to
+maximize performance metrics using different optimization methods.
 
-3. **Chain Processing**: Use signal filters from the signals module to further refine rule signals.
+##### Methods
 
-4. **Combine Rules Effectively**: Use composite rules with appropriate aggregation methods for more robust signals.
+###### `__init__(rule_factory, evaluation_func)`
 
-5. **Monitor Performance**: Track the performance of individual rules to identify the most effective ones.
+Initialize the rule optimizer.
 
-6. **Implement generate_signal**: When creating custom rules, implement the `generate_signal(data)` method, not `on_bar`.
+Args:
+    rule_factory: RuleFactory instance for creating rules
+    evaluation_func: Function that takes a rule and returns a performance score
 
-7. **Use on_bar for Convenience**: The `on_bar` method handles both Event objects and raw data as input.
+###### `optimize_grid_search(rule_name, param_grid, base_params=None)`
 
-8. **Consider Test Rules**: Use the AlwaysBuyRule for testing the event flow without complex logic.
+*Returns:* `Tuple[Dict[str, Any], float]`
 
-9. **Maintain Rule State**: Use bar_count and other internal state variables for consistent tracking between bars.
+Optimize rule parameters using grid search.
 
-10. **Document Custom Rules**: Clearly document the expected input data format for custom rules.
+Args:
+    rule_name: Name of the rule to optimize
+    param_grid: Dictionary mapping parameter names to lists of values
+    base_params: Base parameters to use for all variants
+    
+Returns:
+    Tuple of (best parameters, best score)
+
+###### `optimize_random_search(rule_name, param_distributions, base_params=None, n_iterations=10)`
+
+*Returns:* `Tuple[Dict[str, Any], float]`
+
+Optimize rule parameters using random search.
+
+Args:
+    rule_name: Name of the rule to optimize
+    param_distributions: Dictionary mapping parameter names to distributions
+                       or lists of values
+    base_params: Base parameters to use for all variants
+    n_iterations: Number of random combinations to try
+    
+Returns:
+    Tuple of (best parameters, best score)
+
+## rule_registry
+
+Rule Registry Module
+
+This module provides a registry system for rules, allowing them to be
+registered, discovered, and instantiated by name throughout the trading system.
+
+### Functions
+
+#### `register_rule(name=None, category='general')`
+
+Decorator for registering rule classes with the registry.
+
+Args:
+    name: Optional name for the rule (defaults to class name)
+    category: Category to group the rule under
+    
+Returns:
+    Decorator function that registers the rule class
+
+*Returns:* Decorator function that registers the rule class
+
+#### `register_rules_in_module(module, category='general')`
+
+*Returns:* `None`
+
+Register all Rule classes in a module with the registry.
+
+Args:
+    module: The module object containing rule classes
+    category: Category to group the rules under
+
+#### `get_registry()`
+
+*Returns:* `RuleRegistry`
+
+Get the global rule registry instance.
+
+Returns:
+    The RuleRegistry singleton instance
+
+### Classes
+
+#### `RuleRegistry`
+
+Registry for rule classes in the trading system.
+
+The RuleRegistry maintains a mapping of rule names to their implementing
+classes, allowing rules to be instantiated by name.
+
+##### Methods
+
+###### `__new__(cls)`
+
+Implement singleton pattern for the registry.
+
+###### `register(rule_class, name=None, category='general')`
+
+*Returns:* `None`
+
+Register a rule class with the registry.
+
+Args:
+    rule_class: The Rule class to register
+    name: Optional name to register the rule under (defaults to class name)
+    category: Category to group the rule under
+    
+Raises:
+    ValueError: If a rule with the same name is already registered
+
+###### `get_rule_class(name)`
+
+*Returns:* `Type[Rule]`
+
+Get a rule class by name.
+
+Args:
+    name: Name of the rule to retrieve
+    
+Returns:
+    The rule class
+    
+Raises:
+    KeyError: If no rule with the given name is registered
+
+###### `create_rule(name, params=None, rule_name=None)`
+
+*Returns:* `Rule`
+
+Create an instance of a rule by name.
+
+Args:
+    name: Name of the rule class to instantiate
+    params: Parameters to pass to the rule constructor
+    rule_name: Optional name for the created rule instance
+              (defaults to the registered name)
+    **kwargs: Additional keyword arguments to pass to the constructor
+    
+Returns:
+    An instance of the requested rule
+    
+Raises:
+    KeyError: If no rule with the given name is registered
+
+###### `list_rules(category=None)`
+
+*Returns:* `List[str]`
+
+List all registered rules, optionally filtered by category.
+
+Args:
+    category: Optional category to filter by
+    
+Returns:
+    List of rule names
+
+###### `list_categories()`
+
+*Returns:* `List[str]`
+
+List all rule categories.
+
+Returns:
+    List of category names
+
+###### `clear()`
+
+*Returns:* `None`
+
+Clear all registered rules (useful for testing).
+
+## trend_rules
+
+Trend Rules Module
+
+This module implements various trend-based trading rules such as
+ADX rules, trend strength indicators, and directional movement.
+
+### Classes
+
+#### `ADXRule`
+
+Average Directional Index (ADX) Rule.
+
+This rule generates signals based on the ADX indicator and the directional movement indicators
+(+DI and -DI) to identify strong trends and their direction.
+
+##### Methods
+
+###### `__init__(name='adx_rule', params=None, description='ADX trend strength rule')`
+
+Initialize the ADX rule.
+
+Args:
+    name: Rule name
+    params: Dictionary containing:
+        - adx_period: Period for ADX calculation (default: 14)
+        - adx_threshold: Threshold to consider a trend strong (default: 25)
+        - use_di_cross: Whether to use DI crossovers for signals (default: True)
+    description: Rule description
+
+###### `default_params(cls)`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for the rule.
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this rule.
+
+###### `generate_signal(data)`
+
+*Returns:* `Signal`
+
+Generate a trading signal based on ADX and directional movement.
+
+Args:
+    data: Dictionary containing price data
+         
+Returns:
+    Signal object representing the trading decision
+
+###### `reset()`
+
+*Returns:* `None`
+
+Reset the rule's internal state.
+
+#### `IchimokuRule`
+
+Ichimoku Cloud Rule.
+
+This rule generates signals based on the Ichimoku Cloud indicator,
+which provides multiple signals including trend direction, support/resistance,
+and momentum.
+
+##### Methods
+
+###### `__init__(name='ichimoku_rule', params=None, description='Ichimoku Cloud rule')`
+
+Initialize the Ichimoku Cloud rule.
+
+Args:
+    name: Rule name
+    params: Dictionary containing:
+        - tenkan_period: Tenkan-sen period (default: 9)
+        - kijun_period: Kijun-sen period (default: 26)
+        - senkou_span_b_period: Senkou Span B period (default: 52)
+        - signal_type: Signal generation method ('cloud', 'tk_cross', 'price_cross') (default: 'cloud')
+    description: Rule description
+
+###### `default_params(cls)`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for the rule.
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this rule.
+
+###### `generate_signal(data)`
+
+*Returns:* `Signal`
+
+Generate a trading signal based on Ichimoku Cloud.
+
+Args:
+    data: Dictionary containing price data
+         
+Returns:
+    Signal object representing the trading decision
+
+###### `reset()`
+
+*Returns:* `None`
+
+Reset the rule's internal state.
+
+#### `VortexRule`
+
+Vortex Indicator Rule.
+
+This rule uses the Vortex Indicator (VI) to identify trend reversals based on
+the relationship between the positive and negative VI lines.
+
+##### Methods
+
+###### `__init__(name='vortex_rule', params=None, description='Vortex indicator rule')`
+
+Initialize the Vortex Indicator rule.
+
+Args:
+    name: Rule name
+    params: Dictionary containing:
+        - period: Calculation period for VI+ and VI- (default: 14)
+        - smooth_signals: Whether to generate signals when VIs are aligned (default: True)
+    description: Rule description
+
+###### `default_params(cls)`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for the rule.
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this rule.
+
+###### `generate_signal(data)`
+
+*Returns:* `Signal`
+
+Generate a trading signal based on the Vortex Indicator.
+
+Args:
+    data: Dictionary containing price data
+         
+Returns:
+    Signal object representing the trading decision
+
+###### `reset()`
+
+*Returns:* `None`
+
+Reset the rule's internal state.
+
+## volatility_rules
+
+Volatility Rules Module
+
+This module implements various volatility-based trading rules such as
+Bollinger Bands, ATR strategies, and volatility breakout systems.
+
+### Classes
+
+#### `BollingerBandRule`
+
+Bollinger Bands Breakout Rule.
+
+This rule generates signals when price breaks out of Bollinger Bands,
+indicating potential trend reversals or continuation based on volatility.
+
+##### Methods
+
+###### `__init__(name='bollinger_breakout', params=None, description='Bollinger Bands breakout rule')`
+
+Initialize the Bollinger Bands Breakout rule.
+
+Args:
+    name: Rule name
+    params: Dictionary containing:
+        - period: Period for SMA calculation (default: 20)
+        - std_dev: Number of standard deviations for bands (default: 2.0)
+        - breakout_type: Type of breakout to monitor ('upper', 'lower', 'both') (default: 'both')
+        - use_confirmations: Whether to require confirmation (default: True)
+    description: Rule description
+
+###### `default_params(cls)`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for the rule.
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this rule.
+
+###### `generate_signal(data)`
+
+*Returns:* `Signal`
+
+Generate a trading signal based on Bollinger Bands breakout.
+
+Args:
+    data: Dictionary containing price data
+         
+Returns:
+    Signal object representing the trading decision
+
+###### `reset()`
+
+*Returns:* `None`
+
+Reset the rule's internal state.
+
+#### `ATRTrailingStopRule`
+
+Average True Range (ATR) Trailing Stop Rule.
+
+This rule uses ATR to set dynamic trailing stops that adapt to market volatility,
+providing a strategy for managing exits.
+
+##### Methods
+
+###### `__init__(name='atr_trailing_stop', params=None, description='ATR trailing stop rule')`
+
+Initialize the ATR Trailing Stop rule.
+
+Args:
+    name: Rule name
+    params: Dictionary containing:
+        - atr_period: Period for ATR calculation (default: 14)
+        - atr_multiplier: Multiplier for ATR to set stop distance (default: 3.0)
+        - use_trend_filter: Whether to use trend filter for entries (default: True)
+        - trend_ma_period: Period for trend moving average (default: 50)
+    description: Rule description
+
+###### `default_params(cls)`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for the rule.
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this rule.
+
+###### `generate_signal(data)`
+
+*Returns:* `Signal`
+
+Generate a trading signal based on ATR trailing stop.
+
+Args:
+    data: Dictionary containing price data
+         
+Returns:
+    Signal object representing the trading decision
+
+###### `reset()`
+
+*Returns:* `None`
+
+Reset the rule's internal state.
+
+#### `VolatilityBreakoutRule`
+
+Volatility Breakout Rule.
+
+This rule generates signals based on price breaking out of a volatility-adjusted range,
+which can identify the start of new trends after periods of consolidation.
+
+##### Methods
+
+###### `__init__(name='volatility_breakout', params=None, description='Volatility breakout rule')`
+
+Initialize the Volatility Breakout rule.
+
+Args:
+    name: Rule name
+    params: Dictionary containing:
+        - lookback_period: Period for calculating the range (default: 20)
+        - volatility_measure: Method to measure volatility ('atr', 'stdev', 'range') (default: 'atr')
+        - breakout_multiplier: Multiplier for breakout threshold (default: 1.5)
+        - require_confirmation: Whether to require confirmation (default: True)
+    description: Rule description
+
+###### `default_params(cls)`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for the rule.
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this rule.
+
+###### `generate_signal(data)`
+
+*Returns:* `Signal`
+
+Generate a trading signal based on volatility breakout.
+
+Args:
+    data: Dictionary containing price data
+         
+Returns:
+    Signal object representing the trading decision
+
+###### `reset()`
+
+*Returns:* `None`
+
+Reset the rule's internal state.
+
+#### `KeltnerChannelRule`
+
+Keltner Channel Rule.
+
+This rule uses Keltner Channels which are similar to Bollinger Bands but use ATR
+for volatility measurement instead of standard deviation.
+
+##### Methods
+
+###### `__init__(name='keltner_channel', params=None, description='Keltner Channel volatility rule')`
+
+Initialize the Keltner Channel rule.
+
+Args:
+    name: Rule name
+    params: Dictionary containing:
+        - ema_period: Period for EMA calculation (default: 20)
+        - atr_period: Period for ATR calculation (default: 10)
+        - multiplier: Multiplier for channels (default: 2.0)
+        - signal_type: Signal generation method ('channel_cross', 'channel_touch') (default: 'channel_cross')
+    description: Rule description
+
+###### `default_params(cls)`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for the rule.
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this rule.
+
+###### `generate_signal(data)`
+
+*Returns:* `Signal`
+
+Generate a trading signal based on Keltner Channels.
+
+Args:
+    data: Dictionary containing price data
+         
+Returns:
+    Signal object representing the trading decision
+
+###### `reset()`
+
+*Returns:* `None`
+
+Reset the rule's internal state.

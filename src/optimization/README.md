@@ -1,693 +1,931 @@
-# Optimization Module Documentation
+# Optimization Module
 
-The Optimization module provides a modular framework for optimizing trading strategy components, finding optimal parameters, and validating results. It supports multiple optimization methods including grid search, genetic algorithms, and walk-forward validation.
+Unified optimization framework for trading systems.
 
-## Core Concepts
+This framework provides a modular approach to optimizing different components
+of a trading system, including rules, regime detectors, and strategies. It supports
+multiple optimization methods and sequences, allowing for flexible and comprehensive
+optimization with robust validation capabilities.
 
-**OptimizerManager**: Central coordinator that manages different optimization approaches.  
-**ComponentFactory**: Creates component instances with specific parameters for evaluation.  
-**Evaluators**: Assess the performance of components using specified metrics.  
-**Optimization Methods**: Different algorithms for parameter optimization (grid search, genetic).  
-**Validators**: Cross-validation and walk-forward approaches to ensure robustness.  
-**OptimizationSequence**: Different strategies for sequencing optimization processes.
+Key components:
+- OptimizerManager: Coordinates the optimization process
+- GridOptimizer: Implements grid search optimization
+- GeneticOptimizer: Implements genetic algorithm optimization
+- ComponentFactory: Creates component instances for optimization
+- Evaluators: Evaluate component performance
+- Validators: Validate optimization results with walk-forward, cross-validation, etc.
 
-## Class Hierarchy
+Example usage:
+    # Create optimizer manager
+    optimizer = OptimizerManager(data_handler)
+    
+    # Register components with parameter ranges
+    optimizer.register_rule("sma_crossover", Rule0, 
+                           {'fast_window': [5, 10, 15], 'slow_window': [20, 30, 50]})
+    
+    # Run optimization
+    optimized_rules = optimizer.optimize(
+        component_type='rule',
+        method=OptimizationMethod.GRID_SEARCH,
+        metrics='sharpe',
+        verbose=True
+    )
+    
+    # Run walk-forward validation
+    validation_results = optimizer.validate(
+        validation_method='walk_forward',
+        component_type='rule',
+        method=OptimizationMethod.GENETIC,
+        metrics='sharpe',
+        validation_params={'window_size': 252, 'step_size': 63}
+    )
 
-```
-OptimizableComponent (ABC)
-├── Rule
-├── RegimeDetector
-└── Strategy
+## Contents
 
-ComponentFactory (ABC)
-├── RuleFactory
-├── RegimeDetectorFactory
-├── StrategyFactory
-└── WeightedStrategyFactory
+- [components](#components)
+- [evaluators](#evaluators)
+- [example](#example)
+- [factory_adapter](#factory_adapter)
+- [genetic_optimizer](#genetic_optimizer)
+- [genetic_search](#genetic_search)
+- [grid_search](#grid_search)
+- [optimizer_manager](#optimizer_manager)
+- [param_utils](#param_utils)
+- [strategies](#strategies)
+- [base](#base)
+- [cross_val](#cross_val)
+- [nested_cv](#nested_cv)
+- [utils](#utils)
+- [walk_forward](#walk_forward)
 
-Evaluators
-├── RuleEvaluator
-├── RegimeDetectorEvaluator
-└── StrategyEvaluator
+## components
 
-Optimization Methods
-├── GridOptimizer
-├── GeneticOptimizer
-├── BayesianOptimizer (future)
-└── RandomSearchOptimizer (future)
+Component interfaces and factories for the optimization framework.
 
-Validators
-├── WalkForwardValidator
-├── CrossValidator
-└── NestedCrossValidator
-```
+### Classes
 
-## Basic Usage
+#### `OptimizableComponent`
 
-```python
-from optimization import OptimizerManager, OptimizationMethod
-from rules import SMARule, RSIRule
-from data_handler import CSVDataHandler
+Abstract base class for any component that can be optimized.
 
-# Create data handler
-data_handler = CSVDataHandler("path/to/data.csv")
+##### Methods
 
-# Create optimizer
-optimizer = OptimizerManager(data_handler)
+###### `evaluate(data_handler, metric='return')`
 
-# Register components with parameter ranges to optimize
-optimizer.register_rule("sma_rule", SMARule, 
-                       {"fast_window": [5, 10, 20], "slow_window": [30, 50, 100]})
+Evaluate component performance using specified metric.
 
-optimizer.register_rule("rsi_rule", RSIRule,
-                       {"period": [7, 14, 21], "overbought": [70, 80], "oversold": [20, 30]})
+###### `reset()`
 
-# Optimize using grid search
-optimized_rules = optimizer.optimize(
-    component_type='rule',
-    method=OptimizationMethod.GRID_SEARCH,
-    metrics='sharpe',
-    verbose=True
-)
+Reset the component's state.
 
-# Use optimized components
-for name, rule in optimized_rules.items():
-    print(f"Optimized {name}: {rule}")
-```
+#### `ComponentFactory`
 
-## API Reference
+Factory for creating instances of optimizable components.
 
-### OptimizationMethod Enum
+##### Methods
 
-Defines the available optimization methods:
+###### `create(component_class, params)`
 
-- `GRID_SEARCH`: Exhaustive search over all parameter combinations
-- `GENETIC`: Genetic algorithm optimization
-- `BAYESIAN`: Bayesian optimization (future)
-- `RANDOM_SEARCH`: Random search optimization (future)
-- `JOINT`: Joint optimization of multiple component types
+Create a component instance with the given parameters.
 
-### OptimizationSequence Enum
+#### `RuleFactory`
 
-Defines strategies for sequencing the optimization of different components:
+Factory for creating rule instances.
 
-- `RULES_FIRST`: First optimize rules, then optimize for regimes
-- `REGIMES_FIRST`: First identify regimes, then optimize rules per regime
-- `JOINT`: Jointly optimize rules and regime detection
-- `ITERATIVE`: Alternate between rule and regime optimization
+##### Methods
 
-### OptimizerManager
+###### `create(rule_class, params)`
 
-Central manager for coordinating different optimization approaches.
+Create a rule instance with the given parameters.
 
-**Constructor Parameters:**
-- `data_handler` (DataHandler): The data handler for accessing market data
-- `rule_objects` (list, optional): Optional list of pre-initialized rule objects
+#### `RegimeDetectorFactory`
 
-**Methods:**
+Factory for creating regime detector instances.
 
-#### register_component(name, component_type, component_class, params_range=None, instance=None)
+##### Methods
 
-Register a component for optimization.
+###### `create(detector_class, params)`
 
-**Parameters:**
-- `name` (str): Unique identifier for the component
-- `component_type` (str): Type of component ('rule', 'regime_detector', etc.)
-- `component_class` (class): Class of the component
-- `params_range` (dict, optional): Parameter ranges for optimization
-- `instance` (object, optional): Pre-initialized instance
+Create a regime detector instance with the given parameters.
 
-**Example:**
-```python
-optimizer.register_component(
-    name="sma_rule",
-    component_type="rule",
-    component_class=SMARule,
-    params_range={"fast_window": [5, 10, 20], "slow_window": [30, 50, 100]}
-)
-```
+#### `StrategyFactory`
 
-#### register_rule(name, rule_class, params_range=None, instance=None)
+Factory for creating strategy instances.
 
-Convenience method to register a trading rule.
+##### Methods
 
-**Parameters:**
-- `name` (str): Unique identifier for the rule
-- `rule_class` (class): Rule class to register
-- `params_range` (dict, optional): Parameter ranges for optimization
-- `instance` (object, optional): Pre-initialized rule instance
+###### `create(strategy_class, params)`
 
-#### register_regime_detector(name, detector_class, params_range=None, instance=None)
+Create a strategy instance with the given parameters.
 
-Convenience method to register a regime detector.
+#### `WeightedStrategyFactory`
 
-**Parameters:**
-- `name` (str): Unique identifier for the detector
-- `detector_class` (class): Regime detector class to register
-- `params_range` (dict, optional): Parameter ranges for optimization
-- `instance` (object, optional): Pre-initialized detector instance
+Factory for creating weighted strategies.
 
-#### optimize(component_type, method=OptimizationMethod.GRID_SEARCH, components=None, metrics='return', verbose=True, **kwargs)
+##### Methods
 
-Optimize components of a specific type.
+###### `create(component_class, params)`
 
-**Parameters:**
-- `component_type` (str): Type of component to optimize ('rule', 'regime_detector', etc.)
-- `method` (OptimizationMethod): Optimization method to use
-- `components` (list, optional): List of component names to optimize (or None for all registered)
-- `metrics` (str): Performance metric to optimize for
-- `verbose` (bool): Whether to print progress information
-- `**kwargs`: Additional parameters for specific optimization methods including:
-  - `top_n` (int): Number of top components to select
-  - `genetic` (dict): Genetic algorithm parameters
-    - `population_size` (int): Size of population
-    - `num_generations` (int): Number of generations
-    - `mutation_rate` (float): Rate of mutation
-    - `num_parents` (int): Number of parents to select
-    - `cv_folds` (int): Number of cross-validation folds
-    - `regularization_factor` (float): Strength of regularization
-    - `optimize_thresholds` (bool): Whether to optimize thresholds
-  - `sequence` (OptimizationSequence): Optimization sequence to use
-  - `regime_detector` (object): Regime detector for regime-based optimization
+Create a weighted strategy with the given components and parameters.
 
-**Returns:**
-- `dict` or `Strategy`: Optimized components or strategy
+Args:
+    component_class: Strategy class to create
+    params: Dictionary of parameters including components and weights
+    
+Returns:
+    WeightedComponentStrategy: A weighted strategy
 
-**Example:**
-```python
-optimized_rules = optimizer.optimize(
-    component_type='rule',
-    method=OptimizationMethod.GENETIC,
-    metrics='sharpe',
-    genetic={
-        'population_size': 50,
-        'num_generations': 30,
-        'mutation_rate': 0.1
-    }
-)
-```
+*Returns:* WeightedComponentStrategy: A weighted strategy
 
-#### validate(validation_method, component_type='rule', method=OptimizationMethod.GENETIC, components=None, metrics='sharpe', verbose=True, **kwargs)
+## evaluators
 
-Validate optimization of components using cross-validation or walk-forward.
+Evaluator classes for different component types in the optimization framework.
 
-**Parameters:**
-- `validation_method` (str): Validation method ('cross_validation', 'walk_forward', 'nested_cv')
-- `component_type` (str): Type of component to optimize
-- `method` (OptimizationMethod): Optimization method to use
-- `components` (list, optional): List of component names to optimize
-- `metrics` (str): Performance metric to optimize for
-- `verbose` (bool): Whether to print progress information
-- `**kwargs`: Additional parameters including:
-  - `validation_params` (dict): Validation-specific parameters
-    - `window_size` (int): Size of windows for walk-forward (default: 252)
-    - `step_size` (int): Step size for walk-forward (default: 63)
-    - `train_pct` (float): Train percentage for walk-forward (default: 0.7)
-    - `n_folds` (int): Number of folds for cross-validation (default: 5)
-    - `outer_folds` (int): Number of outer folds for nested CV (default: 5)
-    - `inner_folds` (int): Number of inner folds for nested CV (default: 3)
+### Classes
 
-**Returns:**
-- `dict`: Validation results
+#### `RuleEvaluator`
 
-**Example:**
-```python
-validation_results = optimizer.validate(
-    validation_method='walk_forward',
-    component_type='rule',
-    method=OptimizationMethod.GRID_SEARCH,
-    metrics='sharpe',
-    validation_params={
-        'window_size': 252,  # One year of trading days
-        'step_size': 63      # Quarterly steps
-    }
-)
-```
+Evaluator for trading rules.
 
-### GridOptimizer
+##### Methods
 
-General-purpose grid search optimizer for any component.
+###### `evaluate(rule, data_handler, metric='return')`
 
-**Constructor Parameters:**
-- `component_factory` (ComponentFactory): Factory to create component instances
-- `evaluation_method` (callable): Function to evaluate a component
-- `top_n` (int, optional): Number of top components to select (default: 5)
+Evaluate a rule's performance on historical data.
 
-**Methods:**
+Args:
+    rule: The rule to evaluate
+    data_handler: Data handler providing market data
+    metric: Performance metric ('return', 'sharpe', 'win_rate')
+    
+Returns:
+    float: Evaluation score
 
-#### optimize(configs, data_handler, metric='return', verbose=True)
+*Returns:* float: Evaluation score
 
-Optimize components using grid search.
+#### `RegimeDetectorEvaluator`
 
-**Parameters:**
-- `configs` (list): List of (ComponentClass, param_ranges) tuples
-- `data_handler` (DataHandler): Data handler providing market data
-- `metric` (str): Metric to optimize for ('return', 'sharpe', etc.)
-- `verbose` (bool): Whether to print progress
+Evaluator for regime detectors.
 
-**Returns:**
-- `dict`: Mapping of component indices to optimized instances
+##### Methods
 
-### GeneticOptimizer
+###### `evaluate(detector, data_handler, metric='stability')`
 
-Optimizes components using a genetic algorithm approach.
+Evaluate a regime detector's performance.
 
-**Constructor Parameters:**
-- `component_factory` (ComponentFactory): Factory for creating component instances
-- `evaluation_method` (callable): Function to evaluate a component
-- `top_n` (int): Number of top components to select (default: 5)
-- `population_size` (int): Size of the population (default: 20)
-- `num_generations` (int): Number of generations to run (default: 50)
-- `mutation_rate` (float): Rate of mutation (default: 0.1)
-- `num_parents` (int): Number of parents to select (default: 8)
-- `random_seed` (int, optional): Seed for reproducibility
-- `cv_folds` (int): Number of cross-validation folds (default: 3)
-- `regularization_factor` (float): Weight for regularization (default: 0.2)
-- `balance_factor` (float): Weight for balancing weights (default: 0.3)
-- `max_weight_ratio` (float): Maximum allowed ratio between weights (default: 3.0)
-- `optimize_thresholds` (bool): Whether to optimize thresholds (default: True)
+Args:
+    detector: The regime detector to evaluate
+    data_handler: Data handler providing market data
+    metric: Performance metric ('stability', 'accuracy', 'strategy')
+    
+Returns:
+    float: Evaluation score
 
-**Methods:**
+*Returns:* float: Evaluation score
 
-#### optimize(configs, data_handler, metric='return', verbose=True)
+#### `StrategyEvaluator`
+
+Evaluator for complete trading strategies.
+
+##### Methods
+
+###### `evaluate(strategy, data_handler, metric='sharpe')`
+
+Evaluate a complete strategy's performance.
+
+Args:
+    strategy: The strategy to evaluate
+    data_handler: Data handler providing market data
+    metric: Performance metric
+    
+Returns:
+    float: Evaluation score
+
+*Returns:* float: Evaluation score
+
+## example
+
+Example usage of the unified optimization framework.
+
+### Functions
+
+#### `main()`
+
+No docstring provided.
+
+## factory_adapter
+
+### Classes
+
+#### `RuleFactoryAdapter`
+
+No docstring provided.
+
+##### Methods
+
+###### `__init__()`
+
+No docstring provided.
+
+###### `create(rule_class, params)`
+
+No docstring provided.
+
+## genetic_optimizer
+
+Genetic optimization module for trading system components.
+
+### Classes
+
+#### `GeneticOptimizer`
+
+Optimizes components using a genetic algorithm approach with regularization
+and cross-validation to reduce overfitting.
+
+This is a refactored version of the original GeneticOptimizer adapted to work with
+the component-based optimization framework.
+
+##### Methods
+
+###### `__init__(component_factory, evaluation_method, top_n=5, population_size=20, num_parents=8, num_generations=50, mutation_rate=0.1, random_seed=None, deterministic=False, batch_size=None, cv_folds=3, regularization_factor=0.2, balance_factor=0.3, max_weight_ratio=3.0, optimize_thresholds=True)`
+
+Initialize the genetic optimizer.
+
+Args:
+    component_factory: Factory for creating component instances
+    evaluation_method: Function to evaluate a component
+    top_n: Number of top components to select
+    population_size: Number of chromosomes in the population
+    num_parents: Number of parents to select for mating
+    num_generations: Number of generations to run the optimization
+    mutation_rate: Rate of mutation in the genetic algorithm
+    random_seed: Optional seed for random number generator
+    deterministic: If True, ensures deterministic behavior
+    batch_size: Optional batch size for fitness calculations
+    cv_folds: Number of cross-validation folds
+    regularization_factor: Weight given to regularization term
+    balance_factor: Weight given to balancing toward equal weights
+    max_weight_ratio: Maximum allowed ratio between weights
+    optimize_thresholds: Whether to optimize threshold parameters
+
+###### `_set_random_seed()`
+
+Set the random seed if specified for reproducible results.
+
+###### `optimize(configs, data_handler, metric='return', verbose=True)`
 
 Optimize components using genetic algorithm.
 
-**Parameters:**
-- `configs` (list): List of (ComponentClass, param_ranges) tuples
-- `data_handler` (DataHandler): Data handler providing market data
-- `metric` (str): Metric to optimize for ('return', 'sharpe', etc.)
-- `verbose` (bool): Whether to print progress
+Args:
+    configs: List of (ComponentClass, param_ranges) tuples
+    data_handler: Data handler providing market data
+    metric: Metric to optimize for ('return', 'sharpe', etc.)
+    verbose: Whether to print progress
+    
+Returns:
+    dict: Mapping of component indices to optimized instances
 
-**Returns:**
-- `dict`: Mapping of component indices to optimized instances
+*Returns:* dict: Mapping of component indices to optimized instances
 
-#### plot_fitness_history()
+###### `_run_genetic_algorithm(verbose=True)`
+
+Run the genetic algorithm to find optimal weights.
+
+Args:
+    verbose: Whether to print progress
+    
+Returns:
+    numpy.ndarray: Optimal weights
+
+*Returns:* numpy.ndarray: Optimal weights
+
+###### `plot_fitness_history()`
 
 Plot the evolution of fitness over generations.
 
-### WeightedStrategy
+## genetic_search
 
-Strategy that combines signals from multiple components using weights.
+Genetic optimization module for trading system components.
 
-This is the main implementation used by the framework, available as both `WeightedStrategy` from `strategies.weighted_strategy` and as `WeightedComponentStrategy` from `optimization.strategies` for backward compatibility.
+### Classes
 
-**Constructor Parameters:**
-- `components` (list): List of component objects
-- `weights` (numpy.ndarray, optional): List of weights for each component (default: equal weights)
-- `buy_threshold` (float, optional): Threshold above which to generate a buy signal (default: 0.5)
-- `sell_threshold` (float, optional): Threshold below which to generate a sell signal (default: -0.5)
-- `name` (str, optional): Strategy name
+#### `GeneticOptimizer`
 
-**Methods:**
+Optimizes components using a genetic algorithm approach with regularization
+and cross-validation to reduce overfitting.
 
-#### on_bar(event)
+This is a refactored version of the original GeneticOptimizer adapted to work with
+the component-based optimization framework.
 
-Process a bar event and generate a weighted signal.
+##### Methods
 
-**Parameters:**
-- `event`: Bar event containing market data
+###### `__init__(component_factory, evaluation_method, top_n=5, population_size=20, num_parents=8, num_generations=50, mutation_rate=0.1, random_seed=None, deterministic=False, batch_size=None, cv_folds=3, regularization_factor=0.2, balance_factor=0.3, max_weight_ratio=3.0, optimize_thresholds=True)`
 
-**Returns:**
-- `Signal`: Combined signal based on weighted components
+Initialize the genetic optimizer.
 
-#### reset()
+Args:
+    component_factory: Factory for creating component instances
+    evaluation_method: Function to evaluate a component
+    top_n: Number of top components to select
+    population_size: Number of chromosomes in the population
+    num_parents: Number of parents to select for mating
+    num_generations: Number of generations to run the optimization
+    mutation_rate: Rate of mutation in the genetic algorithm
+    random_seed: Optional seed for random number generator
+    deterministic: If True, ensures deterministic behavior
+    batch_size: Optional batch size for fitness calculations
+    cv_folds: Number of cross-validation folds
+    regularization_factor: Weight given to regularization term
+    balance_factor: Weight given to balancing toward equal weights
+    max_weight_ratio: Maximum allowed ratio between weights
+    optimize_thresholds: Whether to optimize threshold parameters
 
-Reset all components in the strategy.
+###### `_set_random_seed()`
 
-### Validation Module
+Set the random seed if specified for reproducible results.
 
-The validation submodule provides tools for ensuring robustness of optimized strategies.
+###### `optimize(configs, data_handler, metric='return', verbose=True)`
 
-#### Validator (Base Class)
+Optimize components using genetic algorithm.
 
-Abstract base class for validation components.
+Args:
+    configs: List of (ComponentClass, param_ranges) tuples
+    data_handler: Data handler providing market data
+    metric: Metric to optimize for ('return', 'sharpe', etc.)
+    verbose: Whether to print progress
+    
+Returns:
+    dict: Mapping of component indices to optimized instances
 
-**Methods:**
+*Returns:* dict: Mapping of component indices to optimized instances
 
-#### validate(component_factory, optimization_method, data_handler, configs=None, metric='sharpe', verbose=True, **kwargs)
+###### `_run_genetic_algorithm(verbose=True)`
+
+Run the genetic algorithm to find optimal weights.
+
+Args:
+    verbose: Whether to print progress
+    
+Returns:
+    numpy.ndarray: Optimal weights
+
+*Returns:* numpy.ndarray: Optimal weights
+
+###### `plot_fitness_history()`
+
+Plot the evolution of fitness over generations.
+
+## grid_search
+
+Grid search optimization module for trading system components.
+
+### Classes
+
+#### `GridOptimizer`
+
+General-purpose grid search optimizer for any component.
+
+##### Methods
+
+###### `__init__(component_factory, evaluation_method, top_n=5)`
+
+Initialize the grid optimizer.
+
+Args:
+    component_factory: Factory to create component instances
+    evaluation_method: Function to evaluate a component
+    top_n: Number of top components to select
+
+###### `optimize(configs, data_handler, metric='return', verbose=True)`
+
+Optimize components using grid search.
+
+Args:
+    configs: List of (ComponentClass, param_ranges) tuples
+    data_handler: Data handler providing market data
+    metric: Metric to optimize for ('return', 'sharpe', etc.)
+    verbose: Whether to print progress
+
+Returns:
+    dict: Mapping of component indices to optimized instances
+
+*Returns:* dict: Mapping of component indices to optimized instances
+
+###### `_expand_param_grid(configs, verbose=False)`
+
+Expand parameter ranges into a grid of parameter sets.
+
+## optimizer_manager
+
+Enhanced OptimizerManager with integrated grid search capabilities.
+
+### Classes
+
+#### `OptimizerManager`
+
+Enhanced manager for coordinating different optimization approaches.
+
+##### Methods
+
+###### `__init__(data_handler, rule_objects=None)`
+
+Initialize the optimizer manager.
+
+Args:
+    data_handler: The data handler for accessing market data
+    rule_objects: Optional list of pre-initialized rule objects
+
+###### `register_component(name, component_type, component_class, params_range=None, instance=None)`
+
+Register a component for optimization.
+
+Args:
+    name: Unique identifier for the component
+    component_type: Type of component ('rule', 'regime_detector', etc.)
+    component_class: Class of the component
+    params_range: Optional parameter ranges for optimization
+    instance: Optional pre-initialized instance
+
+###### `register_rule(name, rule_class, params_range=None, instance=None)`
+
+Register a trading rule.
+
+###### `register_regime_detector(name, detector_class, params_range=None, instance=None)`
+
+Register a regime detector.
+
+###### `optimize(component_type, method, components=None, metrics='return', verbose=True)`
+
+Optimize components of a specific type.
+
+Args:
+    component_type: Type of component to optimize ('rule', 'regime_detector', etc.)
+    method: Optimization method to use
+    components: List of component names to optimize (or None for all registered)
+    metrics: Performance metric(s) to optimize for
+    verbose: Whether to print progress information
+    **kwargs: Additional parameters for specific optimization methods
+        - top_n: Number of top components to select
+        - genetic: Dictionary of genetic algorithm parameters
+            - population_size: Size of population
+            - num_generations: Number of generations to run
+            - mutation_rate: Rate of mutation
+            - num_parents: Number of parents to select
+            - cv_folds: Number of cross-validation folds
+            - regularization_factor: Strength of regularization
+            - optimize_thresholds: Whether to optimize thresholds
+        - sequence: Optional optimization sequence to use
+        - regime_detector: Optional regime detector for regime-based optimization
+
+Returns:
+    dict or object: Optimized components or strategy depending on method and component type
+
+*Returns:* dict or object: Optimized components or strategy depending on method and component type
+
+###### `get_optimized_components(component_type)`
+
+Get optimized components of a specific type.
+
+###### `optimize_regime_specific_rules(regime_detector, optimization_method, optimization_metric='return', verbose=True)`
+
+Optimize rules specifically for different market regimes.
+
+Args:
+    regime_detector: The regime detector to use
+    optimization_method: Method to use for optimization
+    optimization_metric: Metric to optimize for
+    verbose: Whether to print progress
+    
+Returns:
+    dict: Mapping from regime to optimized rules
+
+*Returns:* dict: Mapping from regime to optimized rules
+
+###### `_identify_regime_bars(regime_detector)`
+
+Identify which bars belong to each regime.
+
+###### `_create_regime_specific_data(regime_bars)`
+
+Create a data handler with only bars from a specific regime.
+
+###### `_optimize_rules_first(method, metrics, regime_detector, optimization_params, verbose)`
+
+Optimize rule weights first, then optimize for regimes.
+
+Args:
+    method: Optimization method
+    metrics: Performance metric to optimize
+    regime_detector: Regime detector to use
+    optimization_params: Additional parameters
+    verbose: Whether to print progress
+
+###### `_optimize_regimes_first(method, metrics, regime_detector, optimization_params, verbose)`
+
+Optimize for regimes first, then optimize rule weights for each regime.
+
+Args:
+    method: Optimization method
+    metrics: Performance metric to optimize
+    regime_detector: Regime detector to use
+    optimization_params: Additional parameters
+    verbose: Whether to print progress
+
+###### `_optimize_iterative(method, metrics, regime_detector, optimization_params, verbose)`
+
+Iteratively optimize rules and regimes in multiple passes.
+
+Args:
+    method: Optimization method
+    metrics: Performance metric to optimize
+    regime_detector: Regime detector to use
+    optimization_params: Additional parameters
+    verbose: Whether to print progress
+
+###### `_optimize_joint(method, metrics, regime_detector, optimization_params, verbose)`
+
+Jointly optimize rule weights and regime parameters.
+
+Args:
+    method: Optimization method
+    metrics: Performance metric to optimize
+    regime_detector: Regime detector to use
+    optimization_params: Additional parameters
+    verbose: Whether to print progress
+
+###### `_optimize_joint(method, metrics, regime_detector, optimization_params, verbose)`
+
+Jointly optimize rule weights and regime parameters.
+
+Args:
+    method: Optimization method
+    metrics: Performance metric to optimize
+    regime_detector: Regime detector to use
+    optimization_params: Additional parameters
+    verbose: Whether to print progress
+
+###### `validate(validation_method, component_type='rule', method, components=None, metrics='sharpe', verbose=True)`
+
+Validate optimization of components using cross-validation or walk-forward.
+
+Args:
+    validation_method: Validation method to use ('cross_validation', 'walk_forward', etc.)
+    component_type: Type of component to optimize ('rule', 'regime_detector', etc.)
+    method: Optimization method to use
+    components: List of component names to optimize (or None for all registered)
+    metrics: Performance metric(s) to optimize for
+    verbose: Whether to print progress information
+    **kwargs: Additional parameters
+        - validation_params: Dictionary of validation-specific parameters
+            - window_size: Size of windows for walk-forward (default: 252)
+            - step_size: Step size for walk-forward (default: 63)
+            - train_pct: Train percentage for walk-forward (default: 0.7)
+            - n_folds: Number of folds for cross-validation (default: 5)
+        - ... (other optimization parameters)
+
+Returns:
+    dict: Validation results
+
+*Returns:* dict: Validation results
+
+## param_utils
+
+### Functions
+
+#### `validate_parameters(params, required_params)`
+
+Validate that all required parameters are present
+
+#### `ensure_rule_parameters(rule_class_name, params)`
+
+Add missing parameters with default values for known rule types
+
+## strategies
+
+Strategy implementations for the optimization framework.
+
+This module is maintained for backward compatibility.
+The main implementation is now in strategies/weighted_strategy.py
+
+## base
+
+Base validator interface for the optimization framework.
+
+### Classes
+
+#### `Validator`
+
+Base abstract class for validation components.
+
+##### Methods
+
+###### `validate(component_factory, optimization_method, data_handler, configs=None, metric='sharpe', verbose=True)`
 
 Validate a component or strategy using the specified method.
 
-**Parameters:**
-- `component_factory` (ComponentFactory): Factory for creating component instances
-- `optimization_method` (OptimizationMethod): Method to use for optimization
-- `data_handler` (DataHandler): Data handler providing market data
-- `configs` (list, optional): Component configurations for optimization
-- `metric` (str): Performance metric to optimize
-- `verbose` (bool): Whether to print progress information
-- `**kwargs`: Additional parameters
+Args:
+    component_factory: Factory for creating component instances
+    optimization_method: Method to use for optimization
+    data_handler: Data handler providing market data
+    configs: Component configuration for optimization
+    metric: Performance metric to optimize
+    verbose: Whether to print progress information
+    **kwargs: Additional parameters
+    
+Returns:
+    dict: Validation results
 
-**Returns:**
-- `dict`: Validation results
+*Returns:* dict: Validation results
 
-#### WalkForwardValidator
+## cross_val
 
-Performs rolling walk-forward validation to test strategy robustness.
+Cross-validation implementation for trading system optimization.
 
-**Constructor Parameters:**
-- `window_size` (int): Size of each window in trading days (default: 252)
-- `step_size` (int): Number of days to roll forward between windows (default: 63)
-- `train_pct` (float): Percentage of window to use for training (default: 0.7)
-- `top_n` (int): Number of top components to select (default: 5)
-- `plot_results` (bool): Whether to plot results (default: True)
+This module provides k-fold cross-validation to assess strategy robustness
+by dividing the dataset into k folds and using each fold as a test set.
 
-**Example:**
-```python
-from optimization.validation import WalkForwardValidator
+### Classes
 
-validator = WalkForwardValidator(
-    window_size=252,  # One year of trading days
-    step_size=63,     # Quarterly steps
-    train_pct=0.7     # 70% for training, 30% for testing
-)
+#### `CrossValidator`
 
-results = validator.validate(
-    component_factory=factory,
-    optimization_method=OptimizationMethod.GRID_SEARCH,
-    data_handler=data_handler,
-    configs=rule_configs,
-    metric='sharpe'
-)
-```
+Cross-Validation for trading strategies.
 
-#### CrossValidator
+This class performs k-fold cross-validation to assess strategy robustness
+by dividing the dataset into k folds and using each fold as a test set.
 
-Performs k-fold cross-validation to assess strategy robustness.
+##### Methods
 
-**Constructor Parameters:**
-- `n_folds` (int): Number of folds for cross-validation (default: 5)
-- `top_n` (int): Number of top components to select (default: 5)
-- `plot_results` (bool): Whether to plot results (default: True)
+###### `__init__(n_folds=5, top_n=5, plot_results=True)`
 
-**Example:**
-```python
-from optimization.validation import CrossValidator
+Initialize the cross-validator.
 
-validator = CrossValidator(n_folds=5)
+Args:
+    n_folds: Number of folds for cross-validation
+    top_n: Number of top components to select
+    plot_results: Whether to plot results after validation
 
-results = validator.validate(
-    component_factory=factory,
-    optimization_method=OptimizationMethod.GENETIC,
-    data_handler=data_handler,
-    configs=rule_configs,
-    metric='sharpe'
-)
-```
+###### `validate(component_factory, optimization_method, data_handler, configs=None, metric='sharpe', verbose=True)`
 
-#### NestedCrossValidator
+Run cross-validation on components.
 
-Performs nested cross-validation with an inner loop for hyperparameter optimization and an outer loop for performance evaluation.
+Args:
+    component_factory: Factory for creating component instances
+    optimization_method: Method to use for optimization
+    data_handler: Data handler providing market data
+    configs: Component configuration for optimization
+    metric: Performance metric to optimize
+    verbose: Whether to print progress information
+    **kwargs: Additional parameters for optimization
+    
+Returns:
+    dict: Summary of validation results
 
-**Constructor Parameters:**
-- `outer_folds` (int): Number of outer folds for final evaluation (default: 5)
-- `inner_folds` (int): Number of inner folds for hyperparameter optimization (default: 3)
-- `top_n` (int): Number of top components to select (default: 5)
-- `optimization_methods` (list, optional): List of optimization methods to compare
-- `plot_results` (bool): Whether to plot results (default: True)
+*Returns:* dict: Summary of validation results
 
-#### WindowDataHandler
+###### `_load_full_data(data_handler)`
 
-Data handler for a specific window or fold in validation.
+Load the full dataset from the data handler.
 
-**Constructor Parameters:**
-- `train_data` (list or DataFrame): Training data for this window
-- `test_data` (list or DataFrame): Testing data for this window
+Args:
+    data_handler: The data handler
+    
+Returns:
+    list: All data points
 
-**Methods:**
-- `get_next_train_bar()`: Get the next training bar
-- `get_next_test_bar()`: Get the next testing bar
-- `reset_train()`: Reset the training data pointer
-- `reset_test()`: Reset the testing data pointer
+*Returns:* list: All data points
 
-#### create_train_test_windows(data, window_size, step_size, train_pct=0.7)
+###### `_create_folds(data)`
+
+Create k-folds from the data.
+
+Args:
+    data: The full dataset
+    
+Returns:
+    list: List of (train_data, test_data) tuples
+
+*Returns:* list: List of (train_data, test_data) tuples
+
+###### `_calculate_summary(fold_results)`
+
+Calculate summary statistics from fold results.
+
+Args:
+    fold_results: List of result dictionaries for each fold
+    
+Returns:
+    dict: Summary statistics
+
+*Returns:* dict: Summary statistics
+
+###### `_plot_results(fold_results, all_trades)`
+
+Plot the cross-validation results.
+
+Args:
+    fold_results: List of result dictionaries for each fold
+    all_trades: List of all trades across folds
+
+## nested_cv
+
+Nested cross-validation implementation for trading system optimization.
+
+This module provides nested cross-validation with an inner loop for
+hyperparameter optimization and an outer loop for performance evaluation.
+
+### Classes
+
+#### `NestedCrossValidator`
+
+Nested Cross-Validation for more robust evaluation of trading strategies.
+
+This class performs nested cross-validation with an inner loop for
+hyperparameter optimization and an outer loop for performance evaluation.
+
+##### Methods
+
+###### `__init__(outer_folds=5, inner_folds=3, top_n=5, optimization_methods=None, plot_results=True)`
+
+Initialize the nested cross-validator.
+
+Args:
+    outer_folds: Number of outer folds for final evaluation
+    inner_folds: Number of inner folds for hyperparameter optimization
+    top_n: Number of top components to select
+    optimization_methods: List of optimization methods to compare
+    plot_results: Whether to plot results after validation
+
+###### `validate(component_factory, optimization_method, data_handler, configs=None, metric='sharpe', verbose=True)`
+
+Run nested cross-validation on components.
+
+Args:
+    component_factory: Factory for creating component instances
+    optimization_method: Method to use for optimization
+    data_handler: Data handler providing market data
+    configs: Component configuration for optimization
+    metric: Performance metric to optimize
+    verbose: Whether to print progress information
+    **kwargs: Additional parameters for optimization
+    
+Returns:
+    dict: Summary of validation results
+
+*Returns:* dict: Summary of validation results
+
+###### `_load_full_data(data_handler)`
+
+Load the full dataset from the data handler.
+
+Args:
+    data_handler: The data handler
+    
+Returns:
+    list: All data points
+
+*Returns:* list: All data points
+
+###### `_create_outer_folds(data)`
+
+Create outer folds for nested cross-validation.
+
+Args:
+    data: The full dataset
+    
+Returns:
+    list: List of (train_data, test_data) tuples
+
+*Returns:* list: List of (train_data, test_data) tuples
+
+###### `_run_inner_cv(train_data, component_factory, configs, metric, verbose)`
+
+Run inner cross-validation to select the best method.
+
+Args:
+    train_data: Training data for the current outer fold
+    component_factory: Factory for creating component instances
+    configs: Component configuration for optimization
+    metric: Performance metric to optimize
+    verbose: Whether to print progress information
+    **kwargs: Additional parameters for optimization
+    
+Returns:
+    dict: Results for each optimization method
+
+*Returns:* dict: Results for each optimization method
+
+###### `_calculate_summary(fold_results)`
+
+Calculate summary statistics from fold results.
+
+Args:
+    fold_results: List of result dictionaries
+    
+Returns:
+    dict: Summary statistics
+
+*Returns:* dict: Summary statistics
+
+###### `_plot_results(method_results, best_method_results, all_trades)`
+
+Plot the nested cross-validation results.
+
+Args:
+    method_results: Dictionary of results for each method
+    best_method_results: Results using the best method selection
+    all_trades: List of all trades across folds
+
+## utils
+
+Utility functions and classes for validation components.
+
+### Functions
+
+#### `create_train_test_windows(data, window_size, step_size, train_pct=0.7)`
 
 Create training and testing windows for walk-forward validation.
 
-**Parameters:**
-- `data` (list or DataFrame): Full dataset
-- `window_size` (int): Size of each window
-- `step_size` (int): Number of steps to roll forward between windows
-- `train_pct` (float): Percentage of window to use for training
+Args:
+    data: Full dataset
+    window_size: Size of each window
+    step_size: Number of steps to roll forward between windows
+    train_pct: Percentage of window to use for training
+    
+Returns:
+    list: List of (train_window, test_window) tuples
 
-**Returns:**
-- `list`: List of (train_window, test_window) tuples
+*Returns:* list: List of (train_window, test_window) tuples
 
-## Advanced Usage
+### Classes
 
-### Understanding Optimization Sequences
+#### `WindowDataHandler`
 
-The framework supports different strategies for sequencing the optimization process:
+Data handler for a specific window or fold.
 
-#### Rules-First Approach
-```python
-from optimization import OptimizerManager, OptimizationMethod, OptimizationSequence
-from regime_detection import TrendStrengthRegimeDetector
+##### Methods
 
-optimizer = OptimizerManager(data_handler)
+###### `__init__(train_data, test_data)`
 
-# Register rules and components
-optimizer.register_rule("sma_rule", SMARule, 
-                       {"fast_window": [5, 10, 20], "slow_window": [30, 50, 100]})
+Initialize the window data handler.
 
-# Create detector
-detector = TrendStrengthRegimeDetector(adx_period=14, adx_threshold=25)
+Args:
+    train_data: Training data for this window
+    test_data: Testing data for this window
 
-# Rules-first approach: First optimize rules, then optimize for regimes
-strategy = optimizer.optimize(
-    component_type='rule',
-    method=OptimizationMethod.GENETIC,
-    metrics='sharpe',
-    sequence=OptimizationSequence.RULES_FIRST,
-    regime_detector=detector,
-    genetic={
-        'population_size': 50,
-        'num_generations': 30
-    }
-)
-```
+###### `get_next_train_bar()`
 
-#### Regimes-First Approach
-```python
-# Regimes-first approach: First identify regimes, then optimize rules per regime
-strategy = optimizer.optimize(
-    component_type='rule',
-    method=OptimizationMethod.GRID_SEARCH,
-    metrics='sharpe',
-    sequence=OptimizationSequence.REGIMES_FIRST,
-    regime_detector=detector
-)
-```
+Get the next training bar.
 
-#### Iterative Approach
-```python
-# Iterative approach: Alternate between rule and regime optimization
-strategy = optimizer.optimize(
-    component_type='rule',
-    method=OptimizationMethod.GENETIC,
-    metrics='sharpe',
-    sequence=OptimizationSequence.ITERATIVE,
-    regime_detector=detector,
-    genetic={
-        'population_size': 30,
-        'num_generations': 20
-    },
-    iterations=3  # Number of optimization iterations
-)
-```
+###### `get_next_test_bar()`
 
-#### Joint Approach
-```python
-# Joint approach: Jointly optimize rules and regime parameters
-strategy = optimizer.optimize(
-    component_type='rule',
-    method=OptimizationMethod.GENETIC,
-    metrics='sharpe',
-    sequence=OptimizationSequence.JOINT,
-    regime_detector=detector,
-    genetic={
-        'population_size': 50,
-        'num_generations': 50
-    }
-)
-```
+Get the next testing bar.
 
-### Cross-Validation of Strategies
+###### `reset_train()`
 
-```python
-from optimization.validation import CrossValidator
-from optimization import OptimizationMethod
+Reset the training data pointer.
 
-# Create cross-validator with 5 folds
-validator = CrossValidator(n_folds=5, top_n=3)
+###### `reset_test()`
 
-# Define components to validate
-configs = [
-    (SMARule, {"fast_window": [5, 10, 20], "slow_window": [30, 50, 100]}),
-    (RSIRule, {"period": [7, 14, 21], "overbought": [70, 80], "oversold": [20, 30]})
-]
+Reset the testing data pointer.
 
-# Run cross-validation with grid search optimization
-results = validator.validate(
-    component_factory=factory,
-    optimization_method=OptimizationMethod.GRID_SEARCH,
-    data_handler=data_handler,
-    configs=configs,
-    metric='sharpe',
-    verbose=True
-)
+## walk_forward
 
-# Get average metrics across folds
-print(f"Average Sharpe Ratio: {results['avg_sharpe']:.4f}")
-print(f"Average Return: {results['avg_return']:.2f}%")
-print(f"Parameter Stability: {results['parameter_stability']:.2f}")
-```
+### Classes
 
-### Walk-Forward Optimization
+#### `WalkForwardValidator`
 
-```python
-from optimization.validation import WalkForwardValidator
-from optimization import OptimizationMethod
+Walk-Forward Validation for trading strategies.
 
-# Create walk-forward validator
-validator = WalkForwardValidator(
-    window_size=252,  # One year of trading days
-    step_size=63,     # Quarterly steps
-    train_pct=0.7     # 70% for training, 30% for testing
-)
+This class performs rolling walk-forward validation to test strategy robustness
+by repeatedly training on in-sample data and testing on out-of-sample data.
 
-# Run walk-forward validation
-results = validator.validate(
-    component_factory=factory,
-    optimization_method=OptimizationMethod.GENETIC,
-    data_handler=data_handler,
-    configs=configs,
-    metric='sharpe',
-    verbose=True,
-    genetic={
-        'population_size': 30,
-        'num_generations': 20,
-        'mutation_rate': 0.1
-    }
-)
+##### Methods
 
-# Display window results
-for i, window_result in enumerate(results['window_results']):
-    print(f"Window {i+1}: Train Return: {window_result['train_return']:.2f}%, " +
-          f"Test Return: {window_result['test_return']:.2f}%")
+###### `__init__(window_size=252, step_size=63, train_pct=0.7, top_n=5, plot_results=True)`
 
-# Overall out-of-sample performance
-print(f"Out-of-sample Sharpe Ratio: {results['oos_sharpe']:.4f}")
-print(f"Out-of-sample Return: {results['oos_return']:.2f}%")
-```
+Initialize the walk-forward validator.
 
-### Creating and Using WeightedStrategy
+Args:
+    window_size: Size of each window in trading days
+    step_size: Number of days to roll forward between windows
+    train_pct: Percentage of window to use for training
+    top_n: Number of top rules to select
+    plot_results: Whether to plot results after validation
 
-```python
-from strategies import WeightedStrategy
-import numpy as np
+###### `validate(component_factory, optimization_method, data_handler, configs=None, metric='sharpe', verbose=True)`
 
-# Create rule components
-rule1 = SMARule(fast_window=10, slow_window=30)
-rule2 = RSIRule(period=14, overbought=70, oversold=30)
-rule3 = MACDRule(fast_period=12, slow_period=26, signal_period=9)
+Run walk-forward validation.
 
-# Create weighted strategy with custom weights
-strategy = WeightedStrategy(
-    components=[rule1, rule2, rule3],
-    weights=np.array([0.5, 0.3, 0.2]),
-    buy_threshold=0.4,    # Generate buy signals when weighted sum > 0.4
-    sell_threshold=-0.4,  # Generate sell signals when weighted sum < -0.4
-    name="MyCustomStrategy"
-)
+Args:
+    component_factory: Factory for creating component instances
+    optimization_method: Method to use for optimization
+    data_handler: Data handler providing market data
+    configs: Component configuration for optimization
+    metric: Performance metric to optimize
+    verbose: Whether to print progress information
+    **kwargs: Additional parameters for optimization
+    
+Returns:
+    dict: Summary of validation results
 
-# Process market data
-signal = strategy.on_bar(event)  # event is a bar data event
-
-# Access signal information
-if signal.signal_type.value > 0:
-    print("Buy signal generated")
-elif signal.signal_type.value < 0:
-    print("Sell signal generated")
-else:
-    print("Neutral signal generated")
-
-# Examine weighted sum and component signals
-print(f"Weighted sum: {signal.metadata['weighted_sum']}")
-print(f"Component signals: {signal.metadata['component_signals']}")
-```
-
-### Combining Multiple Optimization Methods
-
-```python
-from optimization import OptimizerManager, OptimizationMethod
-
-# First use grid search for fast initial exploration
-grid_results = optimizer.optimize(
-    component_type='rule',
-    method=OptimizationMethod.GRID_SEARCH,
-    metrics='sharpe'
-)
-
-# Take the best parameters as starting point for genetic optimization
-best_params = optimizer.best_params.copy()
-
-# Refine parameters with genetic algorithm
-refined_results = optimizer.optimize(
-    component_type='rule',
-    method=OptimizationMethod.GENETIC,
-    metrics='sharpe',
-    genetic={
-        'initial_population': best_params,
-        'population_size': 50,
-        'num_generations': 50
-    }
-)
-```
-
-## Best Practices
-
-1. **Choose the right optimization sequence**:
-   - Use `RULES_FIRST` when you have well-defined rules but want to adapt to different regimes
-   - Use `REGIMES_FIRST` when regime characteristics should drive rule selection
-   - Use `ITERATIVE` for most balanced approach (recommended for most cases)
-   - Use `JOINT` for maximum integration but at higher computational cost
-
-2. **Avoid overfitting**: Always validate optimized parameters with out-of-sample testing
-
-3. **Use appropriate metrics**: Choose performance metrics aligned with your trading goals
-   - `return`: Maximize total return
-   - `sharpe`: Balance return and risk (recommended for most cases)
-   - `win_rate`: Maximize percentage of winning trades
-   - `calmar`: Focus on returns relative to drawdowns
-
-4. **Consider multiple objectives**: Balance return, risk, and other factors important to your strategy
-
-5. **Regularize parameters**: Apply constraints to prevent extreme parameter values
-   - Set appropriate `regularization_factor` when using genetic optimization
-   - Use `balance_factor` to prevent over-concentration on a few components
-   - Use `max_weight_ratio` to ensure reasonable weight distribution
-
-6. **Start simple**: Begin with grid search to explore parameter space before using more complex methods
-
-7. **Monitor stability**: Check if optimal parameters are stable across validation periods
-   - If parameters vary widely across validation windows, your strategy may be unstable
-   - Consider reducing parameter ranges or adding constraints
-
-8. **Balance exploration and exploitation**: Especially important in genetic algorithms
-   - Increase `population_size` for better exploration
-   - Adjust `mutation_rate` to control exploration/exploitation balance
-
-9. **Use cross-validation**: Particularly for strategies with fewer trades to ensure robustness
-
-10. **Separate training/testing data**: Strictly maintain separation during validation
-    - Never optimize on your test data
-    - Consider time-based validation methods like walk-forward testing
-
-11. **Realistic simulation**: Include transaction costs, slippage, and other realistic constraints
-    - Set appropriate transaction costs in your backtester
-    - Consider liquidity constraints when applicable
-
-12. **Understand the difference between component types**:
-    - Use `components` in `WeightedStrategy` for all signal-generating objects
-    - For backward compatibility, `rule_objects` is still accepted in some places
+*Returns:* dict: Summary of validation results

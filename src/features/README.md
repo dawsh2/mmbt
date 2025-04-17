@@ -1,645 +1,1332 @@
-# Features Module Documentation
+# Features Module
 
-The Features module provides a framework for transforming raw price data and indicators into meaningful inputs for trading rules. Features represent derived values, patterns, or conditions within market data that can be used to generate trading signals.
+Features Module
 
-## Core Concepts
+This module provides the feature layer of the trading system, which transforms
+raw price data and technical indicators into meaningful trading signals.
 
-**Feature**: A calculation that transforms raw price data into a meaningful input for trading rules.  
-**FeatureSet**: A collection of related features that can be calculated together.  
-**StatefulFeature**: A feature that maintains internal state between calculations.  
-**CompositeFeature**: A feature composed of multiple sub-features combined using a specified function.
+## Contents
 
-## Basic Usage
+- [feature_base](#feature_base)
+- [feature_registry](#feature_registry)
+- [feature_utils](#feature_utils)
+- [price_features](#price_features)
+- [technical_features](#technical_features)
+- [time_features](#time_features)
 
-```python
-from features import NormalizedPriceFeature, MACrossoverFeature, combine_features
-from features import create_default_feature_set
+## feature_base
 
-# Create a single feature
-norm_price = NormalizedPriceFeature(
-    name="normalized_price",
-    params={"method": "z-score", "window": 20}
-)
+Base Feature Module
 
-# Calculate the feature value from market data
-data = {
-    "Close": [101.2, 102.5, 103.1, 102.8, 103.5],
-    "High": [102.1, 103.0, 103.7, 103.2, 104.1],
-    "Low": [100.5, 101.9, 102.4, 102.1, 102.8],
-    "Volume": [5000, 6200, 5800, 5500, 6800]
-}
+This module defines the base Feature class and related abstractions for the feature layer
+of the trading system. Features transform raw price data and indicators into meaningful
+inputs for trading rules.
 
-# Get the feature value
-value = norm_price.calculate(data)
-print(f"Normalized price: {value}")
+### Classes
 
-# Create a feature set with multiple features
-feature_set = create_default_feature_set()
+#### `Feature`
 
-# Calculate all features at once
-results = feature_set.calculate_all(data)
-```
+Base class for all features in the trading system.
 
-## API Reference
+Features transform raw price data and indicators into a format suitable for 
+use by trading rules. They encapsulate the logic for calculating derived values
+from market data while maintaining a consistent interface.
 
-### Feature Classes
+##### Methods
 
-#### Feature (Base Class)
+###### `__init__(name, params=None, description='')`
 
-Abstract base class for all features.
+Initialize a feature with parameters.
 
-**Constructor Parameters:**
-- `name` (str): Unique identifier for the feature
-- `params` (dict, optional): Dictionary of parameters for feature calculation
-- `description` (str, optional): Human-readable description of the feature
+Args:
+    name: Unique identifier for the feature
+    params: Dictionary of parameters for feature calculation
+    description: Human-readable description of what the feature measures
 
-**Methods:**
-- `calculate(data)`: Calculate the feature value from the provided data
-  - `data` (dict): Dictionary containing price data and indicators
-  - Returns: The calculated feature value (can be scalar, array, or dictionary)
+###### `_validate_params()`
 
-**Example:**
-```python
-class MyCustomFeature(Feature):
-    def __init__(self, name="my_feature", params=None, description=""):
-        super().__init__(name, params or {"window": 10}, description)
-        
-    def calculate(self, data):
-        window = self.params["window"]
-        if "Close" not in data or len(data["Close"]) < window:
-            return 0
-        
-        # Custom calculation
-        return sum(data["Close"][-window:]) / window
-```
+*Returns:* `None`
 
-#### StatefulFeature
+Validate the parameters provided to the feature.
 
-Feature that maintains internal state between calculations.
+This method should be overridden by subclasses to provide
+specific parameter validation logic.
 
-**Additional Parameters:**
-- `max_history` (int, optional): Maximum history length to maintain (default: 100)
+Raises:
+    ValueError: If parameters are invalid
 
-**Additional Methods:**
-- `update(data)`: Update the feature state with new data and return the new value
-- `reset()`: Reset the feature's internal state
+###### `calculate(data)`
 
-**Example:**
-```python
-# Create a stateful feature that maintains history
-volatility_feature = VolumeProfileFeature(
-    name="volume_profile",
-    params={"num_bins": 10, "window": 20},
-    max_history=50
-)
+*Returns:* `Any`
 
-# Update with new data
-new_value = volatility_feature.update(new_data)
+Calculate the feature value from the provided data.
 
-# Reset state when starting a new analysis
-volatility_feature.reset()
-```
+Args:
+    data: Dictionary containing price data and calculated indicators
+         required by this feature
+         
+Returns:
+    The calculated feature value (can be scalar, array, or any type)
 
-#### CompositeFeature
+###### `default_params()`
 
-A feature composed of multiple sub-features.
+*Returns:* `Dict[str, Any]`
 
-**Constructor Parameters:**
-- `name` (str): Unique identifier for the feature
-- `features` (list): List of component features
-- `combiner_func` (callable): Function that combines component feature values
-- `params` (dict, optional): Dictionary of parameters passed to the combiner function
-- `description` (str, optional): Human-readable description
+Get the default parameters for this feature.
 
-**Example:**
-```python
-# Create component features
-rsi_feature = OscillatorStateFeature(name="rsi_state", params={"oscillator": "RSI"})
-macd_feature = OscillatorStateFeature(name="macd_state", params={"oscillator": "MACD"})
+Returns:
+    Dictionary of default parameter values
 
-# Create composite feature using a combiner function
-combined_feature = CompositeFeature(
-    name="oscillator_consensus",
-    features=[rsi_feature, macd_feature],
-    combiner_func=weighted_average_combiner,
-    params={"weights": [0.7, 0.3]}
-)
-```
+###### `__str__()`
 
-#### FeatureSet
+*Returns:* `str`
+
+String representation of the feature.
+
+###### `__repr__()`
+
+*Returns:* `str`
+
+Detailed representation of the feature.
+
+#### `FeatureSet`
 
 A collection of features with convenience methods for batch calculation.
 
-**Constructor Parameters:**
-- `features` (list, optional): List of Feature objects to include in the set
-- `name` (str, optional): Name for the feature set
+FeatureSet provides a way to organize related features and calculate them
+together efficiently on the same dataset.
 
-**Methods:**
-- `add_feature(feature)`: Add a feature to the set
-- `calculate_all(data)`: Calculate all features in the set on the provided data
-- `to_dataframe(data)`: Calculate all features and return as a DataFrame
+##### Methods
 
-**Example:**
-```python
-# Create a feature set
-feature_set = FeatureSet(name="technical_indicators")
+###### `__init__(features=None, name='')`
 
-# Add features
-feature_set.add_feature(MACrossoverFeature(name="sma_crossover"))
-feature_set.add_feature(OscillatorStateFeature(name="rsi_state"))
+Initialize a feature set with a list of features.
 
-# Calculate all features at once
-results = feature_set.calculate_all(data)
+Args:
+    features: List of Feature objects to include in the set
+    name: Optional name for the feature set
 
-# Get results as DataFrame
-df = feature_set.to_dataframe(data)
-```
+###### `add_feature(feature)`
 
-### Feature Categories
+*Returns:* `None`
 
-#### Price Features
+Add a feature to the set.
 
-Features derived directly from price data.
+Args:
+    feature: Feature object to add
 
-**ReturnFeature**: Calculate price returns over specified periods.
-```python
-# Calculate 1-day and 5-day returns
-return_feature = ReturnFeature(
-    name="returns",
-    params={
-        "periods": [1, 5],
-        "price_key": "Close",
-        "log_returns": True
-    }
-)
-```
+###### `calculate_all(data)`
 
-**NormalizedPriceFeature**: Normalize price relative to a reference point.
-```python
-# Z-score normalization with 20-day window
-norm_price = NormalizedPriceFeature(
-    name="norm_price",
-    params={
-        "method": "z-score",  # Options: 'z-score', 'min-max', 'relative'
-        "window": 20,
-        "price_key": "Close"
-    }
-)
-```
+*Returns:* `Dict[str, Any]`
 
-**PricePatternFeature**: Detect specific price patterns in the data.
-```python
-# Detect double top pattern
-pattern_feature = PricePatternFeature(
-    name="double_top",
-    params={
-        "pattern": "double_top",  # Options: 'double_top', 'double_bottom', 'head_shoulders'
-        "window": 20,
-        "threshold": 0.03
-    }
-)
-```
+Calculate all features in the set on the provided data.
 
-**VolumeProfileFeature**: Calculate volume profile features based on price and volume data.
-```python
-volume_profile = VolumeProfileFeature(
-    name="vol_profile",
-    params={
-        "num_bins": 10,
-        "window": 20
-    }
-)
-```
-
-**PriceDistanceFeature**: Calculate distance of price from reference levels.
-```python
-# Distance from 50-day moving average
-price_distance = PriceDistanceFeature(
-    name="ma_distance",
-    params={
-        "reference": "ma",  # Options: 'ma', 'level', 'high_low', 'bands'
-        "period": 50,
-        "as_percentage": True
-    }
-)
-```
-
-#### Technical Features
-
-Features derived from technical indicators.
-
-**MACrossoverFeature**: Detect crossovers between moving averages.
-```python
-ma_cross = MACrossoverFeature(
-    name="sma_crossover",
-    params={
-        "fast_ma": "SMA_10",
-        "slow_ma": "SMA_30",
-        "smooth": False
-    }
-)
-```
-
-**OscillatorStateFeature**: Analyze oscillator indicators (RSI, Stochastic, etc.).
-```python
-rsi_state = OscillatorStateFeature(
-    name="rsi_state",
-    params={
-        "oscillator": "RSI",
-        "overbought": 70,
-        "oversold": 30,
-        "check_divergence": True
-    }
-)
-```
-
-**TrendStrengthFeature**: Measure the strength and direction of the current trend.
-```python
-trend_strength = TrendStrengthFeature(
-    name="adx_trend",
-    params={
-        "method": "adx",  # Options: 'adx', 'aroon', 'slope'
-        "threshold": 25,
-        "lookback": 14
-    }
-)
-```
-
-**VolatilityFeature**: Analyze market volatility using various methods.
-```python
-volatility = VolatilityFeature(
-    name="volatility",
-    params={
-        "method": "atr",  # Options: 'atr', 'bb_width', 'std_dev'
-        "period": 14,
-        "normalize": True
-    }
-)
-```
-
-**SupportResistanceFeature**: Identify support and resistance levels.
-```python
-support_resistance = SupportResistanceFeature(
-    name="sr_levels",
-    params={
-        "method": "peaks",  # Options: 'peaks', 'pivots', 'volume'
-        "lookback": 100,
-        "strength_threshold": 2,
-        "proximity_threshold": 3.0
-    }
-)
-```
-
-**SignalAgreementFeature**: Analyze agreement among multiple technical indicators.
-```python
-signal_agreement = SignalAgreementFeature(
-    name="indicator_consensus",
-    params={
-        "indicators": ["MA_crossover", "RSI", "MACD", "BB"],
-        "weights": {"MA_crossover": 0.3, "RSI": 0.3, "MACD": 0.2, "BB": 0.2},
-        "threshold": 0.6
-    }
-)
-```
-
-**DivergenceFeature**: Detect divergences between price and indicators.
-```python
-divergence = DivergenceFeature(
-    name="rsi_divergence",
-    params={
-        "indicator": "RSI",
-        "lookback": 20,
-        "peak_threshold": 3
-    }
-)
-```
-
-#### Time Features
-
-Features derived from time and date information.
-
-**TimeOfDayFeature**: Extract time of day patterns.
-```python
-time_of_day = TimeOfDayFeature(
-    name="time_of_day",
-    params={
-        "format": "%Y-%m-%d %H:%M:%S",
-        "trading_hours": [(9, 16)],  # 9:00 AM to 4:00 PM
-        "zones": {"morning": (9, 12), "afternoon": (12, 16)}
-    }
-)
-```
-
-**DayOfWeekFeature**: Extract day of week patterns.
-```python
-day_of_week = DayOfWeekFeature(
-    name="day_of_week",
-    params={
-        "format": "%Y-%m-%d %H:%M:%S",
-        "trading_days": [0, 1, 2, 3, 4],  # Monday to Friday (0-based)
-        "with_cyclical": True  # Generate sin/cos encoding
-    }
-)
-```
-
-**MonthFeature**: Extract month and seasonal patterns.
-```python
-month_feature = MonthFeature(
-    name="month",
-    params={
-        "format": "%Y-%m-%d %H:%M:%S",
-        "with_cyclical": True,
-        "with_quarters": True
-    }
-)
-```
-
-**SeasonalityFeature**: Detect seasonal patterns in price data.
-```python
-seasonality = SeasonalityFeature(
-    name="monthly_pattern",
-    params={
-        "period": "month",  # Options: 'day', 'week', 'month', 'quarter'
-        "lookback": 252,
-        "min_pattern_strength": 0.6
-    }
-)
-```
-
-**EventFeature**: Identify special events and calendar dates.
-```python
-event_feature = EventFeature(
-    name="calendar_events",
-    params={
-        "format": "%Y-%m-%d %H:%M:%S",
-        "holidays": {"12-25": "Christmas", "01-01": "New Year"},
-        "events": {"2023-04-28": "Earnings Release"},
-        "event_window": 1  # Days before/after to consider
-    }
-)
-```
-
-### Feature Utility Functions
-
-**combine_features**: Combine multiple features into a composite feature.
-```python
-# Combine features with weighted average
-combined = combine_features(
-    features=[feature1, feature2, feature3],
-    combiner_func=weighted_average_combiner,
-    name="combined_feature",
-    params={"weights": [0.5, 0.3, 0.2]},
-    description="Weighted combination of features"
-)
-```
-
-**weighted_average_combiner**: Combine feature values using a weighted average.
-```python
-# Usage in combine_features:
-combined = combine_features(
-    features=[feature1, feature2],
-    combiner_func=weighted_average_combiner,
-    params={"weights": [0.7, 0.3]}
-)
-```
-
-**logical_combiner**: Combine feature values using logical operations.
-```python
-# Usage in combine_features:
-combined = combine_features(
-    features=[feature1, feature2, feature3],
-    combiner_func=logical_combiner,
-    params={"operation": "majority", "threshold": 0.5}
-)
-```
-
-**threshold_combiner**: Combine feature values using thresholds to generate a signal.
-```python
-# Usage in combine_features:
-combined = combine_features(
-    features=[feature1, feature2, feature3],
-    combiner_func=threshold_combiner,
-    params={
-        "thresholds": [0.5, 0.7, 0.3],
-        "directions": [1, 1, -1],
-        "min_agreements": 2
-    }
-)
-```
-
-**cross_feature_indicator**: Create a crossover indicator from two features.
-```python
-# Usage in combine_features:
-crossover = combine_features(
-    features=[fast_ma_feature, slow_ma_feature],
-    combiner_func=cross_feature_indicator,
-    params={"direction": 1}
-)
-```
-
-**create_feature_vector**: Create a feature vector from multiple features.
-```python
-# Create numeric vector for machine learning
-feature_vector = create_feature_vector(
-    features=[feature1, feature2, feature3],
-    data=market_data
-)
-```
-
-## Advanced Usage
-
-### Creating Custom Features
-
-You can create custom features by subclassing the Feature or StatefulFeature base class:
-
-```python
-from features import Feature, register_feature
-
-@register_feature(category="custom")
-class MyCustomFeature(Feature):
-    def __init__(self, name="my_custom_feature", params=None, description=""):
-        super().__init__(name, params or self.default_params, description)
+Args:
+    data: Dictionary containing price data and indicators
     
-    @property
-    def default_params(self):
-        return {
-            "window": 10,
-            "threshold": 0.5
-        }
+Returns:
+    Dictionary mapping feature names to calculated values
+
+###### `to_dataframe(data)`
+
+*Returns:* `pd.DataFrame`
+
+Calculate all features and return as a DataFrame.
+
+Args:
+    data: Dictionary containing price data and indicators
     
-    def _validate_params(self):
-        """Validate parameters (called during initialization)"""
-        if self.params["window"] <= 0:
-            raise ValueError("Window size must be positive")
+Returns:
+    DataFrame with columns for each feature
+
+###### `__len__()`
+
+*Returns:* `int`
+
+Get the number of features in the set.
+
+###### `__getitem__(index)`
+
+*Returns:* `Feature`
+
+Get a feature by index.
+
+###### `__iter__()`
+
+Iterate through features.
+
+#### `CompositeFeature`
+
+A feature composed of multiple sub-features.
+
+CompositeFeature allows combining multiple features into a single feature,
+making it easier to create complex feature hierarchies.
+
+##### Methods
+
+###### `__init__(name, features, combiner_func, params=None, description='')`
+
+Initialize a composite feature.
+
+Args:
+    name: Unique identifier for the feature
+    features: List of component features
+    combiner_func: Function that combines component feature values
+    params: Dictionary of parameters
+    description: Human-readable description
+
+###### `calculate(data)`
+
+*Returns:* `Any`
+
+Calculate the composite feature by combining sub-feature values.
+
+Args:
+    data: Dictionary containing price data and indicators
+         
+Returns:
+    The calculated composite feature value
+
+###### `__repr__()`
+
+*Returns:* `str`
+
+Detailed representation of the composite feature.
+
+#### `StatefulFeature`
+
+A feature that maintains internal state between calculations.
+
+StatefulFeature is useful for features that depend on historical values
+or require incremental updates, such as EMA-based features.
+
+##### Methods
+
+###### `__init__(name, params=None, description='', max_history=100)`
+
+Initialize a stateful feature.
+
+Args:
+    name: Unique identifier for the feature
+    params: Dictionary of parameters
+    description: Human-readable description
+    max_history: Maximum history length to maintain
+
+###### `update(data)`
+
+*Returns:* `Any`
+
+Update the feature state with new data and return the new value.
+
+Args:
+    data: Dictionary containing price data and indicators
     
-    def calculate(self, data):
-        """Calculate feature value from data"""
-        window = self.params["window"]
-        threshold = self.params["threshold"]
-        
-        if "Close" not in data or len(data["Close"]) < window:
-            return {"signal": 0, "value": 0}
-        
-        # Custom calculation logic
-        prices = data["Close"][-window:]
-        avg_price = sum(prices) / len(prices)
-        
-        # Return dictionary with calculated values
-        return {
-            "value": avg_price,
-            "signal": 1 if prices[-1] > avg_price * (1 + threshold) else 0
-        }
-```
+Returns:
+    The newly calculated feature value
 
-### Working with FeatureSet for Machine Learning
+###### `reset()`
 
-FeatureSets are useful for preparing data for machine learning models:
+*Returns:* `None`
 
-```python
-import pandas as pd
-from features import FeatureSet, ReturnFeature, MACrossoverFeature, OscillatorStateFeature
+Reset the feature's internal state.
 
-# Create features for machine learning
-ml_features = FeatureSet(name="ml_features")
-ml_features.add_feature(ReturnFeature(name="returns", params={"periods": [1, 5, 10]}))
-ml_features.add_feature(MACrossoverFeature(name="ma_cross"))
-ml_features.add_feature(OscillatorStateFeature(name="rsi"))
-ml_features.add_feature(OscillatorStateFeature(name="macd", params={"oscillator": "MACD"}))
+## feature_registry
 
-# Convert market data to feature DataFrame
-feature_df = ml_features.to_dataframe(market_data)
+Feature Registry Module
 
-# Split into features and target for ML
-X = feature_df.drop('returns_1', axis=1)  # Features
-y = (feature_df['returns_1'] > 0).astype(int)  # Target (positive returns)
+This module provides a registry system for features, allowing them to be
+registered, discovered, and instantiated by name throughout the trading system.
 
-# Now use with your favorite ML library
-from sklearn.model_selection import train_test_split
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
-```
+### Functions
 
-### Creating Complex Feature Hierarchies
+#### `get_registry()`
 
-Features can be combined in hierarchical structures to create sophisticated trading logic:
+*Returns:* `FeatureRegistry`
 
-```python
-from features import (
-    combine_features, logical_combiner, weighted_average_combiner,
-    MACrossoverFeature, TrendStrengthFeature, VolatilityFeature, OscillatorStateFeature
-)
+Get the global feature registry instance.
 
-# Create base features
-trend = TrendStrengthFeature(name="adx_trend")
-volatility = VolatilityFeature(name="volatility")
-ma_cross = MACrossoverFeature(name="sma_cross")
-rsi = OscillatorStateFeature(name="rsi_state")
+Returns:
+    The FeatureRegistry singleton instance
 
-# First level: combine trend and volatility
-market_regime = combine_features(
-    features=[trend, volatility],
-    combiner_func=weighted_average_combiner,
-    name="market_regime",
-    params={"weights": [0.7, 0.3]}
-)
+#### `register_feature(category='general')`
 
-# Second level: combine technical signals
-tech_signals = combine_features(
-    features=[ma_cross, rsi],
-    combiner_func=logical_combiner,
-    name="tech_signals",
-    params={"operation": "majority"}
-)
+Decorator to register a feature class in the registry.
 
-# Top level: combine regime and signals
-final_feature = combine_features(
-    features=[market_regime, tech_signals],
-    combiner_func=weighted_average_combiner,
-    name="final_signal",
-    params={"weights": [0.4, 0.6]}
-)
+Args:
+    category (str): Category for the feature
 
-# Calculate the final result
-result = final_feature.calculate(market_data)
-```
+Returns:
+    decorator function
 
-### Handling Timestamp Data
+*Returns:* decorator function
 
-When working with time features, ensure your data has properly formatted timestamps:
+#### `register_features_in_module(module, category='general')`
 
-```python
-import datetime
+*Returns:* `None`
 
-# Market data with timestamp
-data = {
-    "timestamp": "2023-06-01 10:30:00",
-    "Open": 100.5,
-    "High": 101.2,
-    "Low": 100.1,
-    "Close": 100.8,
-    "Volume": 5000
-}
+Register all Feature classes in a module with the registry.
 
-# Parse timestamp if it's a string
-if isinstance(data["timestamp"], str):
-    data["timestamp"] = datetime.datetime.strptime(data["timestamp"], "%Y-%m-%d %H:%M:%S")
+Args:
+    module: The module object containing feature classes
+    category: Category to group the features under
 
-# Create time features
-time_feature = TimeOfDayFeature()
-day_feature = DayOfWeekFeature()
+### Classes
 
-# Calculate features
-time_info = time_feature.calculate(data)
-day_info = day_feature.calculate(data)
+#### `FeatureRegistry`
 
-print(f"Trading session: {time_info['session']}")
-print(f"Day of week: {day_info['day_name']} (is_trading_day: {day_info['is_trading_day']})")
-```
+Registry for feature classes in the trading system.
 
-### Using Feature Registry
+The FeatureRegistry maintains a mapping of feature names to their implementing
+classes, allowing features to be instantiated by name.
 
-The feature registry allows you to create features by name:
+##### Methods
 
-```python
-from features import get_registry
+###### `__new__(cls)`
 
-registry = get_registry()
+Implement singleton pattern for the registry.
 
-# Create a feature by name
-rsi_feature = registry.create_feature(
-    name="OscillatorStateFeature",
-    params={"oscillator": "RSI", "overbought": 75, "oversold": 25},
-    feature_name="custom_rsi"
-)
+###### `register(feature_class, name=None, category='general')`
 
-# List available features in a category
-technical_features = registry.list_features(category="technical")
-print(f"Available technical features: {technical_features}")
-```
+*Returns:* `None`
 
-## Creating Default Features Set
+Register a feature class with the registry.
 
-For convenience, the module provides a function to create a set of common features:
+Args:
+    feature_class: The Feature class to register
+    name: Optional name to register the feature under (defaults to class name)
+    category: Category to group the feature under
+    
+Raises:
+    ValueError: If a feature with the same name is already registered
 
-```python
-from features import create_default_feature_set
+###### `get_feature_class(name)`
 
-# Create a default set of features
-default_features = create_default_feature_set(name="default_features")
+Get a feature class by name.
 
-# Calculate all default features
-results = default_features.calculate_all(market_data)
+Args:
+    name: Name of the feature to retrieve
+    
+Returns:
+    The feature class
+    
+Raises:
+    KeyError: If no feature with the given name is registered
 
-# Get the price features
-normalized_price = results["norm_price_zscore"]
-returns_1d = results["return_1d"]
-returns_5d = results["return_5d"]
+*Returns:* The feature class
 
-# Get the technical features
-sma_crossover = results["sma_crossover"]
-rsi_state = results["rsi_state"]
-volatility = results["volatility"]
+###### `create_feature(name, params=None, feature_name=None)`
 
-# Get the time features
-day_of_week = results["day_of_week"]
-monthly_pattern = results["monthly_pattern"]
-```
+Create an instance of a feature by name.
+
+Args:
+    name: Name of the feature class to instantiate
+    params: Parameters to pass to the feature constructor
+    feature_name: Optional name for the created feature instance
+                (defaults to the registered name)
+    
+Returns:
+    An instance of the requested feature
+    
+Raises:
+    KeyError: If no feature with the given name is registered
+
+*Returns:* An instance of the requested feature
+
+###### `list_features(category=None)`
+
+*Returns:* `List[str]`
+
+List all registered features, optionally filtered by category.
+
+Args:
+    category: Optional category to filter by
+    
+Returns:
+    List of feature names
+
+###### `list_categories()`
+
+*Returns:* `List[str]`
+
+List all feature categories.
+
+Returns:
+    List of category names
+
+###### `clear()`
+
+*Returns:* `None`
+
+Clear all registered features (useful for testing).
+
+## feature_utils
+
+Feature Utilities Module
+
+This module provides utility functions for combining and transforming
+features in various ways to create complex feature compositions.
+
+### Functions
+
+#### `combine_features(features, combiner_func, name='composite_feature', params=None, description='Combined features')`
+
+*Returns:* `CompositeFeature`
+
+Combine multiple features into a composite feature.
+
+Args:
+    features: List of feature objects to combine
+    combiner_func: Function that takes a list of feature values and returns a combined value
+    name: Name for the new composite feature
+    params: Parameters to pass to the combiner function
+    description: Description of the new feature
+    
+Returns:
+    CompositeFeature object
+
+#### `weighted_average_combiner(feature_values)`
+
+*Returns:* `float`
+
+Combine feature values using a weighted average.
+
+Args:
+    feature_values: List of feature values to combine
+    params: Must include 'weights' as a list of weights
+    
+Returns:
+    Weighted average of feature values
+
+#### `logical_combiner(feature_values)`
+
+*Returns:* `bool`
+
+Combine feature values using logical operations.
+
+Args:
+    feature_values: List of feature values to combine
+    params: Must include 'operation' as one of 'and', 'or', 'majority'
+    
+Returns:
+    Boolean result of logical operation
+
+#### `threshold_combiner(feature_values)`
+
+*Returns:* `int`
+
+Combine feature values using thresholds to generate a signal.
+
+Args:
+    feature_values: List of feature values to combine
+    params: Dictionary containing:
+        - 'thresholds': List of thresholds for each feature
+        - 'directions': List of expected directions (1 or -1) for each feature
+        - 'min_agreements': Minimum number of agreements needed for a signal
+    
+Returns:
+    Signal value: 1 (buy), -1 (sell), or 0 (neutral)
+
+#### `cross_feature_indicator(feature_values)`
+
+*Returns:* `Dict[str, Any]`
+
+Create a crossover indicator from two features.
+
+Args:
+    feature_values: List of exactly two feature values
+    params: Dictionary containing:
+        - 'direction': Expected crossover direction (1 for first > second, -1 for first < second)
+    
+Returns:
+    Dictionary with crossover status information
+
+#### `z_score_normalize(feature_values)`
+
+*Returns:* `List[float]`
+
+Normalize feature values using Z-score normalization.
+
+Args:
+    feature_values: List of feature values to normalize
+    params: Dictionary containing additional parameters (not used)
+    
+Returns:
+    List of normalized feature values
+
+#### `create_feature_vector(features, data)`
+
+*Returns:* `np.ndarray`
+
+Create a feature vector from multiple features.
+
+Args:
+    features: List of feature objects
+    data: Dictionary containing the data to calculate features from
+    
+Returns:
+    Numpy array containing feature values
+
+#### `combine_time_series_features(features, data, lookback=10)`
+
+*Returns:* `np.ndarray`
+
+Create a time series of feature vectors from multiple features.
+
+Args:
+    features: List of feature objects
+    data: Dictionary containing historical data (with each value as a list/array)
+    lookback: Number of historical time steps to include
+    
+Returns:
+    2D numpy array with shape (lookback, num_features)
+
+## price_features
+
+Price Features Module
+
+This module provides features derived directly from price data, such as returns,
+normalized prices, and price patterns.
+
+### Classes
+
+#### `ReturnFeature`
+
+Calculate price returns over specified periods.
+
+This feature computes price returns (percentage change) over one or more time periods.
+
+##### Methods
+
+###### `__init__(name='return', params=None, description='Price returns over specified periods')`
+
+Initialize the return feature.
+
+Args:
+    name: Feature name
+    params: Dictionary containing:
+        - periods: List of periods to calculate returns for (default: [1])
+        - price_key: Key to price data in the input dictionary (default: 'Close')
+        - log_returns: Whether to compute log returns instead of simple returns (default: True)
+    description: Feature description
+
+###### `default_params()`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for return calculation.
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this feature.
+
+###### `calculate(data)`
+
+*Returns:* `Dict[int, float]`
+
+Calculate returns for each specified period.
+
+Args:
+    data: Dictionary containing price history with keys like 'Open', 'High', 'Low', 'Close'
+         Expected format: {'Close': np.array or list of prices, ...}
+
+Returns:
+    Dictionary mapping periods to calculated returns
+
+#### `NormalizedPriceFeature`
+
+Normalize price data relative to a reference point.
+
+This feature normalizes prices using various methods such as z-score normalization,
+min-max scaling, or relative to a moving average.
+
+##### Methods
+
+###### `__init__(name='normalized_price', params=None, description='Normalized price data')`
+
+Initialize the normalized price feature.
+
+Args:
+    name: Feature name
+    params: Dictionary containing:
+        - method: Normalization method ('z-score', 'min-max', or 'relative') (default: 'z-score')
+        - window: Window size for calculating statistics (default: 20)
+        - price_key: Key to price data in the input dictionary (default: 'Close')
+    description: Feature description
+
+###### `default_params()`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for normalization.
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this feature.
+
+###### `calculate(data)`
+
+*Returns:* `float`
+
+Calculate normalized price.
+
+Args:
+    data: Dictionary containing price history
+
+Returns:
+    Normalized price value
+
+#### `PricePatternFeature`
+
+Detect specific price patterns in the data.
+
+This feature identifies common price patterns such as double tops/bottoms,
+head and shoulders, or trendline breaks.
+
+##### Methods
+
+###### `__init__(name='price_pattern', params=None, description='Price pattern detection')`
+
+Initialize the price pattern feature.
+
+Args:
+    name: Feature name
+    params: Dictionary containing:
+        - pattern: Pattern to detect ('double_top', 'double_bottom', 'head_shoulders', etc.)
+        - window: Window size for pattern detection (default: 20)
+        - threshold: Threshold for pattern confirmation (default: 0.03)
+    description: Feature description
+
+###### `default_params()`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for pattern detection.
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this feature.
+
+###### `calculate(data)`
+
+*Returns:* `Dict[str, Any]`
+
+Detect price patterns in the data.
+
+Args:
+    data: Dictionary containing price history
+
+Returns:
+    Dictionary with pattern detection results, including:
+    - detected: Boolean indicating if pattern was detected
+    - confidence: Confidence score for the detection (0.0-1.0)
+    - details: Additional pattern-specific details
+
+###### `_detect_double_top(highs, lows, closes, threshold)`
+
+Detect double top pattern.
+
+###### `_detect_double_bottom(highs, lows, closes, threshold)`
+
+Detect double bottom pattern.
+
+###### `_detect_head_shoulders(highs, lows, closes, threshold)`
+
+Detect head and shoulders pattern.
+
+###### `_detect_inverse_head_shoulders(highs, lows, closes, threshold)`
+
+Detect inverse head and shoulders pattern.
+
+#### `VolumeProfileFeature`
+
+Calculate volume profile features based on price and volume data.
+
+This feature analyzes the distribution of volume across price levels.
+
+##### Methods
+
+###### `__init__(name='volume_profile', params=None, description='Volume profile analysis', max_history=100)`
+
+Initialize the volume profile feature.
+
+Args:
+    name: Feature name
+    params: Dictionary containing:
+        - num_bins: Number of price bins for volume distribution (default: 10)
+        - window: Window size for calculation (default: 20)
+    description: Feature description
+    max_history: Maximum history to maintain
+
+###### `default_params()`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for volume profile.
+
+###### `calculate(data)`
+
+*Returns:* `Dict[str, Any]`
+
+Calculate volume profile features.
+
+Args:
+    data: Dictionary containing price and volume history
+
+Returns:
+    Dictionary with volume profile metrics
+
+#### `PriceDistanceFeature`
+
+Calculate distance of price from various reference points.
+
+This feature measures how far the current price is from reference
+levels such as moving averages, support/resistance, or previous highs/lows.
+
+##### Methods
+
+###### `__init__(name='price_distance', params=None, description='Distance from reference levels')`
+
+Initialize the price distance feature.
+
+Args:
+    name: Feature name
+    params: Dictionary containing:
+        - reference: Reference type ('ma', 'level', 'high_low', 'bands')
+        - period: Period for moving average if reference is 'ma' (default: 20)
+        - levels: List of price levels if reference is 'level'
+        - lookback: Lookback period for high/low if reference is 'high_low' (default: 20)
+        - as_percentage: Whether to return distance as percentage (default: True)
+    description: Feature description
+
+###### `default_params()`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for price distance.
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this feature.
+
+###### `calculate(data)`
+
+*Returns:* `Dict[str, float]`
+
+Calculate price distance from reference levels.
+
+Args:
+    data: Dictionary containing price history and indicators
+
+Returns:
+    Dictionary with distance measurements
+
+## technical_features
+
+Technical Features Module
+
+This module provides features derived from technical indicators, such as
+moving average crossovers, oscillator states, and indicator divergences.
+
+### Classes
+
+#### `VolatilityFeature`
+
+Volatility measurement feature.
+
+This feature analyzes market volatility using indicators like ATR,
+Bollinger Band width, or standard deviation of returns.
+
+##### Methods
+
+###### `__init__(name='volatility', params=None, description='Market volatility measurement')`
+
+Initialize the volatility feature.
+
+Args:
+    name: Feature name
+    params: Dictionary containing:
+        - method: Method for volatility calculation ('atr', 'bb_width', 'std_dev')
+        - period: Period for calculation (default: 14)
+        - normalize: Whether to normalize the volatility value (default: True)
+    description: Feature description
+
+###### `default_params()`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for volatility calculation.
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this feature.
+
+###### `calculate(data)`
+
+*Returns:* `Dict[str, Any]`
+
+Calculate volatility metrics.
+
+Args:
+    data: Dictionary containing price data and indicators
+
+Returns:
+    Dictionary with volatility information
+
+###### `_calculate_atr(data, period, normalize)`
+
+*Returns:* `Dict[str, Any]`
+
+Calculate volatility using Average True Range.
+
+###### `_calculate_bb_width(data, normalize)`
+
+*Returns:* `Dict[str, Any]`
+
+Calculate volatility using Bollinger Band width.
+
+###### `_calculate_std_dev(data, period, normalize)`
+
+*Returns:* `Dict[str, Any]`
+
+Calculate volatility using standard deviation of returns.
+
+#### `SupportResistanceFeature`
+
+Support and Resistance Levels feature.
+
+This feature identifies key support and resistance levels and measures
+the distance of the current price from these levels.
+
+##### Methods
+
+###### `__init__(name='support_resistance', params=None, description='Support and resistance analysis')`
+
+Initialize the support/resistance feature.
+
+Args:
+    name: Feature name
+    params: Dictionary containing:
+        - method: Method for level detection ('peaks', 'pivots', 'volume')
+        - lookback: Lookback period for calculation (default: 100)
+        - strength_threshold: Threshold for level strength (default: 2)
+        - proximity_threshold: Threshold for level proximity in % (default: 3.0)
+    description: Feature description
+
+###### `default_params()`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for support/resistance calculation.
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this feature.
+
+###### `calculate(data)`
+
+*Returns:* `Dict[str, Any]`
+
+Identify support/resistance levels and calculate price distance.
+
+Args:
+    data: Dictionary containing price data and indicators
+
+Returns:
+    Dictionary with support/resistance information
+
+###### `_find_peak_levels(highs, lows, strength_threshold)`
+
+Find support/resistance levels based on price peaks.
+
+###### `_find_pivot_levels(highs, lows, closes)`
+
+Find support/resistance levels based on pivot points.
+
+###### `_find_volume_levels(highs, lows, closes, volumes)`
+
+Find support/resistance levels based on volume profile.
+
+#### `SignalAgreementFeature`
+
+Signal Agreement feature.
+
+This feature analyzes the agreement or disagreement among multiple
+technical indicators to provide a consensus signal.
+
+##### Methods
+
+###### `__init__(name='signal_agreement', params=None, description='Technical indicator consensus')`
+
+Initialize the signal agreement feature.
+
+Args:
+    name: Feature name
+    params: Dictionary containing:
+        - indicators: List of indicators to include in consensus
+        - weights: Optional dictionary of weights for each indicator
+        - threshold: Threshold for signal consensus (default: 0.6)
+    description: Feature description
+
+###### `default_params()`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for signal agreement.
+
+###### `calculate(data)`
+
+*Returns:* `Dict[str, Any]`
+
+Calculate signal agreement among indicators.
+
+Args:
+    data: Dictionary containing technical indicators
+
+Returns:
+    Dictionary with consensus information
+
+###### `_get_indicator_signal(indicator, value)`
+
+Extract signal from indicator value.
+
+#### `DivergenceFeature`
+
+Divergence Detection feature.
+
+This feature detects divergences between price and indicators,
+which can signal potential trend reversals.
+
+##### Methods
+
+###### `__init__(name='divergence', params=None, description='Price-indicator divergence detection')`
+
+Initialize the divergence feature.
+
+Args:
+    name: Feature name
+    params: Dictionary containing:
+        - indicator: Indicator to check for divergence ('RSI', 'MACD', 'CCI', etc.)
+        - lookback: Lookback period for divergence detection (default: 20)
+        - peak_threshold: Threshold for identifying peaks/troughs (default: 3)
+    description: Feature description
+
+###### `default_params()`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for divergence detection.
+
+###### `calculate(data)`
+
+*Returns:* `Dict[str, Any]`
+
+Detect divergences between price and indicator.
+
+Args:
+    data: Dictionary containing price data and indicators
+
+Returns:
+    Dictionary with divergence information
+
+###### `_find_peaks(data, threshold)`
+
+Find peaks in data.
+
+###### `_find_troughs(data, threshold)`
+
+Find troughs in data.
+
+###### `_check_bullish_divergence(prices, indicator, price_troughs, indicator_troughs)`
+
+Check for bullish divergence: lower price lows but higher indicator lows.
+
+###### `_check_bearish_divergence(prices, indicator, price_peaks, indicator_peaks)`
+
+Check for bearish divergence: higher price highs but lower indicator highs.
+
+###### `_check_hidden_bullish(prices, indicator, price_troughs, indicator_troughs)`
+
+Check for hidden bullish divergence: higher price lows but lower indicator lows.
+
+###### `_check_hidden_bearish(prices, indicator, price_peaks, indicator_peaks)`
+
+Check for hidden bearish divergence: lower price highs but higher indicator highs.
+
+#### `MACrossoverFeature`
+
+Moving Average Crossover feature.
+
+This feature detects crossovers between two moving averages and provides
+information about the state and direction of the crossover.
+
+##### Methods
+
+###### `__init__(name='ma_crossover', params=None, description='Moving average crossover detection')`
+
+Initialize the moving average crossover feature.
+
+Args:
+    name: Feature name
+    params: Dictionary containing:
+        - fast_ma: Name of the fast MA indicator (default: 'SMA_10')
+        - slow_ma: Name of the slow MA indicator (default: 'SMA_30')
+        - smooth: Whether to smooth the crossover signal (default: False)
+    description: Feature description
+
+###### `default_params()`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for moving average crossover.
+
+###### `calculate(data)`
+
+*Returns:* `Dict[str, Any]`
+
+Calculate moving average crossover state and signals.
+
+Args:
+    data: Dictionary containing technical indicators
+
+Returns:
+    Dictionary with crossover information
+
+#### `OscillatorStateFeature`
+
+Oscillator State feature.
+
+This feature analyzes oscillator indicators (RSI, Stochastic, etc.) and
+identifies overbought/oversold conditions and divergences.
+
+##### Methods
+
+###### `__init__(name='oscillator_state', params=None, description='Oscillator state analysis')`
+
+Initialize the oscillator state feature.
+
+Args:
+    name: Feature name
+    params: Dictionary containing:
+        - oscillator: Name of the oscillator indicator (default: 'RSI')
+        - overbought: Overbought threshold (default: 70)
+        - oversold: Oversold threshold (default: 30)
+        - check_divergence: Whether to check for divergence (default: True)
+    description: Feature description
+
+###### `default_params()`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for oscillator state.
+
+###### `calculate(data)`
+
+*Returns:* `Dict[str, Any]`
+
+Calculate oscillator state and identify conditions.
+
+Args:
+    data: Dictionary containing price data and indicators
+
+Returns:
+    Dictionary with oscillator state information
+
+#### `TrendStrengthFeature`
+
+Trend Strength feature.
+
+This feature measures the strength and direction of the current trend
+using indicators like ADX, Aroon, or directional movement.
+
+##### Methods
+
+###### `__init__(name='trend_strength', params=None, description='Trend strength measurement')`
+
+Initialize the trend strength feature.
+
+Args:
+    name: Feature name
+    params: Dictionary containing:
+        - method: Method for trend strength calculation ('adx', 'aroon', 'slope')
+        - threshold: Threshold for strong trend (default: 25 for ADX)
+        - lookback: Lookback period for calculation (default: 14)
+    description: Feature description
+
+###### `default_params()`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for trend strength.
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this feature.
+
+###### `calculate(data)`
+
+*Returns:* `Dict[str, Any]`
+
+Calculate trend strength and direction.
+
+Args:
+    data: Dictionary containing price data and indicators
+
+Returns:
+    Dictionary with trend information
+
+###### `_calculate_adx(data, threshold)`
+
+*Returns:* `Dict[str, Any]`
+
+Calculate trend strength using ADX.
+
+###### `_calculate_aroon(data, threshold)`
+
+*Returns:* `Dict[str, Any]`
+
+Calculate trend strength using Aroon indicators.
+
+###### `_calculate_slope(data, threshold)`
+
+*Returns:* `Dict[str, Any]`
+
+Calculate trend strength using price slope.
+
+#### `SMA_Crossover`
+
+Feature that detects crossovers between two SMAs.
+
+##### Methods
+
+###### `__init__(fast_window=10, slow_window=30, name=None)`
+
+No docstring provided.
+
+###### `calculate(bar_data, history=None)`
+
+No docstring provided.
+
+## time_features
+
+Time Features Module
+
+This module provides features derived from time and date information, such as
+seasonality patterns, day of week effects, and other calendar-based features.
+
+### Classes
+
+#### `TimeOfDayFeature`
+
+Time of Day feature.
+
+This feature extracts time of day information and identifies patterns
+based on the hour of the day.
+
+##### Methods
+
+###### `__init__(name='time_of_day', params=None, description='Time of day analysis')`
+
+Initialize the time of day feature.
+
+Args:
+    name: Feature name
+    params: Dictionary containing:
+        - format: Format string for timestamps (default: '%Y-%m-%d %H:%M:%S')
+        - trading_hours: List of trading hour ranges (default: [(9, 16)])
+        - zones: Custom time zones to create (default: None)
+    description: Feature description
+
+###### `default_params()`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for time of day.
+
+###### `calculate(data)`
+
+*Returns:* `Dict[str, Any]`
+
+Extract time of day features.
+
+Args:
+    data: Dictionary containing timestamp information
+
+Returns:
+    Dictionary with time of day features
+
+#### `DayOfWeekFeature`
+
+Day of Week feature.
+
+This feature extracts day of week information and identifies patterns
+based on the day of the week.
+
+##### Methods
+
+###### `__init__(name='day_of_week', params=None, description='Day of week analysis')`
+
+Initialize the day of week feature.
+
+Args:
+    name: Feature name
+    params: Dictionary containing:
+        - format: Format string for timestamps (default: '%Y-%m-%d %H:%M:%S')
+        - trading_days: List of trading days (default: [0, 1, 2, 3, 4])
+        - with_cyclical: Whether to include cyclical encoding (default: True)
+    description: Feature description
+
+###### `default_params()`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for day of week.
+
+###### `calculate(data)`
+
+*Returns:* `Dict[str, Any]`
+
+Extract day of week features.
+
+Args:
+    data: Dictionary containing timestamp information
+
+Returns:
+    Dictionary with day of week features
+
+#### `MonthFeature`
+
+Month feature.
+
+This feature extracts month information and identifies patterns
+based on the month of the year.
+
+##### Methods
+
+###### `__init__(name='month', params=None, description='Month analysis')`
+
+Initialize the month feature.
+
+Args:
+    name: Feature name
+    params: Dictionary containing:
+        - format: Format string for timestamps (default: '%Y-%m-%d %H:%M:%S')
+        - with_cyclical: Whether to include cyclical encoding (default: True)
+        - with_quarters: Whether to include quarter information (default: True)
+    description: Feature description
+
+###### `default_params()`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for month.
+
+###### `calculate(data)`
+
+*Returns:* `Dict[str, Any]`
+
+Extract month features.
+
+Args:
+    data: Dictionary containing timestamp information
+
+Returns:
+    Dictionary with month features
+
+#### `SeasonalityFeature`
+
+Seasonality feature.
+
+This feature detects seasonal patterns in price data based on time periods
+such as day of week, month of year, etc.
+
+##### Methods
+
+###### `__init__(name='seasonality', params=None, description='Seasonality pattern detection')`
+
+Initialize the seasonality feature.
+
+Args:
+    name: Feature name
+    params: Dictionary containing:
+        - period: Seasonality period to analyze ('day', 'week', 'month', 'quarter')
+        - lookback: Lookback period for pattern analysis (default: 252)
+        - min_pattern_strength: Minimum strength for pattern detection (default: 0.6)
+    description: Feature description
+
+###### `default_params()`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for seasonality.
+
+###### `_validate_params()`
+
+*Returns:* `None`
+
+Validate the parameters for this feature.
+
+###### `calculate(data)`
+
+*Returns:* `Dict[str, Any]`
+
+Detect seasonality patterns in price data.
+
+Args:
+    data: Dictionary containing price history and timestamp information
+
+Returns:
+    Dictionary with seasonality information
+
+#### `EventFeature`
+
+Event detection feature.
+
+This feature identifies special events like earnings releases, holidays,
+economic announcements, etc. based on the calendar date.
+
+##### Methods
+
+###### `__init__(name='event', params=None, description='Calendar event detection')`
+
+Initialize the event feature.
+
+Args:
+    name: Feature name
+    params: Dictionary containing:
+        - format: Format string for timestamps (default: '%Y-%m-%d %H:%M:%S')
+        - holidays: List or dictionary of holiday dates
+        - events: Dictionary of other special events/dates
+        - event_window: Number of days to consider around an event (default: 1)
+    description: Feature description
+
+###### `default_params()`
+
+*Returns:* `Dict[str, Any]`
+
+Default parameters for event detection.
+
+###### `calculate(data)`
+
+*Returns:* `Dict[str, Any]`
+
+Detect calendar events based on date.
+
+Args:
+    data: Dictionary containing timestamp information
+
+Returns:
+    Dictionary with event information
