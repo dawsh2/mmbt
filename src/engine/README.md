@@ -45,7 +45,7 @@ Extract initial capital from configuration.
 
 ###### `_setup_event_handlers()`
 
-Set up event handlers for backtesting.
+Set up event handlers with proper registration.
 
 ###### `run(use_test_data=False)`
 

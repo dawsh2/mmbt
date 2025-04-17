@@ -1,3 +1,5 @@
+
+
 #!/usr/bin/env python3
 # event_manager.py - Central component for managing event flow
 
@@ -64,32 +66,35 @@ class EventManager:
                 component.initialize()
                 
         logger.info("Events manager initialized")
-        
+
     def _register_event_handlers(self):
         """Register all necessary event handlers."""
         # Bar event handler
         self.handlers['bar'] = self._create_bar_handler()
         self.event_bus.register(EventType.BAR, self.handlers['bar'])
-        
+
         # Signal event handler
         self.handlers['signal'] = self._create_signal_handler()
         self.event_bus.register(EventType.SIGNAL, self.handlers['signal'])
-        
+
         # Order event handler
         self.handlers['order'] = self._create_order_handler()
         self.event_bus.register(EventType.ORDER, self.handlers['order'])
-        
+
         # Fill event handler
         self.handlers['fill'] = self._create_fill_handler()
         self.event_bus.register(EventType.FILL, self.handlers['fill'])
+
+        # Market open/close handlers - store these in the handlers dictionary too
+        self.handlers['market_open'] = lambda e: logger.info(f"Market open: {e.timestamp if hasattr(e, 'timestamp') else datetime.datetime.now()}")
+        self.handlers['market_close'] = lambda e: logger.info(f"Market close: {e.timestamp if hasattr(e, 'timestamp') else datetime.datetime.now()}")
+
+        self.event_bus.register(EventType.MARKET_OPEN, self.handlers['market_open'])
+        self.event_bus.register(EventType.MARKET_CLOSE, self.handlers['market_close'])
+
+        logger.info("Event handlers registered")        
         
-        # Market open/close handlers
-        self.event_bus.register(EventType.MARKET_OPEN, 
-                              lambda e: logger.info(f"Market open: {e.timestamp if hasattr(e, 'timestamp') else datetime.datetime.now()}"))
-        self.event_bus.register(EventType.MARKET_CLOSE, 
-                              lambda e: logger.info(f"Market close: {e.timestamp if hasattr(e, 'timestamp') else datetime.datetime.now()}"))
-                              
-        logger.info("Event handlers registered")
+
 
     def _create_bar_handler(self):
         """Create a handler for BAR events."""

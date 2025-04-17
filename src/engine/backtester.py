@@ -65,6 +65,7 @@ class Backtester:
         self.signals = []
         self.orders = []
         self.fills = []
+        self._event_handlers = {}
         
         logger.info(f"Backtester initialized with initial capital: {self.initial_capital}")
     
@@ -89,17 +90,25 @@ class Backtester:
         elif hasattr(config, 'get'):
             return config.get('backtester.initial_capital', 100000)
         return 100000
-    
+
+    # In Backtester._setup_event_handlers
     def _setup_event_handlers(self):
-        """Set up event handlers for backtesting."""
-        # Register signal handler
-        self.event_bus.register(EventType.SIGNAL, self._on_signal)
-        
-        # Register order handler
-        self.event_bus.register(EventType.ORDER, self._on_order)
-        
-        # Register fill handler
-        self.event_bus.register(EventType.FILL, self._on_fill)
+        """Set up event handlers with proper registration."""
+        # Create and store handlers with strong references
+        self._event_handlers['bar'] = self._create_bar_handler()
+        self._event_handlers['signal'] = self._create_signal_handler()
+        self._event_handlers['order'] = self._create_order_handler()
+        self._event_handlers['fill'] = self._create_fill_handler()
+
+        # Register handlers with event bus
+        self.event_bus.register(EventType.BAR, self._event_handlers['bar'])
+        self.event_bus.register(EventType.SIGNAL, self._event_handlers['signal'])
+        self.event_bus.register(EventType.ORDER, self._event_handlers['order'])
+        self.event_bus.register(EventType.FILL, self._event_handlers['fill'])
+
+        logger.info("Event handlers registered")
+    
+
 
     def run(self, use_test_data=False):
         """

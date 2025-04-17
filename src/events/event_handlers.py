@@ -487,6 +487,9 @@ class MarketDataHandler(EventHandler):
                 logger.warning("Strategy does not have on_tick method")
 
 
+
+
+                
 class SignalHandler(EventHandler):
     """
     Handler for signal events.
