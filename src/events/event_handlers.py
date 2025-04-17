@@ -2,7 +2,7 @@
 Event Handlers Module
 
 This module defines handlers for processing events in the trading system.
-It includes base handler classes and specialized implementations for event handling.
+Implementation updated to preserve object references and ensure type safety.
 """
 
 import logging
@@ -10,13 +10,15 @@ import time
 import threading
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Union, Any, Callable, Set, Type, TypeVar
-from functools import wraps
 
 from src.events.event_types import EventType
-from src.events.event_bus import Event
+from src.events.event_base import Event
 
 # Set up logging
 logger = logging.getLogger(__name__)
+
+# Type variable for generic event handlers
+T = TypeVar('T')
 
 
 class EventHandler(ABC):
@@ -27,17 +29,20 @@ class EventHandler(ABC):
     with the event bus to receive events of those types.
     """
     
-    def __init__(self, event_types: Union[EventType, List[EventType]]):
+    def __init__(self, event_types: Union[EventType, List[EventType], Set[EventType]]):
         """
         Initialize event handler.
         
         Args:
             event_types: Event type(s) this handler processes
         """
+        # Normalize event_types to a set
         if isinstance(event_types, EventType):
-            event_types = [event_types]
+            event_types = {event_types}
+        elif isinstance(event_types, list):
+            event_types = set(event_types)
             
-        self.event_types = set(event_types)
+        self.event_types = event_types
         self.enabled = True
         
     def can_handle(self, event_type: EventType) -> bool:
@@ -56,30 +61,37 @@ class EventHandler(ABC):
         """
         Process an event.
         
+        This method receives the original event object with
+        preserved object references throughout the event chain.
+        
         Args:
-            event: Event to process
+            event: Event to process (original reference)
         """
         if not self.enabled:
+            logger.debug(f"Handler {self} is disabled, not processing event")
             return
         
         if not self.can_handle(event.event_type):
-            logger.warning(f"Handler {self} cannot handle event type {event.event_type}")
+            logger.debug(f"Handler {self} cannot handle event type {event.event_type}")
             return
             
         try:
+            # Process the event with preserved object types
             self._process_event(event)
         except Exception as e:
-            logger.error(f"Error processing event: {str(e)}", exc_info=True)
+            logger.error(f"Error in handler {self}: {str(e)}", exc_info=True)
     
     @abstractmethod
     def _process_event(self, event: Event) -> None:
         """
         Internal method to process an event.
         
-        This method must be implemented by subclasses.
+        This method must be implemented by subclasses to define their
+        specific event handling logic. The event object passed in
+        preserves all object references and types.
         
         Args:
-            event: Event to process
+            event: Event to process (original reference)
         """
         pass
     
@@ -122,7 +134,7 @@ class FunctionEventHandler(EventHandler):
         Process an event by calling the handler function.
         
         Args:
-            event: Event to process
+            event: Event to process (original reference)
         """
         self.handler_func(event)
 
@@ -163,16 +175,20 @@ class LoggingHandler(EventHandler):
         Log an event at the appropriate level.
         
         Args:
-            event: Event to log
+            event: Event to log (original reference)
         """
         # Get log level for this event type
         log_level = self.event_log_levels.get(event.event_type, self.log_level)
         
         # Format event data for logging
-        event_data = str(event.data) if event.data else "No data"
-        if isinstance(event.data, dict):
-            # More readable format for dict data
-            event_data = ", ".join(f"{k}={v}" for k, v in event.data.items())
+        event_data = "No data"
+        if hasattr(event, 'data') and event.data is not None:
+            if isinstance(event.data, dict):
+                # More readable format for dict data
+                event_data = ", ".join(f"{k}={v}" for k, v in event.data.items())
+            else:
+                # Use object's string representation
+                event_data = str(event.data)
         
         # Log the event
         logger.log(log_level, f"Event: {event.event_type.name}, ID: {event.id}, Data: {event_data}")
@@ -206,7 +222,7 @@ class DebounceHandler(EventHandler):
         Process an event with debouncing.
         
         Args:
-            event: Event to process
+            event: Event to process (original reference)
         """
         current_time = time.time()
         last_time = self.last_processed.get(event.event_type, 0)
@@ -217,7 +233,7 @@ class DebounceHandler(EventHandler):
             self.last_processed[event.event_type] = current_time
             
             # Delegate to wrapped handler
-            self.handler.handle(event)
+            self.handler.handle(event)  # Pass original reference
         else:
             logger.debug(f"Debounced event {event.event_type} (too soon after previous)")
 
@@ -249,11 +265,11 @@ class FilterHandler(EventHandler):
         Process an event if it passes the filter.
         
         Args:
-            event: Event to process
+            event: Event to process (original reference)
         """
         # Only process if filter passes
         if self.filter_func(event):
-            self.handler.handle(event)
+            self.handler.handle(event)  # Pass original reference
         else:
             logger.debug(f"Event {event.id} filtered out")
 
@@ -288,17 +304,18 @@ class AsyncEventHandler(EventHandler):
         Process an event asynchronously.
         
         Args:
-            event: Event to process
+            event: Event to process (original reference)
         """
         # Check if we've reached the maximum number of workers
         with self.lock:
             if self.active_workers >= self.max_workers:
                 logger.warning(f"Max workers ({self.max_workers}) reached, processing synchronously")
-                self.handler.handle(event)
+                self.handler.handle(event)  # Pass original reference
                 return
             self.active_workers += 1
         
         # Process in a separate thread
+        # Note: Original event reference is captured in the thread closure
         thread = threading.Thread(
             target=self._worker,
             args=(event,),
@@ -311,10 +328,10 @@ class AsyncEventHandler(EventHandler):
         Worker thread that processes an event and updates active worker count.
         
         Args:
-            event: Event to process
+            event: Event to process (original reference)
         """
         try:
-            self.handler.handle(event)
+            self.handler.handle(event)  # Pass original reference
         except Exception as e:
             logger.error(f"Error in async handler: {e}", exc_info=True)
         finally:
@@ -347,14 +364,14 @@ class CompositeHandler(EventHandler):
         Process an event by delegating to all handlers.
         
         Args:
-            event: Event to process
+            event: Event to process (original reference)
         """
         for handler in self.handlers:
             try:
                 if handler.can_handle(event.event_type):
-                    handler.handle(event)
+                    handler.handle(event)  # Pass original reference
             except Exception as e:
-                logger.error(f"Error in composite handler delegate: {e}", exc_info=True)
+                logger.error(f"Error in composite handler delegate: {str(e)}", exc_info=True)
 
 
 class EventHandlerGroup:
@@ -472,30 +489,27 @@ class MarketDataHandler(EventHandler):
         Process a market data event.
         
         Args:
-            event: Event to process
+            event: Event to process (original reference)
         """
         if event.event_type == EventType.BAR:
             if hasattr(self.strategy, 'on_bar'):
-                self.strategy.on_bar(event)
+                self.strategy.on_bar(event)  # Pass original reference
             else:
                 logger.warning("Strategy does not have on_bar method")
                 
         elif event.event_type == EventType.TICK:
             if hasattr(self.strategy, 'on_tick'):
-                self.strategy.on_tick(event)
+                self.strategy.on_tick(event)  # Pass original reference
             else:
                 logger.warning("Strategy does not have on_tick method")
 
 
-
-
-                
 class SignalHandler(EventHandler):
     """
     Handler for signal events.
     
     This handler processes signal events from strategies
-    and forwards them to portfolio manager for order generation.
+    and forwards them to position manager for order generation.
     """
     
     def __init__(self, portfolio_manager):
@@ -513,10 +527,10 @@ class SignalHandler(EventHandler):
         Process a signal event.
         
         Args:
-            event: Event to process
+            event: Event to process (original reference)
         """
         if hasattr(self.portfolio_manager, 'on_signal'):
-            self.portfolio_manager.on_signal(event)
+            self.portfolio_manager.on_signal(event)  # Pass original reference
         else:
             logger.warning("Portfolio manager does not have on_signal method")
 
@@ -544,25 +558,25 @@ class OrderHandler(EventHandler):
         Process an order event.
         
         Args:
-            event: Event to process
+            event: Event to process (original reference)
         """
         if event.event_type == EventType.ORDER:
             if hasattr(self.execution_engine, 'place_order'):
-                self.execution_engine.place_order(event.data)
+                self.execution_engine.place_order(event.data)  # Pass original data reference
             elif hasattr(self.execution_engine, 'on_order'):
-                self.execution_engine.on_order(event)
+                self.execution_engine.on_order(event)  # Pass original event reference
             else:
                 logger.warning("Execution engine does not have order handling methods")
                 
         elif event.event_type == EventType.CANCEL:
             if hasattr(self.execution_engine, 'cancel_order'):
-                self.execution_engine.cancel_order(event.data)
+                self.execution_engine.cancel_order(event.data)  # Pass original data reference
             else:
                 logger.warning("Execution engine does not have cancel_order method")
                 
         elif event.event_type == EventType.MODIFY:
             if hasattr(self.execution_engine, 'modify_order'):
-                self.execution_engine.modify_order(event.data)
+                self.execution_engine.modify_order(event.data)  # Pass original data reference
             else:
                 logger.warning("Execution engine does not have modify_order method")
 
@@ -590,11 +604,11 @@ class FillHandler(EventHandler):
         Process a fill event.
         
         Args:
-            event: Event to process
+            event: Event to process (original reference)
         """
         if event.event_type in (EventType.FILL, EventType.PARTIAL_FILL):
             if hasattr(self.portfolio_manager, 'on_fill'):
-                self.portfolio_manager.on_fill(event.data)
+                self.portfolio_manager.on_fill(event)  # Pass original event reference
             else:
                 logger.warning("Portfolio manager does not have on_fill method")
 
@@ -607,12 +621,12 @@ class EventProcessor:
     this interface or inherit from a class that implements it.
     """
     
-    def on_event(self, event):
+    def on_event(self, event: Event):
         """
         Process any event based on its type.
         
         Args:
-            event: Event to process
+            event: Event to process (original reference)
             
         Returns:
             Result of event processing (varies by event type)
@@ -629,50 +643,50 @@ class EventProcessor:
         else:
             return None
     
-    def on_bar(self, event):
+    def on_bar(self, event: Event):
         """
         Process a bar event (market data).
         
         Args:
-            event: Event with a BarEvent data payload
+            event: Event with a BarEvent data payload (original reference)
             
         Returns:
             Depends on the component
         """
         raise NotImplementedError("Subclasses must implement on_bar")
     
-    def on_signal(self, event):
+    def on_signal(self, event: Event):
         """
         Process a signal event.
         
         Args:
-            event: Event with a Signal data payload
+            event: Event with a Signal data payload (original reference)
             
         Returns:
             Depends on the component
         """
         raise NotImplementedError("Subclasses must implement on_signal")
     
-    def on_order(self, event):
+    def on_order(self, event: Event):
         """
         Process an order event.
         
         Args:
-            event: Event with an Order data payload
+            event: Event with an Order data payload (original reference)
             
         Returns:
             Depends on the component
         """
         raise NotImplementedError("Subclasses must implement on_order")
     
-    def on_fill(self, event):
+    def on_fill(self, event: Event):
         """
         Process a fill event.
         
         Args:
-            event: Event with a Fill data payload
+            event: Event with a Fill data payload (original reference)
             
         Returns:
             Depends on the component
         """
-        raise NotImplementedError("Subclasses must implement on_fill")                
+        raise NotImplementedError("Subclasses must implement on_fill")

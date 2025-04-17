@@ -23,6 +23,7 @@ It includes event definitions, the event bus, handlers, and utilities for event-
 Event Base Module
 
 This module provides the base Event class used throughout the event system.
+Modified to preserve object references without serialization.
 
 ### Classes
 
@@ -31,6 +32,7 @@ This module provides the base Event class used throughout the event system.
 Base class for all events in the trading system.
 
 Events contain a type, timestamp, unique ID, and data payload.
+The data payload preserves object types and is not serialized.
 
 ##### Methods
 
@@ -40,15 +42,29 @@ Initialize an event.
 
 Args:
     event_type: Type of the event
-    data: Optional data payload
+    data: Optional data payload (preserved as the original object type)
     timestamp: Event timestamp (defaults to current time)
+
+###### `data()`
+
+Get the event data.
+
+Returns:
+    The original data object without serialization
+
+*Returns:* The original data object without serialization
 
 ###### `get(key, default=None)`
 
 Get a value from the event data.
 
+Supports multiple access patterns:
+1. Dictionary access if data is a dict
+2. Attribute access if data has the attribute
+3. Method access if data has a compatible get() method
+
 Args:
-    key: Dictionary key to retrieve
+    key: Dictionary key or attribute name to retrieve
     default: Default value if key is not found
     
 Returns:
@@ -67,8 +83,7 @@ String representation of the event.
 Event Bus Module
 
 This module provides the event bus infrastructure for the trading system.
-It includes the Event class, EventBus class, and related utilities for
-event-driven communication between system components.
+Modified to preserve object references without serialization.
 
 ### Classes
 
@@ -78,6 +93,7 @@ Central event bus for routing events between system components.
 
 The event bus maintains a registry of handlers for different event types
 and dispatches events to the appropriate handlers when they are emitted.
+Object references are preserved throughout event processing.
 
 ##### Methods
 
@@ -114,7 +130,15 @@ Returns:
 
 ###### `emit(event)`
 
+*Returns:* `None`
+
 Emit an event to registered handlers.
+
+This method preserves the original event object reference
+without serialization or creating copies.
+
+Args:
+    event: Event object to emit
 
 ###### `emit_all(events)`
 
@@ -131,6 +155,9 @@ Args:
 
 Dispatch an event to all registered handlers.
 
+Args:
+    event: Original event object (not a copy)
+
 ###### `_add_to_history(event)`
 
 *Returns:* `None`
@@ -138,7 +165,7 @@ Dispatch an event to all registered handlers.
 Add an event to the history.
 
 Args:
-    event: Event to add
+    event: Event to add (original reference)
 
 ###### `clear_history()`
 
@@ -158,7 +185,7 @@ Args:
     end_time: Optional end time for filtering
     
 Returns:
-    List of events matching the filters
+    List of events matching the filters (original references)
 
 ###### `start_dispatch_thread()`
 
@@ -178,9 +205,8 @@ Stop the async dispatch thread.
 
 Main loop for async event dispatching.
 
-###### `_update_metrics(event_type, processing_time=None)`
-
-Update event metrics.
+Passes event references directly from the queue to handlers
+without serialization or copying.
 
 ###### `get_metrics()`
 
@@ -197,7 +223,8 @@ Reset the event bus state.
 Manager for caching events for improved performance.
 
 This class maintains caches of events by type to prevent
-regenerating the same events repeatedly.
+regenerating the same events repeatedly. It preserves object
+references to ensure type safety throughout the system.
 
 ##### Methods
 
@@ -219,7 +246,7 @@ Args:
     key: Cache key for the event
     
 Returns:
-    Cached event or None if not found
+    Cached event (original reference) or None if not found
 
 ###### `cache_event(event, key)`
 
@@ -228,8 +255,19 @@ Returns:
 Cache an event.
 
 Args:
-    event: Event to cache
+    event: Event to cache (stores original reference)
     key: Cache key for the event
+
+###### `_prune_cache(event_type)`
+
+*Returns:* `None`
+
+Prune cache to enforce maximum size.
+
+Uses least recently used (LRU) strategy.
+
+Args:
+    event_type: Event type cache to prune
 
 ###### `clear_cache(event_type=None)`
 
@@ -556,7 +594,7 @@ Returns:
 Event Handlers Module
 
 This module defines handlers for processing events in the trading system.
-It includes base handler classes and specialized implementations for event handling.
+Implementation updated to preserve object references and ensure type safety.
 
 ### Classes
 
@@ -594,8 +632,11 @@ Returns:
 
 Process an event.
 
+This method receives the original event object with
+preserved object references throughout the event chain.
+
 Args:
-    event: Event to process
+    event: Event to process (original reference)
 
 ###### `_process_event(event)`
 
@@ -603,10 +644,12 @@ Args:
 
 Internal method to process an event.
 
-This method must be implemented by subclasses.
+This method must be implemented by subclasses to define their
+specific event handling logic. The event object passed in
+preserves all object references and types.
 
 Args:
-    event: Event to process
+    event: Event to process (original reference)
 
 ###### `enable()`
 
@@ -651,7 +694,7 @@ Args:
 Process an event by calling the handler function.
 
 Args:
-    event: Event to process
+    event: Event to process (original reference)
 
 #### `LoggingHandler`
 
@@ -687,7 +730,7 @@ Args:
 Log an event at the appropriate level.
 
 Args:
-    event: Event to log
+    event: Event to log (original reference)
 
 #### `DebounceHandler`
 
@@ -714,7 +757,7 @@ Args:
 Process an event with debouncing.
 
 Args:
-    event: Event to process
+    event: Event to process (original reference)
 
 #### `FilterHandler`
 
@@ -741,7 +784,7 @@ Args:
 Process an event if it passes the filter.
 
 Args:
-    event: Event to process
+    event: Event to process (original reference)
 
 #### `AsyncEventHandler`
 
@@ -769,7 +812,7 @@ Args:
 Process an event asynchronously.
 
 Args:
-    event: Event to process
+    event: Event to process (original reference)
 
 ###### `_worker(event)`
 
@@ -778,7 +821,7 @@ Args:
 Worker thread that processes an event and updates active worker count.
 
 Args:
-    event: Event to process
+    event: Event to process (original reference)
 
 #### `CompositeHandler`
 
@@ -804,7 +847,7 @@ Args:
 Process an event by delegating to all handlers.
 
 Args:
-    event: Event to process
+    event: Event to process (original reference)
 
 #### `EventHandlerGroup`
 
@@ -906,14 +949,14 @@ Args:
 Process a market data event.
 
 Args:
-    event: Event to process
+    event: Event to process (original reference)
 
 #### `SignalHandler`
 
 Handler for signal events.
 
 This handler processes signal events from strategies
-and forwards them to portfolio manager for order generation.
+and forwards them to position manager for order generation.
 
 ##### Methods
 
@@ -931,7 +974,7 @@ Args:
 Process a signal event.
 
 Args:
-    event: Event to process
+    event: Event to process (original reference)
 
 #### `OrderHandler`
 
@@ -956,7 +999,7 @@ Args:
 Process an order event.
 
 Args:
-    event: Event to process
+    event: Event to process (original reference)
 
 #### `FillHandler`
 
@@ -981,7 +1024,7 @@ Args:
 Process a fill event.
 
 Args:
-    event: Event to process
+    event: Event to process (original reference)
 
 #### `EventProcessor`
 
@@ -997,7 +1040,7 @@ this interface or inherit from a class that implements it.
 Process any event based on its type.
 
 Args:
-    event: Event to process
+    event: Event to process (original reference)
     
 Returns:
     Result of event processing (varies by event type)
@@ -1009,7 +1052,7 @@ Returns:
 Process a bar event (market data).
 
 Args:
-    event: Event with a BarEvent data payload
+    event: Event with a BarEvent data payload (original reference)
     
 Returns:
     Depends on the component
@@ -1021,7 +1064,7 @@ Returns:
 Process a signal event.
 
 Args:
-    event: Event with a Signal data payload
+    event: Event with a Signal data payload (original reference)
     
 Returns:
     Depends on the component
@@ -1033,7 +1076,7 @@ Returns:
 Process an order event.
 
 Args:
-    event: Event with an Order data payload
+    event: Event with an Order data payload (original reference)
     
 Returns:
     Depends on the component
@@ -1045,7 +1088,7 @@ Returns:
 Process a fill event.
 
 Args:
-    event: Event with a Fill data payload
+    event: Event with a Fill data payload (original reference)
     
 Returns:
     Depends on the component

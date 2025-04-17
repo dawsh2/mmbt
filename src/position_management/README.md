@@ -890,10 +890,10 @@ Returns:
 
 ## position_manager
 
-Position Manager Module
+Modified Version of Position Manager
 
-This module provides the PositionManager class that works with standardized
-SignalEvent objects and integrates with the RiskManager.
+This is a modified version of the position_manager.py file,
+updated to correctly handle SignalEvent objects and perform proper type checking.
 
 ### Classes
 
@@ -901,8 +901,11 @@ SignalEvent objects and integrates with the RiskManager.
 
 Manages trading positions, sizing, and allocation.
 
-The position manager integrates with risk management to determine appropriate
-position sizes based on signals, market conditions, and portfolio state.
+The position manager integrates position sizing, allocation, and risk
+management to determine appropriate position sizes based on signals,
+market conditions, and portfolio state.
+
+This updated version works directly with SignalEvent objects with proper type checking.
 
 ##### Methods
 
@@ -916,19 +919,45 @@ Args:
     allocation_strategy: Strategy for allocating capital across instruments
     risk_manager: Risk management component
     max_positions: Maximum number of positions (0 for unlimited)
-    event_bus: Event bus for emitting events
+    event_bus: Optional event bus for emitting events
 
-###### `on_signal(event)`
+###### `on_signal(event_or_signal)`
 
-*Returns:* `List[Dict[str, Any]]`
+*Returns:* `List[PositionActionEvent]`
 
-Process a signal event into position actions.
+Process a signal and determine position actions.
 
 Args:
-    event: Event containing a SignalEvent
+    event_or_signal: Either Event containing a SignalEvent or a SignalEvent directly
 
 Returns:
-    List of position actions
+    List of position action events
+
+###### `_process_signal(signal)`
+
+*Returns:* `List[Any]`
+
+Process a signal into position actions.
+
+Args:
+    signal: SignalEvent to process
+
+Returns:
+    List of PositionActionEvent objects
+
+###### `calculate_position_size(signal, portfolio, current_price=None)`
+
+Calculate appropriate position size for a signal.
+
+Args:
+    signal: SignalEvent
+    portfolio: Portfolio state
+    current_price: Optional override for current price
+
+Returns:
+    Position size (positive for long, negative for short)
+
+*Returns:* Position size (positive for long, negative for short)
 
 ###### `execute_position_action(action, current_time)`
 
@@ -937,7 +966,7 @@ Returns:
 Execute a position action.
 
 Args:
-    action: Position action dictionary
+    action: Position action dictionary or PositionActionEvent
     current_time: Current timestamp
     
 Returns:

@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """
-Complete Integration Script
+Complete Integration Script - Fixed Version
 
-This script properly connects all components of the trading system
-to create a complete event flow from signals to portfolio updates.
+This script connects all components with debugging focused on the signal -> order -> fill flow.
 """
 
 import datetime
@@ -18,9 +17,9 @@ logger = logging.getLogger(__name__)
 # Import from the codebase
 from src.events.event_base import Event
 from src.events.event_bus import EventBus
-from src.events.event_types import EventType
-from src.events.event_handlers import SignalHandler
+from src.events.event_types import EventType, BarEvent
 from src.events.signal_event import SignalEvent
+from src.events.portfolio_events import PositionActionEvent
 
 from src.data.data_handler import DataHandler, CSVDataSource
 from src.rules.crossover_rules import SMACrossoverRule
@@ -28,7 +27,6 @@ from src.position_management.position_sizers import FixedSizeSizer
 from src.position_management.portfolio import EventPortfolio
 from src.position_management.position_manager import PositionManager
 from src.engine.execution_engine import ExecutionEngine
-from src.engine.backtester import Backtester
 
 def display_results(results):
     """Display backtest results."""
@@ -38,56 +36,15 @@ def display_results(results):
     logger.info(f"Return: {results['return_pct']:.2f}%")
     logger.info(f"Bars processed: {results['bars_processed']}")
     logger.info(f"Signals generated: {results['signals_generated']}")
-    logger.info(f"Trades executed: {len(results['trades'])}")
-    logger.info(f"Closed positions: {results['closed_positions']}")
+    logger.info(f"Orders generated: {results['orders_generated']}")
+    logger.info(f"Fills processed: {results['fills_processed']}")
+    logger.info(f"Positions opened: {results['positions_opened']}")
+    logger.info(f"Positions closed: {results['positions_closed']}")
     logger.info("=======================================")
-
-
-
-def verify_event_bus():
-    """Verify the EventBus is working correctly."""
-    logger.info("Verifying EventBus functionality...")
-    
-    # Create event bus
-    event_bus = EventBus()
-    
-    # Create a test handler
-    handler_called = [False]
-    
-    def test_handler(event):
-        handler_called[0] = True
-        logger.info("Test handler called successfully")
-    
-    # Register handler
-    event_bus.register(EventType.START, test_handler)
-    
-    # Create and emit a test event
-    test_event = Event(EventType.START)
-    event_bus.emit(test_event)
-    
-    # Verify handler was called
-    if not handler_called[0]:
-        logger.error("ERROR: Handler not called during emit")
-        return False
-    
-    logger.info("EventBus verification PASSED")
-    return True
-
-
 
 def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe="1m"):
     """
-    Run a complete backtest using the codebase components with enhanced debugging.
-    
-    Args:
-        config: Configuration dictionary
-        start_date: Start date for the backtest
-        end_date: End date for the backtest
-        symbols: List of symbols to backtest
-        timeframe: Timeframe for the data
-        
-    Returns:
-        Dictionary of backtest results
+    Run a complete backtest with enhanced debugging for the signal -> order -> fill flow.
     """
     # Set default dates if not provided
     if start_date is None:
@@ -97,14 +54,19 @@ def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe
     if symbols is None:
         symbols = ["SPY"]
     
-    # Verify event bus functionality
-    if not verify_event_bus():
-        logger.error("EventBus verification failed, aborting backtest.")
-        return None
-    
     # Create event bus
     event_bus = EventBus()
     logger.info("Created EventBus")
+    
+    # Create result trackers
+    trackers = {
+        'signals_generated': 0,
+        'orders_generated': 0,
+        'fills_processed': 0,
+        'positions_opened': 0,
+        'positions_closed': 0,
+        'position_actions': 0
+    }
     
     # Create portfolio with initial capital
     initial_capital = config.get('initial_capital', 100000)
@@ -114,7 +76,18 @@ def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe
     )
     logger.info(f"Created portfolio with {initial_capital} capital")
     
-    # Create rule with enhanced signal tracking
+    # Create position sizer and position manager
+    position_sizer = FixedSizeSizer(fixed_size=100)
+    position_manager = PositionManager(
+        portfolio=portfolio,
+        position_sizer=position_sizer,
+    )
+    
+    # CRITICAL: Set event bus on position manager
+    position_manager.event_bus = event_bus
+    logger.info("Created position manager with fixed sizer")
+    
+    # Create rule
     rule = SMACrossoverRule(
         name="sma_crossover",
         params={
@@ -122,241 +95,103 @@ def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe
             "slow_window": 15
         },
         description="SMA Crossover strategy",
-        event_bus=event_bus  # Pass event bus directly to rule
+        event_bus=event_bus
     )
     logger.info(f"Created {rule}")
     
-    # Create position sizer and position manager
-    position_sizer = FixedSizeSizer(fixed_size=100)
-    position_manager = PositionManager(
-        portfolio=portfolio,
-        position_sizer=position_sizer,
-    )
-    logger.info("Created position manager with fixed sizer")
-    event_bus.register(EventType.SIGNAL, position_manager.on_signal)
-
-    # Check position manager methods
-    if not hasattr(position_manager, 'on_signal'):
-        logger.error("CRITICAL: Position manager does not have on_signal method!")
-    else:
-        logger.info(f"Position manager has on_signal method")
-    
     # Create execution engine
-    execution_engine = ExecutionEngine(
-        position_manager=position_manager
-    )
-    execution_engine.portfolio = portfolio
+    execution_engine = ExecutionEngine(position_manager=position_manager)
+    execution_engine.event_bus = event_bus  # Set event bus on execution engine
     logger.info("Created execution engine")
     
-    # Custom wrapper for rule.on_bar to trace signal emission
-    def rule_on_bar_wrapper(event):
-        """Wrapper around rule.on_bar to track signal emission"""
-        try:
-            logger.debug(f"Rule wrapper received bar event for {event.data.get_symbol()}")
-            signal = rule.on_bar(event)
-
-            # Debug the signal type
-            if signal:
-                logger.info(f"SIGNAL TYPE DEBUG: Signal type is {type(signal).__name__}")
-                logger.info(f"SIGNAL ATTRS DEBUG: Signal has attributes: {dir(signal)}")
-
-                if isinstance(signal, SignalEvent):
-                    logger.info(f"DIRECT TRACE: Rule generated {signal.get_signal_name()} for {signal.get_symbol()} @ {signal.timestamp}")
-                else:
-                    logger.info(f"DIRECT TRACE: Rule generated non-SignalEvent: {type(signal).__name__}")
-
-                # Manual conversion to SignalEvent if needed
-                if not isinstance(signal, SignalEvent):
-                    logger.info(f"Converting non-SignalEvent to SignalEvent")
-                    # Extract attributes from signal
-                    if hasattr(signal, 'signal_type'):
-                        signal_value = signal.signal_type.value if hasattr(signal.signal_type, 'value') else 0
-                    elif hasattr(signal, 'signal_value'):
-                        signal_value = signal.signal_value
-                    else:
-                        signal_value = 0
-
-                    # Create proper SignalEvent
-                    signal_event = SignalEvent(
-                        signal_value=signal_value,
-                        price=getattr(signal, 'price', 0),
-                        symbol=getattr(signal, 'symbol', 'unknown'),
-                        rule_id=getattr(signal, 'rule_id', rule.name),
-                        metadata=getattr(signal, 'metadata', {}),
-                        timestamp=getattr(signal, 'timestamp', datetime.datetime.now())
-                    )
-
-                    # Use converted signal
-                    signal = signal_event
-
-                # Manually create and emit signal event to ensure it's happening
-                signal_event = Event(EventType.SIGNAL, signal)
-                event_bus.emit(signal_event)
-                logger.info(f"DIRECT TRACE: Signal event manually emitted to event bus")
-                return signal
-        except Exception as e:
-            logger.error(f"Error in rule_on_bar_wrapper: {str(e)}", exc_info=True)
-        return None
-
+    # --------- DEBUG HANDLERS ---------
     
-    # Debug signal handler that logs extensively
-    # Debug signal handler that logs extensively
-    # Debug signal handler that logs extensively
-    def debug_signal_handler(event):
-        """Debug signal handler to trace signal processing"""
-        try:
-            if not hasattr(event, 'data'):
-                logger.error(f"SIGNAL HANDLER: Event has no data attribute")
-                return
-
-            # Check what we've received
-            logger.info(f"SIGNAL HANDLER: Received event with data type: {type(event.data).__name__}")
-
-            # If we have a SignalEvent directly in the event
-            if isinstance(event.data, SignalEvent):
-                signal = event.data
-                logger.info(f"SIGNAL HANDLER: Received {signal.get_signal_name()} for {signal.get_symbol()}")
-
-                # IMPORTANT: Create a modified on_signal method to handle the signal directly, not wrapped in an event
-                # This is a temporary workaround for the dictionary conversion issue
-                def process_signal_directly(signal_object):
-                    """Process the signal directly without event wrapping"""
-                    if not isinstance(signal_object, SignalEvent):
-                        logger.error(f"Expected SignalEvent, got {type(signal_object).__name__}")
-                        return []
-
-                    # Store signal for tracking
-                    position_manager.signal_history.append(signal_object)
-
-                    # Get signal data using proper getters
-                    symbol = signal_object.get_symbol()
-                    direction = signal_object.get_signal_value()
-                    price = signal_object.get_price()
-
-                    logger.info(f"DIRECT PROCESSING: Processing {signal_object.get_signal_name()} signal for {symbol}")
-
-                    # Skip neutral signals
-                    if direction == SignalEvent.NEUTRAL:
-                        logger.debug(f"Skipping neutral signal for {symbol}")
-                        return []
-
-                    # Create a simple position action for testing
-                    # This is a simplified version just to test the signal flow
-                    action = {
-                        'action_type': 'entry',
-                        'symbol': symbol,
-                        'direction': direction,
-                        'size': 100,  # Fixed size for testing
-                        'price': price,
-                        'timestamp': signal_object.timestamp
-                    }
-
-                    logger.info(f"DIRECT PROCESSING: Created action: {action}")
-
-                    # Emit the action directly
-                    if hasattr(position_manager, 'event_bus') and position_manager.event_bus:
-                        position_manager.event_bus.emit(Event(EventType.POSITION_ACTION, action))
-                        logger.info(f"DIRECT PROCESSING: Emitted position action")
-
-                    return [action]
-
-                # Process the signal directly
-                logger.info(f"SIGNAL HANDLER: Processing signal directly...")
-                actions = process_signal_directly(signal)
-
-                if actions:
-                    logger.info(f"SIGNAL HANDLER: Produced {len(actions)} action(s)")
-                else:
-                    logger.info(f"SIGNAL HANDLER: No actions produced")
-
-                return
-
-            # If we have a dictionary (serialized signal)
-            elif isinstance(event.data, dict) and 'signal_value' in event.data:
-                logger.info(f"SIGNAL HANDLER: Received dictionary with signal data, converting to SignalEvent")
-
-                # Convert dictionary to SignalEvent
-                signal_data = event.data
-                signal = SignalEvent(
-                    signal_value=signal_data.get('signal_value', 0),
-                    price=signal_data.get('price', 0),
-                    symbol=signal_data.get('symbol', 'unknown'),
-                    rule_id=signal_data.get('rule_id', 'unknown'),
-                    metadata=signal_data.get('metadata', {}),
-                    timestamp=signal_data.get('timestamp', datetime.datetime.now())
-                )
-
-                # Now call the direct processing function with the converted signal
-                logger.info(f"SIGNAL HANDLER: Processing converted signal...")
-                # [Same direct processing code would go here]
-                return
-
-            # Other types of data
+    # Signal monitoring handler
+    def signal_monitor(event):
+        signal = event.data if isinstance(event.data, SignalEvent) else None
+        
+        if signal:
+            trackers['signals_generated'] += 1
+            signal_value = signal.get_signal_value()
+            symbol = signal.get_symbol()
+            price = signal.get_price()
+            
+            signal_type = "BUY" if signal_value == 1 else "SELL" if signal_value == -1 else "NEUTRAL"
+            logger.info(f"SIGNAL MONITOR: {signal_type} signal for {symbol} at price {price}")
+            
+            # Debug call to position manager
+            logger.info("SIGNAL MONITOR: Directly calling position_manager.on_signal with event")
+            actions = position_manager.on_signal(event)
+            
+            if actions:
+                logger.info(f"SIGNAL MONITOR: Position manager returned {len(actions)} actions")
+                for action in actions:
+                    logger.info(f"SIGNAL MONITOR: Action: {action}")
             else:
-                logger.error(f"SIGNAL HANDLER: Unrecognized data type: {type(event.data).__name__}")
-                return
-
-        except Exception as e:
-            logger.error(f"Error in debug_signal_handler: {str(e)}", exc_info=True)
-
+                logger.info("SIGNAL MONITOR: Position manager returned no actions")
     
-    # Set up event handlers with enhanced debugging
-    # 1. Register rule wrapper with BAR events (instead of rule directly)
-    event_bus.register(EventType.BAR, rule_on_bar_wrapper)
-    logger.info("Registered rule wrapper with BAR events")
+    # Position action monitoring handler
+    def position_action_monitor(event):
+        trackers['position_actions'] += 1
+        
+        # Log action details
+        if hasattr(event.data, 'get_action_type'):
+            action_type = event.data.get_action_type()
+            logger.info(f"POSITION ACTION: {action_type}")
+        elif isinstance(event.data, dict):
+            action_type = event.data.get('action_type', 'unknown')
+            symbol = event.data.get('symbol', 'unknown')
+            direction = event.data.get('direction', 0)
+            price = event.data.get('price', 0)
+            logger.info(f"POSITION ACTION: {action_type} for {symbol} direction={direction} price={price}")
+        
+        # Forward to portfolio for processing
+        if hasattr(portfolio, '_handle_position_action'):
+            logger.info("POSITION ACTION: Forwarding to portfolio._handle_position_action")
+            portfolio._handle_position_action(event)
+        else:
+            logger.error("POSITION ACTION: Portfolio doesn't have _handle_position_action method")
     
-    # 2. Register debug signal handler
-    event_bus.register(EventType.SIGNAL, debug_signal_handler)
-    logger.info("Registered debug signal handler with SIGNAL events")
+    # Order monitoring handler
+    def order_monitor(event):
+        trackers['orders_generated'] += 1
+        logger.info(f"ORDER MONITOR: Order generated for {event.data.get('symbol', 'unknown')}")
+        
+        # Forward to execution engine
+        if hasattr(execution_engine, 'on_order'):
+            logger.info("ORDER MONITOR: Forwarding to execution_engine.on_order")
+            execution_engine.on_order(event)
     
-    # 3. Create position action handler with debugging
-    def debug_position_action_handler(event):
-        """Debug position action handler to trace action processing"""
-        try:
-            action = event.data
-            logger.info(f"POSITION ACTION HANDLER: Received {action.get('action_type')} for {action.get('symbol')}")
-            
-            # Extract action data
-            action_type = action.get('action_type')
-            
-            if action_type == 'entry':
-                logger.info(f"POSITION ACTION: Entry for {action.get('symbol')} direction={action.get('direction')} size={action.get('size')} price={action.get('price')}")
-                # Process entry action
-                portfolio._handle_position_action(event)
-            elif action_type == 'exit':
-                logger.info(f"POSITION ACTION: Exit for position ID {action.get('position_id')} price={action.get('price')}")
-                # Process exit action
-                portfolio._handle_position_action(event)
-        except Exception as e:
-            logger.error(f"Error in debug_position_action_handler: {str(e)}", exc_info=True)
+    # Fill monitoring handler
+    def fill_monitor(event):
+        trackers['fills_processed'] += 1
+        logger.info(f"FILL MONITOR: Fill processed for {event.data.get('symbol', 'unknown')}")
+        
+        # Forward to portfolio
+        if hasattr(portfolio, '_handle_fill'):
+            logger.info("FILL MONITOR: Forwarding to portfolio._handle_fill")
+            portfolio._handle_fill(event)
     
-    # Register position action handler
-    event_bus.register(EventType.POSITION_ACTION, debug_position_action_handler)
-    logger.info("Registered debug position action handler")
+    # Position opened/closed monitoring
+    def position_opened_monitor(event):
+        trackers['positions_opened'] += 1
+        logger.info(f"POSITION OPENED: {event.data.get('symbol', 'unknown')}")
     
-    # 4. Register execution engine with ORDER events
-    event_bus.register(EventType.ORDER, execution_engine.on_order)
-    logger.info("Registered execution engine with ORDER events")
+    def position_closed_monitor(event):
+        trackers['positions_closed'] += 1
+        logger.info(f"POSITION CLOSED: {event.data.get('symbol', 'unknown')}")
     
-    # 5. Create debug fill handler
-    def debug_fill_handler(event):
-        """Debug fill handler to trace fill processing"""
-        try:
-            fill = event.data
-            logger.info(f"FILL HANDLER: Received fill for {fill.get('symbol')} quantity={fill.get('quantity')} price={fill.get('price')}")
-            
-            # Forward to portfolio
-            if hasattr(portfolio, 'on_fill'):
-                portfolio.on_fill(event)
-                logger.info(f"FILL HANDLER: Forwarded fill to portfolio")
-            else:
-                logger.error(f"FILL HANDLER: Portfolio does not have on_fill method!")
-        except Exception as e:
-            logger.error(f"Error in debug_fill_handler: {str(e)}", exc_info=True)
+    # Register debugging handlers
+    event_bus.register(EventType.SIGNAL, signal_monitor)
+    event_bus.register(EventType.POSITION_ACTION, position_action_monitor)
+    event_bus.register(EventType.ORDER, order_monitor)
+    event_bus.register(EventType.FILL, fill_monitor)
+    event_bus.register(EventType.POSITION_OPENED, position_opened_monitor)
+    event_bus.register(EventType.POSITION_CLOSED, position_closed_monitor)
     
-    # Register fill handler
-    event_bus.register(EventType.FILL, debug_fill_handler)
-    logger.info("Registered debug fill handler")
+    # Register rule with BAR events
+    event_bus.register(EventType.BAR, rule.on_bar)
+    logger.info("Registered handlers with event bus")
     
     # Create data handler and load data
     data_source = CSVDataSource("./data")
@@ -370,77 +205,156 @@ def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe
         timeframe=timeframe
     )
     
-    # Create results tracking
-    results = {
-        'initial_equity': initial_capital,
-        'final_equity': initial_capital,
-        'signals_generated': 0,
-        'orders_processed': 0, 
-        'fills_generated': 0,
-        'bars_processed': 0,
-        'trades': []
-    }
-    
-    # Track signals emitted and processed
-    signals_emitted = []
-    
-    # Run manual backtest loop
-    logger.info("Starting backtest loop")
-    for i, bar in enumerate(data_handler.iter_train()):
-        # Track bars processed
-        results['bars_processed'] += 1
+    # Create direct method check for position_manager
+    logger.info("----- CHECKING POSITION MANAGER METHODS -----")
+    # Check on_signal method
+    if hasattr(position_manager, 'on_signal'):
+        logger.info("position_manager.on_signal method exists")
+        
+        # Check method signature and create a test call
+        dummy_signal = SignalEvent(
+            signal_value=1,  # BUY
+            price=100.0,
+            symbol="TEST",
+        )
+        dummy_event = Event(EventType.SIGNAL, dummy_signal)
         
         try:
-            # Create and emit bar event
-            bar_event = data_handler.create_bar_event(bar)
-            event_bus.emit(Event(EventType.BAR, bar_event))
-            logger.debug(f"Emitted BAR event for {bar_event.get_symbol()} @ {bar_event.get_timestamp()}")
+            logger.info("Testing position_manager.on_signal with dummy signal")
+            result = position_manager.on_signal(dummy_event)
             
-            # Execute any pending orders with current bar
-            fills = execution_engine.execute_pending_orders(bar_event)
-            if fills:
-                logger.info(f"Executed {len(fills)} pending orders")
-                results['fills_generated'] += len(fills)
+            if result:
+                logger.info(f"on_signal returned {len(result)} action(s)")
+            else:
+                logger.info("on_signal returned no actions")
                 
-                # Emit fills
-                for fill in fills:
-                    event_bus.emit(Event(EventType.FILL, fill))
-                    logger.info(f"Emitted FILL event for {fill.get('symbol')}")
-            
-            # Update portfolio and execution engine with current bar
-            execution_engine.update(bar_event)
+            # Check _process_signal method
+            if hasattr(position_manager, '_process_signal'):
+                logger.info("position_manager._process_signal method exists")
+                
+                try:
+                    direct_result = position_manager._process_signal(dummy_signal)
+                    if direct_result:
+                        logger.info(f"_process_signal returned {len(direct_result)} action(s)")
+                    else:
+                        logger.info("_process_signal returned no actions")
+                except Exception as e:
+                    logger.error(f"Error testing _process_signal: {e}")
+            else:
+                logger.error("position_manager._process_signal method does not exist")
+                
         except Exception as e:
-            logger.error(f"Error processing bar {i}: {str(e)}", exc_info=True)
+            logger.error(f"Error testing on_signal: {e}")
+    else:
+        logger.error("position_manager.on_signal method does not exist")
+    
+    logger.info("----- CHECKING PORTFOLIO METHODS -----")
+    # Check portfolio methods
+    if hasattr(portfolio, '_handle_position_action'):
+        logger.info("portfolio._handle_position_action method exists")
+    else:
+        logger.error("portfolio._handle_position_action method does not exist")
         
-        # Log progress
-        if i % 50 == 0 or i == len(data_handler.train_data) - 1:
-            # Count signals
-            signals_count = len(signals_emitted)
-            logger.info(f"Processed {i} bars, {signals_count} signals generated")
+    if hasattr(portfolio, '_open_position'):
+        logger.info("portfolio._open_position method exists")
+    else:
+        logger.error("portfolio._open_position method does not exist")
+    
+    # PATCH position manager directly if needed
+    if hasattr(position_manager, "on_signal") and not position_manager.on_signal(dummy_event):
+        logger.warning("Position manager on_signal method returned no actions - applying patch")
+        
+        # Create direct patch for position_manager.on_signal
+        def patched_on_signal(self, event):
+            """Patched method to correctly handle signal events."""
+            # Extract signal from event
+            if not isinstance(event.data, SignalEvent):
+                logger.error(f"Expected SignalEvent in event.data, got {type(event.data)}")
+                return []
+
+            signal = event.data
             
-            # Log portfolio state
-            logger.info(f"Portfolio equity: {portfolio.equity:.2f}, cash: {portfolio.cash:.2f}")
+            # Store signal for tracking
+            self.signal_history.append(signal)
+            
+            # Process signal and get position actions
+            actions = self._process_signal(signal)
+            
+            # Emit position actions
+            if self.event_bus:
+                for action in actions:
+                    position_action_event = Event(EventType.POSITION_ACTION, action)
+                    self.event_bus.emit(position_action_event)
+                    logger.info(f"Patched on_signal emitted position action: {action.get('action_type', 'unknown')}")
+            
+            return actions
+        
+        # Apply patch
+        import types
+        position_manager.on_signal = types.MethodType(patched_on_signal, position_manager)
+        logger.info("Applied patch to position_manager.on_signal")
+        
+        # Test the patch
+        test_result = position_manager.on_signal(dummy_event)
+        if test_result:
+            logger.info(f"Patched on_signal returned {len(test_result)} action(s)")
+        else:
+            logger.info("Patched on_signal returned no actions")
+    
+    # Run backtest
+    logger.info("Starting backtest loop")
+    bars_processed = 0
+    
+    for bar in data_handler.iter_train():
+        # Track progress
+        bars_processed += 1
+        
+        # Create and emit bar event
+        if not isinstance(bar, BarEvent):
+            bar_event = BarEvent(bar)
+        else:
+            bar_event = bar
+            
+        # Emit bar event to trigger the chain of events
+        event_bus.emit(Event(EventType.BAR, bar_event))
+        
+        # Execute pending orders
+        fills = execution_engine.execute_pending_orders(bar_event)
+        if fills:
+            logger.info(f"Execute pending orders returned {len(fills)} fills")
+            for fill in fills:
+                fill_event = Event(EventType.FILL, fill)
+                event_bus.emit(fill_event)
+        
+        # Log progress every 50 bars
+        if bars_processed % 50 == 0:
+            logger.info(f"Processed {bars_processed} bars")
+            logger.info(f"Portfolio equity: {portfolio.equity:.2f}")
+            logger.info(f"Signals: {trackers['signals_generated']}, Position Actions: {trackers['position_actions']}")
+            logger.info(f"Orders: {trackers['orders_generated']}, Fills: {trackers['fills_processed']}")
             
             # Log open positions
-            position_count = len(portfolio.positions)
-            if position_count > 0:
-                logger.info(f"Open positions: {position_count}")
+            if hasattr(portfolio, 'positions'):
+                logger.info(f"Open positions: {len(portfolio.positions)}")
                 for pos_id, pos in portfolio.positions.items():
-                    logger.info(f"  Position {pos_id}: {pos.symbol} {pos.direction} {pos.quantity} @ {pos.entry_price}")
+                    if hasattr(pos, 'symbol') and hasattr(pos, 'quantity'):
+                        logger.info(f"  Position {pos_id}: {pos.symbol} quantity={pos.quantity}")
     
     # Collect results
-    results['final_equity'] = portfolio.equity
-    results['return_pct'] = (portfolio.equity / initial_capital - 1) * 100
-    results['signals_generated'] = len(signals_emitted)
+    results = {
+        'initial_equity': initial_capital,
+        'final_equity': portfolio.equity,
+        'return_pct': (portfolio.equity / initial_capital - 1) * 100,
+        'bars_processed': bars_processed,
+        'signals_generated': trackers['signals_generated'],
+        'orders_generated': trackers['orders_generated'],
+        'fills_processed': trackers['fills_processed'],
+        'positions_opened': trackers['positions_opened'], 
+        'positions_closed': trackers['positions_closed'],
+        'position_actions': trackers['position_actions']
+    }
     
-    # Get trade history
-    if hasattr(execution_engine, 'get_trade_history'):
-        results['trades'] = execution_engine.get_trade_history()
-    
-    # Get closed positions from portfolio
-    results['closed_positions'] = len(portfolio.closed_positions) if hasattr(portfolio, 'closed_positions') else 0
-    
-    # Display results
+    # Display final results
     display_results(results)
     
     return results
