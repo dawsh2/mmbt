@@ -8,7 +8,10 @@ RSI, Stochastic, CCI, and other momentum oscillators.
 from typing import Dict, Any, List, Optional
 import numpy as np
 from collections import deque
+import datetime 
 
+from src.events.event_types import BarEvent, EventType
+from src.events.signal_event import SignalEvent
 from src.signals import Signal, SignalType
 from src.rules.rule_base import Rule
 from src.rules.rule_registry import register_rule
@@ -17,6 +20,9 @@ import logging
 
 # Create a logger for this module
 logger = logging.getLogger(__name__)
+
+
+from collections import deque
 
 @register_rule(category="oscillator")
 class RSIRule(Rule):
@@ -43,11 +49,16 @@ class RSIRule(Rule):
                 - signal_type: Signal generation method ('levels', 'divergence', 'midline') (default: 'levels')
             description: Rule description
         """
-        super().__init__(name, params or self.default_params(), description)
+        # Use default params from class method if none provided
+        params = params or self.default_params()
+        
+        # Initialize with base class
+        super().__init__(name, params, description)
+        
+        # Initialize state
         self.prices = deque(maxlen=self.params['rsi_period'] * 3)  # Store more prices for calculation
         self.price_changes = deque(maxlen=self.params['rsi_period'] * 3)
         self.rsi_history = deque(maxlen=20)  # Store RSI history for divergence
-        self.current_signal_type = SignalType.NEUTRAL
         
         # For divergence detection
         self.price_highs = deque(maxlen=5)
@@ -77,56 +88,40 @@ class RSIRule(Rule):
         if self.params['signal_type'] not in valid_signal_types:
             raise ValueError(f"signal_type must be one of {valid_signal_types}")
     
-    def generate_signal(self, data: Dict[str, Any]) -> Signal:
+    def generate_signal(self, bar_event: BarEvent) -> Optional[SignalEvent]:
         """
         Generate a trading signal based on RSI.
         
         Args:
-            data: Dictionary containing price data
-                 
-        Returns:
-            Signal object representing the trading decision
-        """
-        # Check for required data
-        logger.debug(f"Rule {self.name} received data: {data}")
-        if 'Close' not in data:
-            logger.warning(f"Rule {self.name} missing Close price data")
-            return Signal(
-                timestamp=data.get('timestamp', None),
-                signal_type=SignalType.NEUTRAL,
-                price=None,
-                rule_id=self.name,
-                confidence=0.0,
-                metadata={'error': 'Missing Close price data'}
-            )
+            bar_event: BarEvent containing market data
             
+        Returns:
+            SignalEvent if conditions are met, None otherwise
+        """
+        # Extract data from bar event
+        close = bar_event.get_price()
+        timestamp = bar_event.get_timestamp()
+        symbol = bar_event.get_symbol()
+        
+        # Get full bar data if available
+        data = bar_event.get_data() if hasattr(bar_event, 'get_data') else {}
+        
+        # Extract data
+        high = data.get('High', close)
+        low = data.get('Low', close)
+        
         # Get parameters
         rsi_period = self.params['rsi_period']
         overbought = self.params['overbought']
         oversold = self.params['oversold']
         signal_type = self.params['signal_type']
         
-        # Extract price data
-        close = data['Close']
-        timestamp = data.get('timestamp', None)
-        
-        # Store price for highest high/lowest low tracking (for divergence)
-        high = data.get('High', close)
-        low = data.get('Low', close)
-        
         # Update price history
         self.prices.append(close)
         
         # Need at least 2 prices to calculate changes
         if len(self.prices) < 2:
-            return Signal(
-                timestamp=timestamp,
-                signal_type=SignalType.NEUTRAL,
-                price=close,
-                rule_id=self.name,
-                confidence=0.0,
-                metadata={'status': 'initializing'}
-            )
+            return None  # Not enough data, no signal
         
         # Calculate price change
         price_change = self.prices[-1] - self.prices[-2]
@@ -134,14 +129,7 @@ class RSIRule(Rule):
         
         # Need enough price changes to calculate RSI
         if len(self.price_changes) < rsi_period:
-            return Signal(
-                timestamp=timestamp,
-                signal_type=SignalType.NEUTRAL,
-                price=close,
-                rule_id=self.name,
-                confidence=0.0,
-                metadata={'status': 'collecting data'}
-            )
+            return None  # Not enough data, no signal
         
         # Calculate RSI
         gains = [max(0, change) for change in list(self.price_changes)[-rsi_period:]]
@@ -177,21 +165,21 @@ class RSIRule(Rule):
             self.rsi_lows.append((len(self.rsi_history) - 2, self.rsi_history[-2]))
         
         # Generate signal based on selected method
-        signal_type_enum = SignalType.NEUTRAL
+        signal_value = None  # Default to no signal
         confidence = 0.5
         signal_info = {}
         
         if signal_type == 'levels':
             # Classic overbought/oversold levels
             if rsi >= overbought:
-                signal_type_enum = SignalType.SELL
+                signal_value = SignalEvent.SELL
                 # Calculate confidence based on how far into overbought
                 overbought_penetration = min(1.0, (rsi - overbought) / (100 - overbought))
                 confidence = min(0.9, 0.6 + overbought_penetration * 0.3)
                 signal_info['condition'] = 'overbought'
                 
             elif rsi <= oversold:
-                signal_type_enum = SignalType.BUY
+                signal_value = SignalEvent.BUY
                 # Calculate confidence based on how far into oversold
                 oversold_penetration = min(1.0, (oversold - rsi) / oversold)
                 confidence = min(0.9, 0.6 + oversold_penetration * 0.3)
@@ -199,59 +187,62 @@ class RSIRule(Rule):
                 
             # Exits from extreme conditions
             elif len(self.rsi_history) >= 2 and self.rsi_history[-2] >= overbought and rsi < overbought:
-                signal_type_enum = SignalType.NEUTRAL  # Exit overbought condition
+                signal_value = SignalEvent.NEUTRAL  # Exit overbought condition
                 confidence = 0.7
                 signal_info['condition'] = 'exit_overbought'
                 
             elif len(self.rsi_history) >= 2 and self.rsi_history[-2] <= oversold and rsi > oversold:
-                signal_type_enum = SignalType.NEUTRAL  # Exit oversold condition
+                signal_value = SignalEvent.NEUTRAL  # Exit oversold condition
                 confidence = 0.7
                 signal_info['condition'] = 'exit_oversold'
                 
         elif signal_type == 'divergence' and len(self.price_highs) >= 2 and len(self.price_lows) >= 2 and len(self.rsi_highs) >= 2 and len(self.rsi_lows) >= 2:
             # Bearish divergence: Price making higher highs but RSI making lower highs
             if self.price_highs[-1][1] > self.price_highs[-2][1] and self.rsi_highs[-1][1] < self.rsi_highs[-2][1]:
-                signal_type_enum = SignalType.SELL
+                signal_value = SignalEvent.SELL
                 confidence = 0.8  # High confidence for divergence signals
                 signal_info['condition'] = 'bearish_divergence'
                 
             # Bullish divergence: Price making lower lows but RSI making higher lows
             elif self.price_lows[-1][1] < self.price_lows[-2][1] and self.rsi_lows[-1][1] > self.rsi_lows[-2][1]:
-                signal_type_enum = SignalType.BUY
+                signal_value = SignalEvent.BUY
                 confidence = 0.8  # High confidence for divergence signals
                 signal_info['condition'] = 'bullish_divergence'
                 
         elif signal_type == 'midline' and len(self.rsi_history) >= 2:
             # Crossing above/below the midline (50)
             if self.rsi_history[-2] < 50 and rsi >= 50:
-                signal_type_enum = SignalType.BUY  # Bullish momentum
+                signal_value = SignalEvent.BUY  # Bullish momentum
                 confidence = 0.6
                 signal_info['condition'] = 'cross_above_midline'
                 
             elif self.rsi_history[-2] > 50 and rsi <= 50:
-                signal_type_enum = SignalType.SELL  # Bearish momentum
+                signal_value = SignalEvent.SELL  # Bearish momentum
                 confidence = 0.6
                 signal_info['condition'] = 'cross_below_midline'
         
-        self.current_signal_type = signal_type_enum
+        # Return None if no signal is generated
+        if signal_value is None:
+            return None
         
-        return Signal(
-            timestamp=timestamp,
-            signal_type=signal_type_enum,
+        # Create and return SignalEvent
+        return SignalEvent(
+            signal_value=signal_value,
             price=close,
+            symbol=symbol,
             rule_id=self.name,
-            confidence=confidence,
             metadata={
                 'rsi': rsi,
                 'overbought': overbought,
                 'oversold': oversold,
+                'confidence': confidence,
                 **signal_info
-            }
+            },
+            timestamp=timestamp
         )
     
     def reset(self) -> None:
         """Reset the rule's internal state."""
-        super().reset()
         self.prices = deque(maxlen=self.params['rsi_period'] * 3)
         self.price_changes = deque(maxlen=self.params['rsi_period'] * 3)
         self.rsi_history = deque(maxlen=20)
@@ -259,8 +250,7 @@ class RSIRule(Rule):
         self.price_lows = deque(maxlen=5)
         self.rsi_highs = deque(maxlen=5)
         self.rsi_lows = deque(maxlen=5)
-        self.current_signal_type = SignalType.NEUTRAL
-
+        
 
 @register_rule(category="oscillator")
 class StochasticRule(Rule):

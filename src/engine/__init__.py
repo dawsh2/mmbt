@@ -4,11 +4,11 @@ from src.engine.market_simulator import MarketSimulator
 from src.engine.backtester import Backtester
 
 # Import DefaultPositionManager from backtester
-from src.engine.backtester import DefaultPositionManager
+# from src.engine.backtester import DefaultPositionManager
 
 __all__ = [
     'ExecutionEngine',
     'MarketSimulator',
     'Backtester',
-    'DefaultPositionManager'  # Export the simple position manager
+#    'DefaultPositionManager'  # Export the simple position manager
 ]

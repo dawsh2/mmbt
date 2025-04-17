@@ -87,12 +87,13 @@ and dispatches events to the appropriate handlers when they are emitted.
 
 ##### Methods
 
-###### `__init__(async_mode=False)`
+###### `__init__(async_mode=False, validate_events=False)`
 
 Initialize event bus.
 
 Args:
     async_mode: Whether to dispatch events asynchronously
+    validate_events: Whether to validate events before processing
 
 ###### `register(event_type, handler)`
 

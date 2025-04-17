@@ -9,10 +9,14 @@ import pandas as pd
 import numpy as np
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Union, Any, Tuple
-from datetime import datetime, timedelta
+from datetime import datetime
 import os
-import glob
+import logging
+from src.events.event_types import BarEvent, Event, EventType
 
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 
 
@@ -84,23 +88,26 @@ class CSVDataSource(DataSource):
         # Cache of loaded data
         self.data_cache = {}
 
-
-     def get_data(self, symbols: List[str], start_date: datetime, 
-                 end_date: datetime, timeframe: str) -> pd.DataFrame:
+    def get_data(self, symbols: List[str], start_date: datetime, 
+             end_date: datetime, timeframe: str) -> pd.DataFrame:
         """
         Load data from CSV files for the specified symbols and date range.
-        
+
         Args:
             symbols: List of symbol identifiers to fetch
             start_date: Start date for the data
             end_date: End date for the data
             timeframe: Data timeframe (e.g., '1d', '1h', '5m')
-            
+
         Returns:
             DataFrame containing the requested data
         """
         combined_data = []
-        
+
+        # Handle both single string and list inputs for symbols
+        if isinstance(symbols, str):
+            symbols = [symbols]
+
         for symbol in symbols:
             # Check if data is already in cache
             cache_key = f"{symbol}_{timeframe}"
@@ -110,77 +117,109 @@ class CSVDataSource(DataSource):
                 # Construct filename from template
                 filename = self.filename_template.format(symbol=symbol, timeframe=timeframe)
                 filepath = os.path.join(self.base_dir, filename)
-                
+
                 if not os.path.exists(filepath):
-                    raise FileNotFoundError(f"Data file not found: {filepath}")
-                
-                # Load data from CSV
-                df = pd.read_csv(filepath, parse_dates=['timestamp'])
-                
-                # Store in cache
-                self.data_cache[cache_key] = df
-            
+                    logger.warning(f"Data file not found: {filepath}")
+                    continue
+
+                try:
+                    # Load data from CSV with proper timestamp handling
+                    df = pd.read_csv(filepath)
+
+                    # Handle the timestamp with timezone information
+                    if 'timestamp' in df.columns:
+                        # Use utc=True to standardize timezone handling
+                        df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
+
+                        # Convert to naive datetime by removing timezone information
+                        df['timestamp'] = df['timestamp'].dt.tz_localize(None)
+
+                    # Store in cache
+                    self.data_cache[cache_key] = df
+                except Exception as e:
+                    logger.error(f"Error loading data from {filepath}: {str(e)}")
+                    continue
+
+            # Ensure start_date and end_date are naive datetime objects if timestamps are naive
+            if isinstance(start_date, str):
+                start_date = pd.to_datetime(start_date)
+            if isinstance(end_date, str):
+                end_date = pd.to_datetime(end_date)
+
             # Filter by date range
             mask = (df['timestamp'] >= start_date) & (df['timestamp'] <= end_date)
             filtered_df = df.loc[mask].copy()
-            
+
             # Add symbol column if not already present
             if 'symbol' not in filtered_df.columns:
                 filtered_df['symbol'] = symbol
-                
+
             combined_data.append(filtered_df)
-        
+
         if not combined_data:
+            logger.warning(f"No data found for symbols {symbols}")
             return pd.DataFrame()
-            
+
         # Combine data from all symbols
         result = pd.concat(combined_data, ignore_index=True)
-        
+
         # Ensure sorted by timestamp
         result = result.sort_values('timestamp')
-        
+
         return result
-    
+
     def is_available(self, symbol: str, start_date: datetime, 
-                    end_date: datetime, timeframe: str) -> bool:
+                end_date: datetime, timeframe: str) -> bool:
         """
         Check if data is available in CSV files for the specified parameters.
-        
+
         Args:
             symbol: Symbol identifier to check
             start_date: Start date to check
             end_date: End date to check
             timeframe: Data timeframe
-            
+
         Returns:
             True if data is available, False otherwise
         """
         # Construct filename from template
         filename = self.filename_template.format(symbol=symbol, timeframe=timeframe)
         filepath = os.path.join(self.base_dir, filename)
-        
+
         if not os.path.exists(filepath):
             return False
-            
+
         # Check if file contains data for the date range
         try:
-            df = pd.read_csv(filepath, parse_dates=['timestamp'])
-            
+            df = pd.read_csv(filepath)
+
+            # Handle the timestamp with timezone information
+            if 'timestamp' in df.columns:
+                df['timestamp'] = pd.to_datetime(df['timestamp'], utc=True)
+                df['timestamp'] = df['timestamp'].dt.tz_localize(None)
+
             if df.empty:
                 return False
-                
+
+            # Ensure start_date and end_date are naive datetime objects
+            if isinstance(start_date, str):
+                start_date = pd.to_datetime(start_date)
+            if isinstance(end_date, str):
+                end_date = pd.to_datetime(end_date)
+
             file_start = df['timestamp'].min()
             file_end = df['timestamp'].max()
-            
+
             # Check if requested date range is available
             if file_start <= start_date and file_end >= end_date:
                 return True
-                
-            return False
-            
-        except Exception:
+
             return False
 
+        except Exception as e:
+            logger.error(f"Error checking data availability: {str(e)}")
+            return False
+ 
 
 
 class DataHandler:
@@ -218,8 +257,8 @@ class DataHandler:
         """
         self.event_bus = event_bus
     
-    def load_data(self, symbols: List[str], start_date: datetime.datetime, 
-                 end_date: datetime.datetime, timeframe: str) -> None:
+    def load_data(self, symbols: List[str], start_date: datetime, 
+                 end_date: datetime, timeframe: str) -> None:
         """
         Load data for multiple symbols.
 
@@ -229,48 +268,42 @@ class DataHandler:
             end_date: End date for data
             timeframe: Data timeframe (e.g., '1d', '1h', '5m')
         """
-        all_data = []
-
-        for symbol in symbols:
-            # Get data for a single symbol
-            try:
-                symbol_data = self.data_source.get_data(symbol, start_date, end_date, timeframe)
-                all_data.append(symbol_data)
-            except Exception as e:
-                logger.error(f"Error loading data for {symbol}: {str(e)}")
-
-        # Combine data from all symbols
-        if all_data:
-            self.full_data = pd.concat(all_data, ignore_index=True)
-        else:
-            self.full_data = pd.DataFrame()
-            logger.warning("No data loaded.")
-            return
-
-        # Create train/test split
-        split_idx = int(len(self.full_data) * self.train_fraction)
-        
-        # Determine if we need to ensure the split is on a day boundary
-        timestamps = self.full_data['timestamp'].values
-        split_timestamp = timestamps[split_idx]
-        
-        # Adjust split to end of day if using daily or larger timeframe
-        if timeframe.endswith('d') or timeframe.endswith('w') or timeframe.endswith('m'):
-            next_day = (pd.Timestamp(split_timestamp) + pd.Timedelta(days=1)).floor('D')
-            # Find the closest index to this timestamp
-            closest_idx = self.full_data['timestamp'].searchsorted(next_day)
-            split_idx = closest_idx if closest_idx < len(self.full_data) else split_idx
+        try:
+            # Get data for all symbols at once
+            self.full_data = self.data_source.get_data(symbols, start_date, end_date, timeframe)
             
-        # Create the splits
-        self.train_data = self.full_data.iloc[:split_idx].copy()
-        self.test_data = self.full_data.iloc[split_idx:].copy()
-        
-        # Reset indices
-        self.reset()
-        
-        logger.info(f"Loaded {len(self.full_data)} bars from {start_date} to {end_date}")
-        logger.info(f"Training data: {len(self.train_data)} bars")
-        logger.info(f"Testing data: {len(self.test_data)} bars")
+            if self.full_data.empty:
+                logger.warning("No data loaded.")
+                return
+                
+            # Create train/test split
+            split_idx = int(len(self.full_data) * self.train_fraction)
+            
+            # Determine if we need to ensure the split is on a day boundary
+            timestamps = self.full_data['timestamp'].values
+            split_timestamp = timestamps[split_idx]
+            
+            # Adjust split to end of day if using daily or larger timeframe
+            if timeframe.endswith('d') or timeframe.endswith('w') or timeframe.endswith('m'):
+                next_day = (pd.Timestamp(split_timestamp) + pd.Timedelta(days=1)).floor('D')
+                # Find the closest index to this timestamp
+                closest_idx = self.full_data['timestamp'].searchsorted(next_day)
+                split_idx = closest_idx if closest_idx < len(self.full_data) else split_idx
+                
+            # Create the splits
+            self.train_data = self.full_data.iloc[:split_idx].copy()
+            self.test_data = self.full_data.iloc[split_idx:].copy()
+            
+            # Reset indices
+            self.reset()
+            
+            logger.info(f"Loaded {len(self.full_data)} bars from {start_date} to {end_date}")
+            logger.info(f"Training data: {len(self.train_data)} bars")
+            logger.info(f"Testing data: {len(self.test_data)} bars")
+            
+        except Exception as e:
+            logger.error(f"Error loading data: {str(e)}")
+            raise
     
     def get_next_train_bar(self) -> Optional[Dict[str, Any]]:
         """
@@ -476,55 +509,3 @@ class DataHandler:
             return self.full_data.copy()
             
         return self.full_data[self.full_data['symbol'] == symbol].copy()
-        
-
-
-    
-class DataConnector:
-    """
-    Class for connecting to external data sources like APIs or databases.
-    
-    This provides an interface for fetching data from various external sources.
-    """
-    
-    def __init__(self, api_key: Optional[str] = None, connection_params: Optional[Dict] = None):
-        """
-        Initialize the data connector.
-        
-        Args:
-            api_key: Optional API key for authentication
-            connection_params: Optional connection parameters
-        """
-        self.api_key = api_key
-        self.connection_params = connection_params or {}
-        self.connection = None
-        
-    def connect(self) -> bool:
-        """
-        Establish connection to the data source.
-        
-        Returns:
-            True if connection successful, False otherwise
-        """
-        # This would be implemented for specific data sources
-        # For example, connecting to a database or API
-        self.connection = True  # Placeholder
-        return True
-        
-    def disconnect(self) -> None:
-        """Close connection to the data source."""
-        self.connection = None
-        
-    def fetch_data(self, query: str) -> pd.DataFrame:
-        """
-        Fetch data using the specified query.
-        
-        Args:
-            query: Query string (format depends on the data source)
-            
-        Returns:
-            DataFrame containing the fetched data
-        """
-        # This would be implemented for specific data sources
-        # For example, executing a SQL query or API request
-        return pd.DataFrame()  # Placeholder

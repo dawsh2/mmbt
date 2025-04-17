@@ -27,7 +27,7 @@ class SMACrossoverRule(Rule):
     """
     
     def __init__(self, name: str, params: Optional[Dict[str, Any]] = None, 
-                description: str = "", enabled: bool = True):
+                description: str = ""):
         """
         Initialize SMA crossover rule.
         
@@ -37,7 +37,6 @@ class SMACrossoverRule(Rule):
                 - fast_window: Window size for fast SMA (default: 10)
                 - slow_window: Window size for slow SMA (default: 30)
             description: Rule description
-            enabled: Whether the rule is enabled
         """
         # Set default parameters
         default_params = {
@@ -49,7 +48,8 @@ class SMACrossoverRule(Rule):
         if params:
             default_params.update(params)
             
-        super().__init__(name, default_params, description, enabled)
+        # Initialize with base class - note we removed 'enabled' as it's not in base class
+        super().__init__(name, default_params, description)
         
         # Initialize state
         self.state = {
@@ -124,11 +124,12 @@ class SMACrossoverRule(Rule):
                         'reason': 'bullish_crossover'
                     }
                     
-                    # Create and return a proper SignalEvent
-                    return self.create_signal(
-                        signal_type=SignalEvent.BUY,
+                    # Create and return a proper SignalEvent directly
+                    return SignalEvent(
+                        signal_value=SignalEvent.BUY,
                         price=close_price,
                         symbol=symbol,
+                        rule_id=self.name,
                         metadata=metadata,
                         timestamp=timestamp
                     )
@@ -147,11 +148,12 @@ class SMACrossoverRule(Rule):
                         'reason': 'bearish_crossover'
                     }
                     
-                    # Create and return a proper SignalEvent
-                    return self.create_signal(
-                        signal_type=SignalEvent.SELL,
+                    # Create and return a proper SignalEvent directly
+                    return SignalEvent(
+                        signal_value=SignalEvent.SELL,
                         price=close_price,
                         symbol=symbol,
+                        rule_id=self.name,
                         metadata=metadata,
                         timestamp=timestamp
                     )
@@ -171,7 +173,6 @@ class SMACrossoverRule(Rule):
             'last_signal_time': None,
             'last_signal_price': None
         }
-
 # Previous version kept for reference 
 # @register_rule(category="crossover")
 # class SMAcrossoverRule(Rule):

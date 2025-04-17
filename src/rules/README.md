@@ -33,7 +33,7 @@ and sell signals when it crosses below.
 
 ##### Methods
 
-###### `__init__(name, params=None, description='', enabled=True)`
+###### `__init__(name, params=None, description='')`
 
 Initialize SMA crossover rule.
 
@@ -43,7 +43,6 @@ Args:
         - fast_window: Window size for fast SMA (default: 10)
         - slow_window: Window size for slow SMA (default: 30)
     description: Rule description
-    enabled: Whether the rule is enabled
 
 ###### `generate_signal(bar_event)`
 
@@ -364,17 +363,17 @@ Default parameters for the rule.
 
 Validate the parameters for this rule.
 
-###### `generate_signal(data)`
+###### `generate_signal(bar_event)`
 
-*Returns:* `Signal`
+*Returns:* `Optional[SignalEvent]`
 
 Generate a trading signal based on RSI.
 
 Args:
-    data: Dictionary containing price data
-         
+    bar_event: BarEvent containing market data
+    
 Returns:
-    Signal object representing the trading decision
+    SignalEvent if conditions are met, None otherwise
 
 ###### `reset()`
 

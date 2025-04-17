@@ -1,241 +1,1023 @@
 # Data Module
 
-The Data module handles all aspects of market data, including fetching, transforming, storing, and providing data to other system components. It supports various data sources (CSV, databases, APIs) and provides a unified interface for accessing market data.
+Data Module Initialization
 
-## Core Components
+This module provides components for market data acquisition, preprocessing, and management.
 
-```
-src/data/
-├── __init__.py               # Package exports
-├── data_handler.py           # DataHandler orchestration
-├── data_sources.py           # Data source implementations
-├── data_transformer.py       # Data transformation tools
-└── data_connectors.py        # External data service connectors
-```
+## Contents
 
-## Key Classes
+- [data_connectors](#data_connectors)
+- [data_handler](#data_handler)
+- [data_sources](#data_sources)
+- [data_transformer](#data_transformer)
 
-- `DataSource`: Interface for retrieving data from various origins
-- `DataHandler`: Core component that manages data flow
-- `DataTransformer`: Components for preprocessing and transforming raw data
-- Various implementations (`CSVDataSource`, `SQLiteDataSource`, etc.)
+## data_connectors
 
-## Basic Usage
+Data Connectors Module
 
-```python
-from src.data.data_sources import CSVDataSource
-from src.data.data_handler import DataHandler
-import datetime
+This module provides connectors for various external data sources like
+APIs, WebSockets, and databases. These connectors handle authentication,
+rate limiting, and data format conversion.
 
-# Create data source
-data_source = CSVDataSource("data/csv")
+### Classes
 
-# Create data handler
-data_handler = DataHandler(data_source)
+#### `DataConnector`
 
-# Load data
-start_date = datetime.datetime(2022, 1, 1)
-end_date = datetime.datetime(2022, 12, 31)
-data_handler.load_data(
-    symbols=["AAPL", "MSFT"],  # Note: load_data takes a list of symbols
-    start_date=start_date,
-    end_date=end_date,
-    timeframe="1d"
-)
+Base class for data source connections.
 
-# Iterate through training data (yields dictionaries)
-for bar in data_handler.iter_train():
-    print(f"Date: {bar['timestamp']}, Close: {bar['Close']}")
+This is a generic connector class that can be subclassed for specific data sources.
 
-# Access specific data
-aapl_data = data_handler.get_symbol_data("AAPL")  # Returns DataFrame
-```
+##### Methods
 
-## Important Interface Details
+###### `__init__(connection_params=None)`
 
-### DataSource Interface
+Initialize the data connector.
 
-DataSources provide raw data from specific origins:
+Args:
+    connection_params: Optional connection parameters
 
-```python
-# Getting data for a specific symbol (NOT a list)
-data = data_source.get_data(
-    symbol="AAPL",            # Single string, not a list
-    start_date=start_date,
-    end_date=end_date,
-    timeframe="1d"
-)
-```
+###### `connect()`
 
-### DataHandler Interface
+*Returns:* `bool`
 
-DataHandler orchestrates loading and providing data:
+Establish connection to the data source.
 
-```python
-# Loading data (takes a LIST of symbols)
-data_handler.load_data(
-    symbols=["AAPL", "MSFT"],  # List of symbols
-    start_date=start_date,
-    end_date=end_date,
-    timeframe="1d"
-    # NOTE: The load_data method does NOT accept a 'filename' parameter
-    # It uses the data_source to find files based on symbols and timeframe
-)
+Returns:
+    True if connection successful, False otherwise
 
-# Accessing data (returns DataFrame)
-train_df = data_handler.train_data
-test_df = data_handler.test_data
+###### `disconnect()`
 
-# Iterating through data (yields dictionaries)
-for bar in data_handler.iter_train():
-    # Each bar is a dictionary with OHLCV data
-    process_bar(bar)
-```
+*Returns:* `None`
 
-### Working with Custom Filenames
+Close connection to the data source.
 
-If you need to use a specific filename that doesn't follow the standard naming convention:
+###### `fetch_data(query)`
 
-```python
-# Option 1: Use a custom DataSource implementation
-class CustomFileDataSource(CSVDataSource):
-    def __init__(self, directory, filename_map=None):
-        super().__init__(directory)
-        self.filename_map = filename_map or {}
+*Returns:* `pd.DataFrame`
+
+Fetch data using the specified query.
+
+Args:
+    query: Query string (format depends on the data source)
     
-    def get_data(self, symbol, start_date, end_date, timeframe):
-        # Check if we have a custom filename for this symbol/timeframe
-        if symbol in self.filename_map:
-            custom_filename = self.filename_map[symbol]
-            file_path = os.path.join(self.directory, custom_filename)
-            # Load from custom file
-            return self._load_from_file(file_path, start_date, end_date)
-        
-        # Fall back to standard behavior
-        return super().get_data(symbol, start_date, end_date, timeframe)
+Returns:
+    DataFrame containing the fetched data
 
-# Usage:
-custom_source = CustomFileDataSource(
-    directory=".",
-    filename_map={"SYNTHETIC": "custom_synthetic_file.csv"}
-)
-data_handler = DataHandler(custom_source)
-```
+#### `DatabaseConnector`
 
-**Option 2**: Rename your file to follow the naming convention expected by CSVDataSource:
+Base class for database connectors.
 
-The CSVDataSource expects files to follow this naming convention:
-```
-{symbol}_{timeframe}.csv
-```
+##### Methods
 
-For example:
-- `AAPL_1d.csv` - Daily AAPL data
-- `MSFT_1h.csv` - Hourly MSFT data
+###### `__init__(db_path, table_prefix='')`
 
-## CSV File Format
+Initialize database connector.
 
-CSVs should have the following columns:
-- **timestamp**: The datetime column (required)
-- **Open**: Opening price (required)
-- **High**: High price (required)
-- **Low**: Low price (required)
-- **Close**: Closing price (required)
-- **Volume**: Volume (optional)
-- **symbol**: The symbol/ticker (optional - if not present, the symbol from the filename is used)
+Args:
+    db_path: Path to database file or connection string
+    table_prefix: Prefix for table names
 
-## Integration with Event System
+###### `connect()`
 
-To emit market data events using the data handler:
+*Returns:* `bool`
 
-```python
-from src.events.event_bus import EventBus, Event
-from src.events.event_types import EventType, BarEvent
-from src.events.event_emitters import MarketDataEmitter
+Connect to the database.
 
-# Create event bus and emitter
-event_bus = EventBus()
-market_data_emitter = MarketDataEmitter(event_bus)
+Returns:
+    True if connection successful, False otherwise
 
-# Process bars from the data handler
-for bar in data_handler.iter_train():
-    # Create a BarEvent object
-    bar_event = BarEvent(bar)
+###### `disconnect()`
+
+*Returns:* `None`
+
+Close database connection.
+
+###### `fetch_data(query)`
+
+*Returns:* `pd.DataFrame`
+
+Execute a query and return results as DataFrame.
+
+Args:
+    query: SQL query string
     
-    # Create and emit an event with the bar event
-    event = Event(EventType.BAR, bar_event)
-    event_bus.emit(event)
-```
+Returns:
+    DataFrame with query results
 
-## Bar Data Standardization
+###### `save_data(data, symbol, timeframe='1d')`
 
-The system uses a standardized `BarEvent` class from the events module to encapsulate bar data consistently across all components.
+*Returns:* `bool`
 
-### Using BarEvent Objects
+Save market data to database.
 
-```python
-from src.events.event_types import BarEvent
-from src.events.event_bus import Event
-from src.events.event_types import EventType
+Args:
+    data: DataFrame with market data
+    symbol: Instrument symbol
+    timeframe: Data timeframe
+    
+Returns:
+    True if save was successful, False otherwise
 
-# Create a BarEvent from dictionary data
-bar_data = {
-    "timestamp": datetime.now(),
-    "Open": 100.0,
-    "High": 101.0,
-    "Low": 99.0,
-    "Close": 100.5,
-    "Volume": 1000,
-    "symbol": "AAPL"
-}
-bar_event = BarEvent(bar_data)
+###### `load_data(symbol, timeframe='1d', start_date=None, end_date=None)`
 
-# Create and emit a BAR event
-event = Event(EventType.BAR, bar_event)
-event_bus.emit(event)
+*Returns:* `pd.DataFrame`
 
-# Accessing bar data in event handlers
-def on_bar(self, event):
-    bar_event = event.data
-    if isinstance(bar_event, BarEvent):
-        bar_data = bar_event.bar
-        symbol = bar_event.get_symbol()
-        close_price = bar_event.get_price()
-        timestamp = bar_event.get_timestamp()
-        # Process the bar data...
-```
+Load market data from database.
 
-## Testing with Synthetic Data
+Args:
+    symbol: Instrument symbol
+    timeframe: Data timeframe
+    start_date: Start date for data
+    end_date: End date for data
+    
+Returns:
+    DataFrame with market data
 
-When testing with synthetic data, make sure to:
+#### `SQLiteConnector`
 
-1. Save the synthetic data to a file that follows the naming convention
-2. Use the appropriate symbol name when loading the data
+Connector for SQLite database.
 
-```python
-# Generate synthetic data
-synthetic_df = create_synthetic_data(symbol="SYNTHETIC", timeframe="1d")
+##### Methods
 
-# Save to a file following the naming convention: SYNTHETIC_1d.csv
-synthetic_df.to_csv("SYNTHETIC_1d.csv", index=False)
+###### `__init__(db_path, table_prefix='')`
 
-# Then load using DataHandler
-data_handler = DataHandler(CSVDataSource("."))
-data_handler.load_data(
-    symbols=["SYNTHETIC"],
-    start_date=start_date,
-    end_date=end_date,
-    timeframe="1d"
-)
-```
+Initialize SQLite connector.
 
-## Best Practices
+Args:
+    db_path: Path to SQLite database file
+    table_prefix: Prefix for table names
 
-1. **Follow the naming convention** for data files to work seamlessly with CSVDataSource
-2. **Always call reset()** on the data handler before reusing it for a different dataset
-3. **Provide complete date ranges** when loading data to avoid missing important bars
-4. **Check that required columns exist** in your data files
-5. **Use proper data types** in CSV files (especially for timestamp columns)
-6. **Handle dates consistently** across your application
-7. **Create a custom DataSource** if you need special file handling
-8. **Use try/except** when loading data to handle potential file errors gracefully
+###### `connect()`
+
+*Returns:* `bool`
+
+Connect to SQLite database.
+
+Returns:
+    True if connection successful, False otherwise
+
+###### `disconnect()`
+
+*Returns:* `None`
+
+Close database connection.
+
+###### `_get_table_name(symbol, timeframe)`
+
+*Returns:* `str`
+
+Get table name for a symbol and timeframe.
+
+Args:
+    symbol: Instrument symbol
+    timeframe: Data timeframe
+    
+Returns:
+    Table name
+
+###### `_ensure_table_exists(table_name)`
+
+*Returns:* `bool`
+
+Ensure market data table exists.
+
+Args:
+    table_name: Table name
+    
+Returns:
+    True if table exists or was created, False on error
+
+###### `save_data(data, symbol, timeframe='1d')`
+
+*Returns:* `bool`
+
+Save market data to SQLite database.
+
+Args:
+    data: DataFrame with market data
+    symbol: Instrument symbol
+    timeframe: Data timeframe
+    
+Returns:
+    True if save was successful, False otherwise
+
+###### `load_data(symbol, timeframe='1d', start_date=None, end_date=None)`
+
+*Returns:* `pd.DataFrame`
+
+Load market data from SQLite database.
+
+Args:
+    symbol: Instrument symbol
+    timeframe: Data timeframe
+    start_date: Start date for data
+    end_date: End date for data
+    
+Returns:
+    DataFrame with market data
+
+###### `fetch_data(query)`
+
+*Returns:* `pd.DataFrame`
+
+Execute a query and return results as DataFrame.
+
+Args:
+    query: SQL query string
+    
+Returns:
+    DataFrame with query results
+
+#### `APIConnector`
+
+Base class for API connectors.
+
+##### Methods
+
+###### `__init__(api_key=None, api_secret=None, base_url='', rate_limit=60, rate_limit_period=60)`
+
+Initialize API connector.
+
+Args:
+    api_key: API key for authentication
+    api_secret: API secret for authentication
+    base_url: Base URL for API requests
+    rate_limit: Number of requests allowed in rate_limit_period
+    rate_limit_period: Period in seconds for rate limiting
+
+###### `connect()`
+
+*Returns:* `bool`
+
+Establish connection to the API.
+
+Returns:
+    True if connection test successful, False otherwise
+
+###### `disconnect()`
+
+*Returns:* `None`
+
+Close API connection.
+
+###### `fetch_data(query)`
+
+*Returns:* `pd.DataFrame`
+
+Fetch data using the specified query.
+
+Args:
+    query: API endpoint or query string
+    
+Returns:
+    DataFrame containing the fetched data
+
+###### `_wait_for_rate_limit()`
+
+*Returns:* `None`
+
+Wait if necessary to comply with rate limits.
+
+###### `_get_headers()`
+
+*Returns:* `Dict[str, str]`
+
+Get headers for API requests.
+
+###### `_handle_response(response)`
+
+*Returns:* `Dict[str, Any]`
+
+Handle API response.
+
+Args:
+    response: Response object from requests
+    
+Returns:
+    Parsed JSON data
+    
+Raises:
+    Exception: If response status code indicates failure
+
+###### `get_historical_data(symbol, start_date=None, end_date=None, timeframe='1d')`
+
+*Returns:* `pd.DataFrame`
+
+Get historical market data.
+
+Args:
+    symbol: Instrument symbol
+    start_date: Start date for data
+    end_date: End date for data
+    timeframe: Data timeframe/interval
+    
+Returns:
+    DataFrame with market data
+
+## data_handler
+
+Data handling module for the trading system.
+
+This module provides components for data loading, preprocessing, 
+and management from various sources.
+
+### Classes
+
+#### `DataSource`
+
+Abstract base class for data sources.
+
+DataSource classes are responsible for fetching data from a specific source
+(e.g., CSV files, APIs, databases) and converting it into a standardized format.
+
+##### Methods
+
+###### `get_data(symbols, start_date, end_date, timeframe)`
+
+*Returns:* `pd.DataFrame`
+
+Retrieve data for the specified symbols and date range.
+
+Args:
+    symbols: List of symbol identifiers to fetch
+    start_date: Start date for the data
+    end_date: End date for the data
+    timeframe: Data timeframe (e.g., '1d', '1h', '5m')
+    
+Returns:
+    DataFrame containing the requested data
+
+###### `is_available(symbol, start_date, end_date, timeframe)`
+
+*Returns:* `bool`
+
+Check if data is available for the specified parameters.
+
+Args:
+    symbol: Symbol identifier to check
+    start_date: Start date to check
+    end_date: End date to check
+    timeframe: Data timeframe
+    
+Returns:
+    True if data is available, False otherwise
+
+#### `CSVDataSource`
+
+Data source that loads data from CSV files.
+
+This class implements loading from a directory of CSV files
+with standardized naming conventions.
+
+##### Methods
+
+###### `__init__(base_dir, filename_template='{symbol}_{timeframe}.csv', date_format='%Y-%m-%d')`
+
+Initialize the CSV data source.
+
+Args:
+    base_dir: Base directory containing CSV files
+    filename_template: Template for CSV filenames
+    date_format: Date format string for parsing dates
+
+###### `get_data(symbols, start_date, end_date, timeframe)`
+
+*Returns:* `pd.DataFrame`
+
+Load data from CSV files for the specified symbols and date range.
+
+Args:
+    symbols: List of symbol identifiers to fetch
+    start_date: Start date for the data
+    end_date: End date for the data
+    timeframe: Data timeframe (e.g., '1d', '1h', '5m')
+
+Returns:
+    DataFrame containing the requested data
+
+###### `is_available(symbol, start_date, end_date, timeframe)`
+
+*Returns:* `bool`
+
+Check if data is available in CSV files for the specified parameters.
+
+Args:
+    symbol: Symbol identifier to check
+    start_date: Start date to check
+    end_date: End date to check
+    timeframe: Data timeframe
+
+Returns:
+    True if data is available, False otherwise
+
+#### `DataHandler`
+
+Main class for handling data operations in the trading system.
+
+This class orchestrates data loading, processing, and management.
+It serves as the primary interface for strategies to access data.
+
+##### Methods
+
+###### `__init__(data_source, train_fraction=0.8, event_bus=None)`
+
+Initialize the data handler.
+
+Args:
+    data_source: DataSource instance for loading data
+    train_fraction: Fraction of data to use for training (vs testing)
+    event_bus: Optional event bus for emitting events
+
+###### `set_event_bus(event_bus)`
+
+*Returns:* `None`
+
+Set the event bus for emitting events.
+
+Args:
+    event_bus: Event bus instance
+
+###### `load_data(symbols, start_date, end_date, timeframe)`
+
+*Returns:* `None`
+
+Load data for multiple symbols.
+
+Args:
+    symbols: List of symbols to load
+    start_date: Start date for data
+    end_date: End date for data
+    timeframe: Data timeframe (e.g., '1d', '1h', '5m')
+
+###### `get_next_train_bar()`
+
+*Returns:* `Optional[Dict[str, Any]]`
+
+Get the next bar from the training data.
+
+Returns:
+    Dict containing bar data or None if no more data
+
+###### `get_next_test_bar()`
+
+*Returns:* `Optional[Dict[str, Any]]`
+
+Get the next bar from the testing data.
+
+Returns:
+    Dict containing bar data or None if no more data
+
+###### `get_next_train_bar_event()`
+
+*Returns:* `Optional[BarEvent]`
+
+Get the next bar from the training data as a BarEvent.
+
+Returns:
+    BarEvent object or None if no more data
+
+###### `get_next_test_bar_event()`
+
+*Returns:* `Optional[BarEvent]`
+
+Get the next bar from the testing data as a BarEvent.
+
+Returns:
+    BarEvent object or None if no more data
+
+###### `reset_train()`
+
+*Returns:* `None`
+
+Reset the training data iterator.
+
+###### `reset_test()`
+
+*Returns:* `None`
+
+Reset the testing data iterator.
+
+###### `reset()`
+
+*Returns:* `None`
+
+Reset both training and testing data iterators.
+
+###### `iter_train(use_bar_events=True)`
+
+Iterator for training data.
+
+Args:
+    use_bar_events: If True, yield BarEvent objects instead of dictionaries
+    
+Yields:
+    Dict containing bar data or BarEvent object
+
+###### `iter_test(use_bar_events=True)`
+
+Iterator for testing data.
+
+Args:
+    use_bar_events: If True, yield BarEvent objects instead of dictionaries
+    
+Yields:
+    Dict containing bar data or BarEvent object
+
+###### `create_bar_event(bar_data)`
+
+*Returns:* `BarEvent`
+
+Create a standardized BarEvent from bar data.
+
+Args:
+    bar_data: Dictionary containing OHLCV data
+    
+Returns:
+    BarEvent object
+
+###### `emit_bar_event(bar_data)`
+
+*Returns:* `None`
+
+Create and emit a bar event.
+
+Args:
+    bar_data: Dictionary with OHLCV data or BarEvent
+
+###### `process_bar(bar_data)`
+
+*Returns:* `None`
+
+Process a bar of market data, emitting an event if possible.
+
+Args:
+    bar_data: Dictionary with OHLCV data
+
+###### `emit_all_bars(use_train=True)`
+
+*Returns:* `int`
+
+Emit bar events for all bars in the specified dataset.
+
+Args:
+    use_train: If True, use training data; otherwise use testing data
+    
+Returns:
+    Number of events emitted
+
+###### `get_symbol_data(symbol)`
+
+*Returns:* `pd.DataFrame`
+
+Get all data for a specific symbol.
+
+Args:
+    symbol: Symbol to retrieve data for
+    
+Returns:
+    DataFrame containing data for the symbol
+
+## data_sources
+
+Data Sources Module
+
+This module provides interfaces and implementations for different data sources
+such as CSV files, databases, APIs, and real-time market data feeds.
+
+### Classes
+
+#### `DataSource`
+
+Abstract base class for all data sources.
+
+##### Methods
+
+###### `get_data(symbol, start_date=None, end_date=None, timeframe='1d')`
+
+*Returns:* `pd.DataFrame`
+
+Retrieve data for a symbol within the specified date range.
+
+Args:
+    symbol: The instrument symbol
+    start_date: Optional start date for data
+    end_date: Optional end date for data
+    timeframe: Data timeframe/resolution (e.g., '1m', '1h', '1d')
+    
+Returns:
+    DataFrame with OHLCV data
+
+###### `get_symbols()`
+
+*Returns:* `List[str]`
+
+Get list of available symbols.
+
+Returns:
+    List of symbol strings
+
+#### `CSVDataSource`
+
+Data source for CSV files.
+
+##### Methods
+
+###### `__init__(data_dir, filename_pattern='{symbol}_{timeframe}.csv', date_format='%Y-%m-%d', datetime_format='%Y-%m-%d %H:%M:%S', date_column='timestamp')`
+
+Initialize CSV data source.
+
+Args:
+    data_dir: Directory containing CSV files
+    filename_pattern: Pattern for CSV filenames with {symbol} and {timeframe} placeholders
+    date_format: Format for date strings
+    datetime_format: Format for datetime strings
+    date_column: Column name for date/datetime
+
+###### `_get_file_list()`
+
+*Returns:* `List[str]`
+
+Get list of CSV files in the data directory.
+
+###### `_get_filename(symbol, timeframe)`
+
+*Returns:* `str`
+
+Get filename for a symbol and timeframe.
+
+###### `get_symbols()`
+
+*Returns:* `List[str]`
+
+Get list of available symbols from CSV files.
+
+###### `get_data(symbol, start_date=None, end_date=None, timeframe='1d')`
+
+*Returns:* `pd.DataFrame`
+
+Get data for a symbol from CSV file.
+
+###### `get_latest_date(symbol, timeframe='1d')`
+
+*Returns:* `Optional[datetime.datetime]`
+
+Get the latest available date for a symbol.
+
+#### `SQLiteDataSource`
+
+Data source for SQLite database.
+
+##### Methods
+
+###### `__init__(db_path, table_pattern='{symbol}_{timeframe}')`
+
+Initialize SQLite data source.
+
+Args:
+    db_path: Path to SQLite database file
+    table_pattern: Pattern for table names with {symbol} and {timeframe} placeholders
+
+###### `_get_connection()`
+
+*Returns:* `sqlite3.Connection`
+
+Get SQLite connection.
+
+###### `_get_table_name(symbol, timeframe)`
+
+*Returns:* `str`
+
+Get table name for a symbol and timeframe.
+
+###### `get_symbols()`
+
+*Returns:* `List[str]`
+
+Get list of available symbols from database tables.
+
+###### `get_data(symbol, start_date=None, end_date=None, timeframe='1d')`
+
+*Returns:* `pd.DataFrame`
+
+Get data for a symbol from database.
+
+#### `JSONDataSource`
+
+Data source for JSON files.
+
+##### Methods
+
+###### `__init__(data_dir, filename_pattern='{symbol}_{timeframe}.json')`
+
+Initialize JSON data source.
+
+Args:
+    data_dir: Directory containing JSON files
+    filename_pattern: Pattern for JSON filenames with {symbol} and {timeframe} placeholders
+
+###### `_get_file_list()`
+
+*Returns:* `List[str]`
+
+Get list of JSON files in the data directory.
+
+###### `_get_filename(symbol, timeframe)`
+
+*Returns:* `str`
+
+Get filename for a symbol and timeframe.
+
+###### `get_symbols()`
+
+*Returns:* `List[str]`
+
+Get list of available symbols from JSON files.
+
+###### `get_data(symbol, start_date=None, end_date=None, timeframe='1d')`
+
+*Returns:* `pd.DataFrame`
+
+Get data for a symbol from JSON file.
+
+#### `DataSourceRegistry`
+
+Registry for data sources.
+
+##### Methods
+
+###### `register(cls, name, source)`
+
+*Returns:* `None`
+
+Register a data source.
+
+Args:
+    name: Name for the data source
+    source: DataSource instance
+
+###### `get(cls, name)`
+
+*Returns:* `DataSource`
+
+Get a registered data source.
+
+Args:
+    name: Name of the data source
+    
+Returns:
+    DataSource instance
+    
+Raises:
+    ValueError: If data source is not registered
+
+###### `list_sources(cls)`
+
+*Returns:* `List[str]`
+
+Get list of registered data sources.
+
+Returns:
+    List of data source names
+
+#### `DataCache`
+
+Cache for market data to improve performance.
+
+##### Methods
+
+###### `set_max_size(cls, size)`
+
+*Returns:* `None`
+
+Set maximum cache size.
+
+###### `get(cls, key)`
+
+*Returns:* `Optional[pd.DataFrame]`
+
+Get data from cache if available.
+
+###### `set(cls, key, data)`
+
+*Returns:* `None`
+
+Store data in cache.
+
+###### `clear(cls)`
+
+*Returns:* `None`
+
+Clear the cache.
+
+###### `_enforce_max_size(cls)`
+
+*Returns:* `None`
+
+Enforce maximum cache size by removing oldest entries.
+
+## data_transformer
+
+Data Transformers Module
+
+This module provides transformers for preprocessing market data before feeding
+it to strategies and indicators. Transformers can handle operations like:
+- Resampling to different timeframes
+- Adjusting for splits and dividends
+- Filling missing values
+- Normalizing data
+- Feature engineering
+
+### Classes
+
+#### `DataTransformer`
+
+Base class for all data transformers.
+
+##### Methods
+
+###### `transform(data)`
+
+*Returns:* `pd.DataFrame`
+
+Transform input data.
+
+Args:
+    data: Input DataFrame
+    
+Returns:
+    Transformed DataFrame
+
+#### `ResampleTransformer`
+
+Transformer for resampling time series data to different frequencies.
+
+##### Methods
+
+###### `__init__(timeframe='1h', aggregation=None)`
+
+Initialize resampler.
+
+Args:
+    timeframe: Target timeframe/frequency (e.g., '1min', '5min', '1H', '1D')
+    aggregation: Custom aggregation rules. Default uses OHLCV rules.
+
+###### `transform(data)`
+
+*Returns:* `pd.DataFrame`
+
+Resample data to target timeframe.
+
+Args:
+    data: Input DataFrame with timestamp index or column
+    
+Returns:
+    Resampled DataFrame
+
+#### `MissingValueHandler`
+
+Transformer for handling missing values in data.
+
+##### Methods
+
+###### `__init__(method='ffill', columns=None)`
+
+Initialize missing value handler.
+
+Args:
+    method: Method for handling missing values ('ffill', 'bfill', 'zero', 'mean', 'median')
+    columns: Specific columns to apply the handling to (None for all columns)
+
+###### `transform(data)`
+
+*Returns:* `pd.DataFrame`
+
+Fill missing values in data.
+
+Args:
+    data: Input DataFrame
+    
+Returns:
+    DataFrame with missing values handled
+
+#### `AdjustedCloseTransformer`
+
+Transformer for adjusting OHLC data using Adjusted Close.
+
+##### Methods
+
+###### `transform(data)`
+
+*Returns:* `pd.DataFrame`
+
+Adjust OHLC data using Adjusted Close.
+
+Args:
+    data: Input DataFrame with OHLC and Adj_Close columns
+    
+Returns:
+    DataFrame with adjusted OHLC values
+
+#### `ReturnCalculator`
+
+Transformer for calculating returns from price data.
+
+##### Methods
+
+###### `__init__(periods, price_col='Close', log_returns=False)`
+
+Initialize return calculator.
+
+Args:
+    periods: List of periods to calculate returns for
+    price_col: Column to use for price data
+    log_returns: Whether to calculate log returns (True) or simple returns (False)
+
+###### `transform(data)`
+
+*Returns:* `pd.DataFrame`
+
+Calculate returns and add as new columns.
+
+Args:
+    data: Input DataFrame with price data
+    
+Returns:
+    DataFrame with additional return columns
+
+#### `NormalizationTransformer`
+
+Transformer for normalizing price data.
+
+##### Methods
+
+###### `__init__(method='z-score', window=20, columns=None)`
+
+Initialize normalizer.
+
+Args:
+    method: Normalization method ('z-score', 'min-max', 'decimal-scaling')
+    window: Window size for rolling normalization (0 for full series)
+    columns: Columns to normalize (None for all numeric columns)
+
+###### `transform(data)`
+
+*Returns:* `pd.DataFrame`
+
+Normalize data.
+
+Args:
+    data: Input DataFrame
+    
+Returns:
+    Normalized DataFrame
+
+#### `FeatureEngineeringTransformer`
+
+Transformer for engineering common technical features.
+
+##### Methods
+
+###### `__init__(features, params=None)`
+
+Initialize feature engineer.
+
+Args:
+    features: List of features to engineer ('ma', 'ema', 'rsi', 'bbands', etc.)
+    params: Dictionary of parameters for features
+
+###### `transform(data)`
+
+*Returns:* `pd.DataFrame`
+
+Add engineered features to data.
+
+Args:
+    data: Input DataFrame
+    
+Returns:
+    DataFrame with additional feature columns
+
+#### `TransformerPipeline`
+
+Pipeline for applying multiple transformers in sequence.
+
+##### Methods
+
+###### `__init__(transformers)`
+
+Initialize transformer pipeline.
+
+Args:
+    transformers: List of transformers to apply in sequence
+
+###### `transform(data)`
+
+*Returns:* `pd.DataFrame`
+
+Apply all transformers in sequence.
+
+Args:
+    data: Input DataFrame
+    
+Returns:
+    Transformed DataFrame

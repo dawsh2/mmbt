@@ -9,7 +9,7 @@ import datetime
 from typing import Dict, List, Any, Optional, Union
 
 from src.events.signal_event import SignalEvent
-from src.events.event_utils import get_signal_direction
+# from src.events.event_utils import get_signal_direction
 from src.position_management.position import ExitType, EntryType
 
 

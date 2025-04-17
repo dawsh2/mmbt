@@ -12,7 +12,7 @@ from .position import (
 )
 
 # Import portfolio components
-from .portfolio import Portfolio
+from .portfolio import EventPortfolio
 from src.events.portfolio_events import (
     PositionActionEvent,
     PortfolioUpdateEvent,

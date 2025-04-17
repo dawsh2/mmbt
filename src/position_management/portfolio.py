@@ -1,4 +1,3 @@
-# In src/position_management/event_portfolio.py
 """
 Event-Based Portfolio Module
 

@@ -30,27 +30,24 @@ class EventBus:
     The event bus maintains a registry of handlers for different event types
     and dispatches events to the appropriate handlers when they are emitted.
     """
-    
-    def __init__(self, async_mode: bool = False):
+
+    def __init__(self, async_mode: bool = False, validate_events: bool = False):
         """
         Initialize event bus.
-        
+
         Args:
             async_mode: Whether to dispatch events asynchronously
+            validate_events: Whether to validate events before processing
         """
         self.handlers = {event_type: [] for event_type in EventType}
         self.async_mode = async_mode
         self.history = []
         self.max_history_size = 1000
-        
+
         # For async mode
         self.event_queue = queue.Queue() if async_mode else None
         self.dispatch_thread = None
         self.running = False
-        
-        # Start dispatch thread if in async mode
-        if async_mode:
-            self.start_dispatch_thread()
 
         # Initialize metrics
         self.metrics = {
@@ -63,9 +60,12 @@ class EventBus:
         }
         self.metrics_start_time = datetime.datetime.now()
         self.metrics_last_update = self.metrics_start_time
+
+        # Set validation flag
         self.validate_events = validate_events
         if validate_events:
             self.validator = EventValidator()
+
     
     def register(self, event_type: EventType, handler) -> None:
         """

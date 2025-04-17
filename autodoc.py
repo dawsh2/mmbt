@@ -294,8 +294,8 @@ def generate_markdown():
                                     ""
                                 ])
         
-        # Write the markdown file inside the module directory
-        output_file = module / f"README.md"
+        # Write the markdown file inside the module directory using the module name
+        output_file = module / f"{module_name}.md"
         with open(output_file, 'w') as f:
             f.write('\n'.join(markdown_content))
         

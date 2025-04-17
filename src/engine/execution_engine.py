@@ -10,7 +10,7 @@ import logging
 from typing import Dict, List, Optional, Union, Any
 
 from src.position_management.position import Position
-from src.position_management.portfolio import Portfolio
+from src.position_management.portfolio import EventPortfolio
 from src.events.event_base import Event
 from src.events.event_types import EventType, BarEvent, OrderEvent, FillEvent
 from src.events.signal_event import SignalEvent
@@ -27,7 +27,7 @@ class ExecutionEngine:
         """Initialize the execution engine."""
         self.position_manager = position_manager
         self.market_simulator = market_simulator
-        self.portfolio = Portfolio()  # Assuming Portfolio class is available
+        self.portfolio = EventPortfolio()  # Assuming Portfolio class is available
         self.pending_orders = []
         self.trade_history = []
         self.portfolio_history = []
@@ -418,7 +418,7 @@ class ExecutionEngine:
     def reset(self):
         """Reset the execution engine state."""
         initial_capital = self.portfolio.initial_capital
-        self.portfolio = Portfolio(initial_capital)
+        self.portfolio = EventPortfolio(initial_capital)
         self.pending_orders = []
         self.trade_history = []
         self.portfolio_history = []

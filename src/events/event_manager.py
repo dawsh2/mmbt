@@ -215,7 +215,7 @@ class EventManager:
             except Exception as e:
                 logger.error(f"Error processing order event: {str(e)}", exc_info=True)
         
-        return handle_order_handler
+        return handle_order_event
     
     def _create_fill_handler(self):
         """Create a handler for FILL events."""
