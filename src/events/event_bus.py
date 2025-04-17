@@ -10,7 +10,6 @@ import uuid
 import datetime
 import threading
 import queue
-import weakref
 import logging
 from typing import Dict, List, Optional, Union, Any, Callable, Set, Type
 
@@ -39,7 +38,7 @@ class EventBus:
             async_mode: Whether to dispatch events asynchronously
             validate_events: Whether to validate events before processing
         """
-        self.handlers = {event_type: [] for event_type in EventType}
+        self.handlers = {}  # Empty dictionary for handlers
         self.async_mode = async_mode
         self.history = []
         self.max_history_size = 1000
@@ -51,9 +50,9 @@ class EventBus:
 
         # Initialize metrics
         self.metrics = {
-            'events_emitted': {event_type: 0 for event_type in EventType},
-            'events_processed': {event_type: 0 for event_type in EventType},
-            'event_processing_time': {event_type: [] for event_type in EventType},
+            'events_emitted': {},
+            'events_processed': {},
+            'event_processing_time': {},
             'errors': 0,
             'last_event_time': None,
             'event_rate': 0  # events/second
@@ -65,8 +64,11 @@ class EventBus:
         self.validate_events = validate_events
         if validate_events:
             self.validator = EventValidator()
+    
 
-    def register(self, event_type: EventType, handler) -> None:
+
+
+    def register(self, event_type, handler) -> None:
         """
         Register a handler for an event type.
 
@@ -74,21 +76,23 @@ class EventBus:
             event_type: Event type to register for
             handler: Handler to register
         """
-        # For instance methods, store the instance and method name separately
-        if hasattr(handler, '__self__') and hasattr(handler, '__func__'):
-            # This is an instance method
-            instance = handler.__self__
-            method_name = handler.__func__.__name__
+        # Initialize handler list if not present
+        if event_type not in self.handlers:
+            self.handlers[event_type] = []
 
-            # Store as tuple (instance_ref, method_name)
-            self.handlers[event_type].append((weakref.ref(instance), method_name))
-        else:
-            # Standard function or callable object (current implementation)
-            self.handlers[event_type].append(weakref.ref(handler))
-            
-    
+            # Also initialize metrics for this event type
+            if 'events_emitted' in self.metrics:
+                self.metrics['events_emitted'][event_type] = 0
+            if 'events_processed' in self.metrics:
+                self.metrics['events_processed'][event_type] = 0
+            if 'event_processing_time' in self.metrics:
+                self.metrics['event_processing_time'][event_type] = []
 
-    
+        # Store handler directly
+        self.handlers[event_type].append(handler)
+        logger.info(f"Registered handler for event type {event_type}")
+
+ 
     def unregister(self, event_type: EventType, handler) -> bool:
         """
         Unregister a handler for an event type.
@@ -100,17 +104,11 @@ class EventBus:
         Returns:
             True if handler was unregistered, False if not found
         """
-        # Find the weak reference for this handler
-        handler_refs = self.handlers[event_type]
-        for i, handler_ref in enumerate(handler_refs):
-            # Get the handler from the weak reference
-            h = handler_ref()
-            
-            # If the reference is dead or matches our handler, remove it
-            if h is None or h is handler:
-                handler_refs.pop(i)
-                return True
-        
+        # Find the handler directly
+        handler_list = self.handlers[event_type]
+        if handler in handler_list:
+            handler_list.remove(handler)
+            return True
         return False
 
     def emit(self, event):
@@ -155,38 +153,34 @@ class EventBus:
         # Get the event type from the event object
         current_event_type = event.event_type
 
+        # Skip if no handlers are registered for this event type
+        if current_event_type not in self.handlers:
+            logger.debug(f"No handlers registered for event type {current_event_type}")
+            return
+
         # Get handlers for this event type
-        handler_refs = self.handlers[current_event_type]
-        valid_refs = []
+        handlers = self.handlers[current_event_type]
 
-        for handler_ref in handler_refs:
-            if isinstance(handler_ref, tuple):
-                # Instance method case
-                instance_ref, method_name = handler_ref
-                instance = instance_ref()
-                if instance is not None:
-                    try:
-                        method = getattr(instance, method_name)
-                        method(event)
-                        valid_refs.append(handler_ref)
-                    except Exception as e:
-                        logger.error(f"Error in instance method handler: {str(e)}", exc_info=True)
-            else:
-                # Function/callable case
-                handler = handler_ref()
-                if handler is not None:
-                    try:
-                        if hasattr(handler, 'handle'):
-                            handler.handle(event)
-                        elif callable(handler):
-                            handler(event)
-                        valid_refs.append(handler_ref)
-                    except Exception as e:
-                        logger.error(f"Error in handler: {str(e)}", exc_info=True)
+        # Track event processing time
+        start_time = datetime.datetime.now()
 
-        # Update with valid references only
-        self.handlers[current_event_type] = valid_refs
-            
+        # Process all handlers
+        for handler in handlers:
+            try:
+                if hasattr(handler, 'handle'):
+                    handler.handle(event)
+                elif callable(handler):
+                    handler(event)
+                else:
+                    logger.warning(f"Unsupported handler type: {type(handler)}")
+            except Exception as e:
+                logger.error(f"Error in handler: {str(e)}", exc_info=True)
+
+        # Update metrics
+        end_time = datetime.datetime.now()
+        processing_time = (end_time - start_time).total_seconds()
+        self._update_metrics(current_event_type, processing_time)
+
 
     
     def _add_to_history(self, event: Event) -> None:
@@ -279,27 +273,36 @@ class EventBus:
             except Exception as e:
                 logger.error(f"Error in dispatch loop: {str(e)}", exc_info=True)
 
+    def _update_metrics(self, event_type, processing_time=None):
+        """Update event metrics."""
+        # Ensure event type exists in metrics
+        if event_type not in self.metrics['events_emitted']:
+            self.metrics['events_emitted'][event_type] = 0
+        if event_type not in self.metrics['events_processed']:
+            self.metrics['events_processed'][event_type] = 0
+        if event_type not in self.metrics['event_processing_time']:
+            self.metrics['event_processing_time'][event_type] = []
 
-def _update_metrics(self, event_type, processing_time=None):
-    """Update event metrics."""
-    # Count emitted event
-    self.metrics['events_emitted'][event_type] += 1
-    
-    # Update timing
-    now = datetime.datetime.now()
-    self.metrics['last_event_time'] = now
-    
-    # Update event rate (every 10 events)
-    total_events = sum(self.metrics['events_emitted'].values())
-    if total_events % 10 == 0:
-        elapsed = (now - self.metrics_start_time).total_seconds()
-        if elapsed > 0:
-            self.metrics['event_rate'] = total_events / elapsed
-    
-    # Add processing time if provided
-    if processing_time is not None:
-        self.metrics['events_processed'][event_type] += 1
-        self.metrics['event_processing_time'][event_type].append(processing_time)
+        # Count emitted event
+        self.metrics['events_emitted'][event_type] += 1
+
+        # Update timing
+        now = datetime.datetime.now()
+        self.metrics['last_event_time'] = now
+
+        # Update event rate (every 10 events)
+        total_events = sum(self.metrics['events_emitted'].values())
+        if total_events % 10 == 0:
+            elapsed = (now - self.metrics_start_time).total_seconds()
+            if elapsed > 0:
+                self.metrics['event_rate'] = total_events / elapsed
+
+        # Add processing time if provided
+        if processing_time is not None:
+            self.metrics['events_processed'][event_type] += 1
+            self.metrics['event_processing_time'][event_type].append(processing_time)
+
+
 
     def get_metrics(self):
         """Get the current event metrics."""
@@ -319,26 +322,35 @@ def _update_metrics(self, event_type, processing_time=None):
             'event_rate': self.metrics['event_rate'],
             'run_time': (datetime.datetime.now() - self.metrics_start_time).total_seconds(),
             'errors': self.metrics['errors']
-        }                
-    
+        }
+
     def reset(self) -> None:
         """Reset the event bus state."""
         # Stop async dispatch if active
         if self.async_mode:
             self.stop_dispatch_thread()
-        
+
         # Clear handlers and history
-        self.handlers = {event_type: [] for event_type in EventType}
+        self.handlers = {}  # Use empty dict instead of initializing all event types
         self.clear_history()
-        
+
+        # Reset metrics
+        self.metrics = {
+            'events_emitted': {},
+            'events_processed': {},
+            'event_processing_time': {},
+            'errors': 0,
+            'last_event_time': None,
+            'event_rate': 0
+        }
+        self.metrics_start_time = datetime.datetime.now()
+
         # Restart async dispatch if needed
         if self.async_mode:
             self.event_queue = queue.Queue()
             self.start_dispatch_thread()
-
-
-
-
+    
+ 
 
 class EventCacheManager:
     """
@@ -438,6 +450,3 @@ if __name__ == "__main__":
     # Retrieve cached event
     cached_event = cache_manager.get_cached_event(EventType.BAR, key="AAPL_2023-06-15")
     print(f"Cached event: {cached_event}")
-
-
-    

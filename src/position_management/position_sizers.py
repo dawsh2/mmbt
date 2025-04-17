@@ -59,25 +59,31 @@ class FixedSizeSizer(PositionSizer):
             fixed_size: Number of units to trade
         """
         self.fixed_size = fixed_size
-        
-    def calculate_position_size(self, signal: SignalEvent, 
-                               portfolio: Any, 
-                               current_price: Optional[float] = None) -> float:
+
+    # In position_sizers.py FixedSizeSizer.calculate_position_size method
+    def calculate_position_size(self, signal, portfolio, current_price=None):
         """
-        Calculate position size for a signal.
-        
+        Calculate a fixed position size.
+
         Args:
             signal: Trading signal
-            portfolio: Current portfolio state
-            current_price: Current market price
-            
+            portfolio: Portfolio state
+            current_price: Optional override for current price
+
         Returns:
-            Fixed position size
+            Fixed position size (positive for buy, negative for sell)
         """
-        # Apply direction
-        direction = signal.signal_type.value if hasattr(signal.signal_type, 'value') else 0
+        # Get direction from signal (handle different signal formats)
+        if hasattr(signal, 'get_signal_value'):
+            direction = signal.get_signal_value()
+        elif hasattr(signal, 'signal_type') and hasattr(signal.signal_type, 'value'):
+            direction = signal.signal_type.value
+        else:
+            direction = 0  # Neutral if can't determine
+
+        return direction * self.fixed_size
         
-        return self.fixed_size * direction
+ 
 
 
 class PercentOfEquitySizer(PositionSizer):

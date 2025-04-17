@@ -96,7 +96,71 @@ class EventPortfolio(EventHandler):
             self._handle_position_action(event)
         elif event.event_type == EventType.FILL:
             self._handle_fill(event)
-    
+
+    # Add this method to your EventPortfolio class
+    def mark_to_market(self, bar_event):
+        """
+        Update portfolio positions with current market prices.
+
+        Args:
+            bar_event: Bar event containing current market data
+        """
+        # Extract data from bar event
+        symbol = bar_event.get_symbol()
+        current_price = bar_event.get_price()  # Typically close price
+        timestamp = bar_event.get_timestamp()
+
+        # Update positions for this symbol
+        if symbol in self.positions_by_symbol:
+            for position in self.positions_by_symbol[symbol]:
+                # Update position with current price
+                if hasattr(position, 'update_price'):
+                    position.update_price(current_price, timestamp)
+                # If position doesn't have update_price, update current_price directly
+                else:
+                    position.current_price = current_price
+
+        # Update portfolio metrics
+        self._update_metrics()
+
+        # Emit portfolio update event
+        self._emit_portfolio_update()
+
+
+    # Add this method to your EventPortfolio class
+    def get_position_snapshot(self):
+        """
+        Get a snapshot of all current positions.
+
+        Returns:
+            Dictionary with position information
+        """
+        position_data = {}
+
+        for symbol, positions in self.positions_by_symbol.items():
+            if not positions:
+                continue
+
+            position_data[symbol] = []
+            for position in positions:
+                # Create a snapshot for this position
+                snapshot = {
+                    'position_id': position.position_id,
+                    'symbol': position.symbol,
+                    'direction': position.direction,
+                    'quantity': position.quantity,
+                    'entry_price': position.entry_price,
+                    'current_price': getattr(position, 'current_price', position.entry_price),
+                    'entry_time': position.entry_time,
+                    'stop_loss': position.stop_loss,
+                    'take_profit': position.take_profit,
+                    'status': position.status if hasattr(position, 'status') else 'OPEN',
+                    'unrealized_pnl': position._calculate_unrealized_pnl() if hasattr(position, '_calculate_unrealized_pnl') else 0.0
+                }
+                position_data[symbol].append(snapshot)
+
+        return position_data
+            
     def _handle_position_action(self, event: Event) -> None:
         """
         Handle position action events.

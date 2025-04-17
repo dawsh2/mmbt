@@ -70,12 +70,6 @@ This module provides the event bus infrastructure for the trading system.
 It includes the Event class, EventBus class, and related utilities for
 event-driven communication between system components.
 
-### Functions
-
-#### `_update_metrics(event_type, processing_time=None)`
-
-Update event metrics.
-
 ### Classes
 
 #### `EventBus`
@@ -183,6 +177,20 @@ Stop the async dispatch thread.
 *Returns:* `None`
 
 Main loop for async event dispatching.
+
+###### `_update_metrics(event_type, processing_time=None)`
+
+Update event metrics.
+
+###### `get_metrics()`
+
+Get the current event metrics.
+
+###### `reset()`
+
+*Returns:* `None`
+
+Reset the event bus state.
 
 #### `EventCacheManager`
 
@@ -2010,6 +2018,13 @@ Get the rule ID that generated the signal.
 *Returns:* `Dict[str, Any]`
 
 Get the signal metadata.
+
+###### `emit_signal(signal)`
+
+Emit a signal event.
+
+Args:
+    signal: SignalEvent to emit
 
 ###### `__str__()`
 

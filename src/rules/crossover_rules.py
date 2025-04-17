@@ -175,6 +175,7 @@ class FixedSMACrossoverRule(Rule):
         }
         self.signals = []
 
+
 @register_rule(category="crossover")
 class SMACrossoverRule(Rule):
     """
@@ -238,23 +239,17 @@ class SMACrossoverRule(Rule):
         Returns:
             SignalEvent if crossover occurs, None otherwise
         """
-        # Extract data from bar event
+        # Import numpy inside method to avoid circular imports
+        import numpy as np
+        
+        # Extract data from bar event - using strict BarEvent methods
         try:
-            # Get price from specified field (default: 'Close')
-            price_field = self.params.get('price_field', 'Close')
-            
-            # Try to get price directly from bar data
-            bar_data = bar_event.get_data()
-            if isinstance(bar_data, dict) and price_field in bar_data:
-                close_price = bar_data[price_field]
-            else:
-                # Fallback to get_price() method
-                close_price = bar_event.get_price()
-                
+            # Get price directly from BarEvent
+            close_price = bar_event.get_price()
             timestamp = bar_event.get_timestamp()
             symbol = bar_event.get_symbol()
             
-            logger.debug(f"SMA Rule {self.name}: Processing bar for {symbol} @ {timestamp}, {price_field}: {close_price}")
+            logger.debug(f"SMA Rule {self.name}: Processing bar for {symbol} @ {timestamp}, Close: {close_price}")
         
         except Exception as e:
             logger.error(f"SMA Rule {self.name}: Error extracting data from bar event: {e}")
@@ -401,7 +396,7 @@ class SMACrossoverRule(Rule):
             'last_signal_price': None
         }
         # Also reset the signals list in the base class
-        self.signals = []
+        self.signals = []        
 # Previous version kept for reference 
 # @register_rule(category="crossover")
 # class SMAcrossoverRule(Rule):

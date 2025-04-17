@@ -27,7 +27,7 @@ class ExecutionEngine:
         """Initialize the execution engine."""
         self.position_manager = position_manager
         self.market_simulator = market_simulator
-        self.portfolio = EventPortfolio()  # Assuming Portfolio class is available
+        self.portfolio = None 
         self.pending_orders = []
         self.trade_history = []
         self.portfolio_history = []

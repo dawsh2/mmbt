@@ -644,13 +644,9 @@ Returns:
 
 Process a bar event and generate a trading signal.
 
-This method extracts the bar data from the event, passes it to
-generate_signal() for signal generation, and emits any signals
-to the event bus.
-
 Args:
     event: Event containing a BarEvent in its data attribute
-    
+
 Returns:
     SignalEvent if a signal is generated, None otherwise
 

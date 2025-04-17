@@ -92,14 +92,10 @@ class Rule(ABC):
     def on_bar(self, event: Event) -> Optional[SignalEvent]:
         """
         Process a bar event and generate a trading signal.
-        
-        This method extracts the bar data from the event, passes it to
-        generate_signal() for signal generation, and emits any signals
-        to the event bus.
-        
+
         Args:
             event: Event containing a BarEvent in its data attribute
-            
+
         Returns:
             SignalEvent if a signal is generated, None otherwise
         """
@@ -108,44 +104,45 @@ class Rule(ABC):
             logger.error(f"Expected Event object, got {type(event).__name__}")
             return None
 
-        # Case 1: Event data is a BarEvent
-        if isinstance(event.data, BarEvent):
-            bar_event = event.data
-        # Case 2: Event data is a dict (backward compatibility)
-        elif isinstance(event.data, dict) and 'Close' in event.data:
-            # Convert dict to BarEvent
-            bar_event = BarEvent(event.data)
-            logger.warning(f"Rule {self.name}: Received dictionary instead of BarEvent, converting")
-        else:
-            logger.error(f"Rule {self.name}: Unable to extract BarEvent from {type(event.data).__name__}")
+        # Extract BarEvent - ONLY accept BarEvent objects, not dictionaries
+        if not isinstance(event.data, BarEvent):
+            logger.error(f"Rule {self.name}: Expected BarEvent in event.data, got {type(event.data).__name__}")
             return None
-        
+
+        bar_event = event.data
+
         # Generate signal by delegating to the subclass implementation
         try:
             signal = self.generate_signal(bar_event)
-            
+
+            # Validate signal type - STRICT VALIDATION
+            if signal is not None and not isinstance(signal, SignalEvent):
+                logger.error(f"Rule {self.name}: Invalid signal type: {type(signal).__name__}, must be SignalEvent")
+                return None
+
             # If signal was generated, store it and emit it
             if signal is not None:
                 # Store in history
                 self.signals.append(signal)
                 logger.info(f"Rule {self.name}: Generated {signal.get_signal_name()} signal")
-                
+
                 # Emit signal event if we have an event bus
                 if self.event_bus is not None:
                     try:
                         # Create and emit signal event
                         signal_event = Event(EventType.SIGNAL, signal)
                         self.event_bus.emit(signal_event)
-                        logger.debug(f"Rule {self.name}: Emitted signal event: {signal_event}")
+                        logger.debug(f"Rule {self.name}: Emitted signal event")
                     except Exception as e:
                         logger.error(f"Rule {self.name}: Error emitting signal event: {str(e)}", exc_info=True)
-            
+
             return signal
-            
+
         except Exception as e:
             logger.error(f"Rule {self.name}: Error generating signal: {str(e)}", exc_info=True)
             return None
 
+  
     def set_event_bus(self, event_bus):
         """
         Set the event bus for this rule.

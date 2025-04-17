@@ -85,6 +85,21 @@ class SignalEvent(Event):
     def get_metadata(self) -> Dict[str, Any]:
         """Get the signal metadata."""
         return self.get('metadata', {})
+
+    def emit_signal(self, signal):
+        """
+        Emit a signal event.
+
+        Args:
+            signal: SignalEvent to emit
+        """
+        from src.events.event_types import EventType
+
+        # Create an event to wrap the signal
+        event = Event(EventType.SIGNAL, signal)
+
+        # Emit the event
+        self.emit(event)
     
     def __str__(self) -> str:
         """String representation of the signal event."""

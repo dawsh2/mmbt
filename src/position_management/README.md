@@ -289,6 +289,22 @@ Process incoming events.
 Args:
     event: Event to process
 
+###### `mark_to_market(bar_event)`
+
+Update portfolio positions with current market prices.
+
+Args:
+    bar_event: Bar event containing current market data
+
+###### `get_position_snapshot()`
+
+Get a snapshot of all current positions.
+
+Returns:
+    Dictionary with position information
+
+*Returns:* Dictionary with position information
+
 ###### `_handle_position_action(event)`
 
 *Returns:* `None`
@@ -874,10 +890,10 @@ Returns:
 
 ## position_manager
 
-Position Manager Module (Updated)
+Position Manager Module
 
-This module provides the updated PositionManager class that works with standardized
-SignalEvent objects rather than legacy Signal objects.
+This module provides the PositionManager class that works with standardized
+SignalEvent objects and integrates with the RiskManager.
 
 ### Classes
 
@@ -885,16 +901,12 @@ SignalEvent objects rather than legacy Signal objects.
 
 Manages trading positions, sizing, and allocation.
 
-The position manager integrates position sizing, allocation, and risk
-management to determine appropriate position sizes based on signals,
-market conditions, and portfolio state.
-
-This updated version works directly with SignalEvent objects rather than
-legacy Signal objects wrapped in Events.
+The position manager integrates with risk management to determine appropriate
+position sizes based on signals, market conditions, and portfolio state.
 
 ##### Methods
 
-###### `__init__(portfolio, position_sizer=None, allocation_strategy=None, risk_manager=None, max_positions=0)`
+###### `__init__(portfolio, position_sizer=None, allocation_strategy=None, risk_manager=None, max_positions=0, event_bus=None)`
 
 Initialize position manager.
 
@@ -904,44 +916,19 @@ Args:
     allocation_strategy: Strategy for allocating capital across instruments
     risk_manager: Risk management component
     max_positions: Maximum number of positions (0 for unlimited)
+    event_bus: Event bus for emitting events
 
 ###### `on_signal(event)`
 
-Process a signal event and determine position actions.
+*Returns:* `List[Dict[str, Any]]`
+
+Process a signal event into position actions.
 
 Args:
     event: Event containing a SignalEvent
 
 Returns:
-    List of position action events
-
-*Returns:* List of position action events
-
-###### `_process_signal(signal)`
-
-Process a signal into position actions.
-
-Args:
-    signal: SignalEvent to process
-
-Returns:
-    List of PositionActionEvent objects
-
-*Returns:* List of PositionActionEvent objects
-
-###### `calculate_position_size(signal, portfolio, current_price=None)`
-
-Calculate appropriate position size for a signal.
-
-Args:
-    signal: SignalEvent
-    portfolio: Portfolio state
-    current_price: Optional override for current price
-
-Returns:
-    Position size (positive for long, negative for short)
-
-*Returns:* Position size (positive for long, negative for short)
+    List of position actions
 
 ###### `execute_position_action(action, current_time)`
 
@@ -1006,17 +993,17 @@ Args:
 
 ###### `calculate_position_size(signal, portfolio, current_price=None)`
 
-*Returns:* `float`
-
-Calculate position size for a signal.
+Calculate a fixed position size.
 
 Args:
     signal: Trading signal
-    portfolio: Current portfolio state
-    current_price: Current market price
-    
+    portfolio: Portfolio state
+    current_price: Optional override for current price
+
 Returns:
-    Fixed position size
+    Fixed position size (positive for buy, negative for sell)
+
+*Returns:* Fixed position size (positive for buy, negative for sell)
 
 #### `PercentOfEquitySizer`
 
