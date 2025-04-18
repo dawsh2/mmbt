@@ -456,3 +456,95 @@ class EventPortfolio(EventHandler):
     def get_positions_by_symbol(self, symbol):
         """Get positions for a symbol."""
         return self.positions_by_symbol.get(symbol, [])        
+
+
+    # Add to EventPortfolio class
+    def update_position(self, symbol, quantity_delta, price, timestamp):
+        """
+        Update portfolio with a position change.
+
+        Args:
+            symbol: Instrument symbol
+            quantity_delta: Change in position quantity (positive for buy, negative for sell)
+            price: Execution price
+            timestamp: Execution timestamp
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Buying
+            if quantity_delta > 0:
+                # Check if we have an existing position
+                if symbol in self.positions_by_symbol and self.positions_by_symbol[symbol]:
+                    # Add to existing position
+                    position = self.positions_by_symbol[symbol][0]
+                    position.add(quantity_delta, price, timestamp)
+                else:
+                    # Create new position
+                    direction = 1  # Long
+                    self._open_position(
+                        symbol=symbol,
+                        direction=direction,
+                        quantity=quantity_delta,
+                        entry_price=price,
+                        entry_time=timestamp
+                    )
+
+                # Update cash
+                self.cash -= quantity_delta * price
+
+            # Selling
+            elif quantity_delta < 0:
+                # Get positions for this symbol
+                if symbol not in self.positions_by_symbol or not self.positions_by_symbol[symbol]:
+                    logger.warning(f"No positions found for {symbol}, cannot sell")
+                    return False
+
+                # Get quantity to close
+                quantity_to_close = abs(quantity_delta)
+
+                # Process each position until we've closed the required amount
+                remaining = quantity_to_close
+                for position in list(self.positions_by_symbol[symbol]):
+                    if remaining <= 0:
+                        break
+
+                    if position.quantity <= remaining:
+                        # Close this position completely
+                        self._close_position(
+                            position_id=position.position_id,
+                            exit_price=price,
+                            exit_time=timestamp,
+                            exit_type=ExitType.STRATEGY
+                        )
+                        remaining -= position.quantity
+                    else:
+                        # Partially close this position
+                        position.partially_close(remaining, price, timestamp, ExitType.STRATEGY)
+                        remaining = 0
+
+                # Update cash
+                self.cash += abs(quantity_delta) * price
+
+            # Update metrics
+            self._update_metrics()
+            self._emit_portfolio_update()
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error updating position: {e}", exc_info=True)
+            return False
+
+
+        # Add this to EventPortfolio class
+    def on_signal(self, event):
+        """
+        Disabled method to prevent portfolio from reacting directly to signals.
+
+        Args:
+            event: Signal event
+        """
+        logger.debug("Portfolio received signal but direct signal processing is disabled")
+        pass  # Do nothing - position manager will handle this

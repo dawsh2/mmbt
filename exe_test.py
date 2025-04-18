@@ -89,11 +89,27 @@ def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe
         end_date=end_date,
         timeframe=timeframe
     )
-    
-    # Register core handlers
+
+
+    # Only register handlers once!
     event_bus.register(EventType.BAR, rule.on_bar)
-    event_bus.register(EventType.SIGNAL, position_manager.on_signal)
-    
+    event_bus.register(EventType.SIGNAL, position_manager.on_signal)  # Position manager creates actions
+
+    # Signal logging only (no position creation)
+    def log_signal(event):
+        signal = event.data
+        if isinstance(signal, SignalEvent):
+            direction = "BUY" if signal.get_signal_value() > 0 else "SELL" if signal.get_signal_value() < 0 else "NEUTRAL"
+            logger.info(f"Signal: {direction} for {signal.get_symbol()} at {signal.get_price()}")
+        else:
+            logger.warning(f"Non-SignalEvent in signal data: {type(signal)}")
+
+    event_bus.register(EventType.SIGNAL, log_signal)  # Just for logging
+
+    # REMOVE THIS DUPLICATE REGISTRATION
+    # event_bus.register(EventType.SIGNAL, log_signal)  # THIS IS DUPLICATED IN YOUR CODE!
+ 
+ 
     # Process position actions when emitted
     def process_position_action(event):
         if event.event_type == EventType.POSITION_ACTION:
@@ -108,7 +124,9 @@ def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe
             
             if result and result.get('success', False):
                 logger.info(f"Position action successful: {result}")
-    
+
+
+
     # Register position action processor
     event_bus.register(EventType.POSITION_ACTION, process_position_action)
     

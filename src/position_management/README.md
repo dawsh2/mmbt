@@ -394,6 +394,28 @@ Get net position for a symbol.
 
 Get positions for a symbol.
 
+###### `update_position(symbol, quantity_delta, price, timestamp)`
+
+Update portfolio with a position change.
+
+Args:
+    symbol: Instrument symbol
+    quantity_delta: Change in position quantity (positive for buy, negative for sell)
+    price: Execution price
+    timestamp: Execution timestamp
+
+Returns:
+    True if successful, False otherwise
+
+*Returns:* True if successful, False otherwise
+
+###### `on_signal(event)`
+
+Disabled method to prevent portfolio from reacting directly to signals.
+
+Args:
+    event: Signal event
+
 ## position
 
 Position Module
@@ -917,12 +939,20 @@ position sizes based on signals, market conditions, and portfolio state.
 
 Initialize position manager.
 
+Args:
+    portfolio: Portfolio to manage
+    position_sizer: Strategy for determining position sizes
+    allocation_strategy: Strategy for allocating capital across instruments
+    risk_manager: Risk management component
+    max_positions: Maximum number of positions (0 for unlimited)
+    event_bus: Event bus for emitting events
+
 ###### `on_signal(event)`
 
 Process a signal event into position actions.
 
 Args:
-    event: Event containing a SignalEvent in its data field
+    event: Event containing a SignalEvent or the SignalEvent directly
 
 Returns:
     List of position actions
@@ -953,18 +983,13 @@ Returns:
 
 *Returns:* Position size (positive for buy, negative for sell)
 
-###### `execute_position_action(action, current_time=None)`
+###### `_execute_entry_action(action, current_time)`
 
-Execute a position action.
+Execute an entry action with checking for existing positions.
 
-Args:
-    action: Position action dictionary
-    current_time: Current timestamp (defaults to now)
-    
-Returns:
-    Result dictionary or None if action failed
+###### `_execute_exit_action(action, current_time)`
 
-*Returns:* Result dictionary or None if action failed
+Execute an exit action with position existence check.
 
 ## position_sizers
 

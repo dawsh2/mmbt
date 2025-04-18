@@ -645,7 +645,7 @@ Returns:
 Process a bar event and generate a trading signal.
 
 Args:
-    event: Event containing a BarEvent in its data attribute
+    event: Event containing a BarEvent
 
 Returns:
     SignalEvent if a signal is generated, None otherwise
