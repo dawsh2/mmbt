@@ -1,3 +1,66 @@
+"""
+Critical Event Flow Documentation
+
+This section explains the correct event flow through the algorithmic trading system.
+
+Event Flow Chain:
+1. BAR events - Generated when new market data arrives
+2. SIGNAL events - Created by strategies processing BAR events 
+3. POSITION_ACTION events - Created by position_manager in response to signals
+4. ORDER events - Created by execution_engine in response to position actions
+5. FILL events - Created by execution_engine when orders are executed
+6. Portfolio Updates - Portfolio is updated based on fills
+
+Critical Components and Responsibilities:
+-----------------------------------------
+
+1. EventBus (src/events/event_bus.py)
+   - Central message broker for all events
+   - Connects components through event handlers
+   - Maintains event counts for monitoring
+
+2. Strategy (src/strategies/strategy_base.py, src/rules/*)
+   - Receives BAR events
+   - Applies trading logic to generate SIGNAL events
+   - Should not directly create orders or positions
+
+3. PositionManager (src/position_management/position_manager.py)
+   - Receives SIGNAL events
+   - Creates POSITION_ACTION events (entry/exit)
+   - Handles position sizing based on risk parameters
+   - Manages portfolio state
+
+4. ExecutionEngine (src/engine/execution_engine.py)
+   - Receives POSITION_ACTION events
+   - Creates and emits ORDER events
+   - Handles order execution and creates FILL events
+   - Updates portfolio based on fills
+
+5. Portfolio (src/position_management/portfolio.py)
+   - Manages positions and cash
+   - Updates equity based on position values
+   - Responds to FILL events
+   - Emits PORTFOLIO_UPDATE events
+
+Common Event Flow Issues:
+------------------------
+1. Registration Order: Components must be registered in the correct order with the event bus
+2. Event Type Mismatch: Ensure events are of the correct type
+3. Missing Handler Registration: All components must be registered as handlers for their event types
+4. Improper Event Creation: Events must be properly created with all required attributes
+5. Circular Dependencies: Avoid circular dependencies between components
+
+Troubleshooting Event Flow:
+--------------------------
+1. Enable DEBUG logging to trace event flow
+2. Check event counts to see where the chain breaks
+3. Verify that each component is correctly registered with the event bus
+4. Ensure events are being properly emitted with the correct event types
+5. Check for errors in event handlers that might interrupt the flow
+"""
+
+
+
 # Event System Initialization Guide
 
 This guide provides step-by-step instructions for setting up the enhanced event system with proper object reference preservation. It covers initialization, handler registration, and best practices.

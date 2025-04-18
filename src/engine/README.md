@@ -153,18 +153,7 @@ Execute any pending orders based on current bar data.
 
 ###### `_execute_order(order, price, timestamp, commission=0.0)`
 
-Execute a single order and update portfolio.
-
-Args:
-    order: OrderEvent to execute
-    price: Execution price
-    timestamp: Execution timestamp
-    commission: Commission cost
-
-Returns:
-    FillEvent if successful
-
-*Returns:* FillEvent if successful
+No docstring provided.
 
 ###### `_emit_fill_event(fill)`
 

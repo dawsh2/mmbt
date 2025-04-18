@@ -346,6 +346,8 @@ class Backtester:
         
         return handle_position_action_event
 
+
+ 
     def run(self, use_test_data=False):
         """
         Run the backtest with proper event flow.

@@ -320,6 +320,13 @@ Handle fill events.
 Args:
     event: Fill event
 
+###### `handle_position_action(event)`
+
+Handle position action events.
+
+Args:
+    event: Position action event
+
 ###### `_open_position(symbol, direction, quantity, entry_price, entry_time, stop_loss=None, take_profit=None, strategy_id=None)`
 
 *Returns:* `Position`
@@ -395,17 +402,6 @@ Get positions for a symbol.
 ###### `update_position(symbol, quantity_delta, price, timestamp)`
 
 Update portfolio with a position change.
-
-Args:
-    symbol: Instrument symbol
-    quantity_delta: Change in position quantity (positive for buy, negative for sell)
-    price: Execution price
-    timestamp: Execution timestamp
-
-Returns:
-    True if successful, False otherwise
-
-*Returns:* True if successful, False otherwise
 
 ###### `on_signal(event)`
 

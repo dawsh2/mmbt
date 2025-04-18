@@ -123,18 +123,18 @@ class ExecutionEngine:
             self.event_bus.emit(Event(EventType.ORDER, order))
 
         return order
-    
+
     def on_order(self, event):
         """
         Handle incoming order events.
-        
+
         Args:
             event: Order event
         """
         if not isinstance(event, Event):
             logger.error(f"Expected Event object, got {type(event)}")
             return
-            
+
         if not isinstance(event.data, OrderEvent):
             logger.warning(f"Expected OrderEvent in event.data, got {type(event.data)}")
             # Handle backward compatibility
@@ -158,12 +158,12 @@ class ExecutionEngine:
                 return
         else:
             order = event.data
-        
+
         logger.info(f"Order received: {order}")
-        
+
         # Add to pending orders
         self.pending_orders.append(order)
-        
+
         # For market orders, execute immediately if possible
         if order.get_order_type() == 'MARKET':
             logger.info(f"Executing market order immediately: {order}")
@@ -171,23 +171,22 @@ class ExecutionEngine:
                 # Get current price (assuming last known price)
                 symbol = order.get_symbol()
                 price = self._get_last_known_price(symbol)
-                
+
                 if price:
                     fill = self._execute_order(order, price, datetime.datetime.now())
                     if fill:
                         # Emit FILL event
                         self._emit_fill_event(fill)
-                        
+
                         # Remove from pending orders
                         if order in self.pending_orders:
                             self.pending_orders.remove(order)
                 else:
                     logger.warning(f"No price available for {symbol}, order will be executed on next bar")
             except Exception as e:
-                logger.error(f"Error executing market order immediately: {e}")
-        
-        logger.info(f"Added order to pending list: {order}")
+                logger.error(f"Error executing market order immediately: {e}", exc_info=True)
 
+        logger.info(f"Added order to pending list: {order}")
 
     def execute_pending_orders(self, bar, market_simulator=None):
         """Execute any pending orders based on current bar data."""
@@ -248,63 +247,73 @@ class ExecutionEngine:
 
 
     def _execute_order(self, order, price, timestamp, commission=0.0):
-        """
-        Execute a single order and update portfolio.
+        try:
+            # Extract order details with better error handling
+            symbol = None
+            direction = 0
+            quantity = 0
+            order_id = None
 
-        Args:
-            order: OrderEvent to execute
-            price: Execution price
-            timestamp: Execution timestamp
-            commission: Commission cost
+            # Safe attribute extraction
+            if hasattr(order, 'get_symbol'):
+                symbol = order.get_symbol()
+            elif hasattr(order, 'symbol'):
+                symbol = order.symbol
 
-        Returns:
-            FillEvent if successful
-        """
-        # Extract order details with proper getter method or attribute access
-        symbol = order.get_symbol() if hasattr(order, 'get_symbol') else getattr(order, 'symbol', None)
-        direction = order.get_direction() if hasattr(order, 'get_direction') else getattr(order, 'direction', 0)
-        quantity = order.get_quantity() if hasattr(order, 'get_quantity') else getattr(order, 'quantity', 0)
-        order_id = order.get_order_id() if hasattr(order, 'get_order_id') else getattr(order, 'order_id', None)
+            if hasattr(order, 'get_direction'):
+                direction = order.get_direction()
+            elif hasattr(order, 'direction'):
+                direction = order.direction
 
-        # Validate order parameters
-        if not symbol or direction == 0 or quantity == 0:
-            logger.error(f"Invalid order parameters: symbol={symbol}, direction={direction}, quantity={quantity}")
+            if hasattr(order, 'get_quantity'):
+                quantity = order.get_quantity()
+            elif hasattr(order, 'quantity'):
+                quantity = order.quantity
+
+            if hasattr(order, 'get_order_id'):
+                order_id = order.get_order_id()
+            elif hasattr(order, 'order_id'):
+                order_id = order.order_id
+
+            # Validate required fields
+            if not symbol or direction == 0 or quantity == 0:
+                logger.error(f"Invalid order parameters: symbol={symbol}, direction={direction}, quantity={quantity}")
+                return None
+
+            # Create fill record
+            fill = FillEvent(
+                symbol=symbol,
+                quantity=quantity,
+                price=price,
+                direction=direction,
+                order_id=order_id,
+                transaction_cost=commission,
+                timestamp=timestamp
+            )
+
+            # Try to update portfolio
+            try:
+                quantity_delta = quantity * direction
+                success = self.portfolio.update_position(
+                    symbol,
+                    quantity_delta,
+                    price,
+                    timestamp
+                )
+
+                if not success:
+                    logger.warning(f"Failed to update portfolio position: {symbol} {quantity_delta}")
+                    return None
+
+                return fill
+            except Exception as e:
+                logger.error(f"Failed to execute order: {str(e)}", exc_info=True)
+                return None
+        except Exception as e:
+            logger.error(f"Error in order execution: {str(e)}", exc_info=True)
             return None
-
-        logger.info(f"Executing {direction > 0 and 'BUY' or 'SELL'} order: {quantity} shares at {price}")
-
-        # Update portfolio with new position
-        quantity_delta = quantity * direction
-        success = self.portfolio.update_position(
-            symbol,
-            quantity_delta,
-            price,
-            timestamp
-        )
-
-        if not success:
-            logger.error(f"Failed to execute order: Quantity: {quantity_delta}")
-            return None
-
-        # Create fill record
-        fill = FillEvent(
-            symbol=symbol,
-            quantity=quantity,
-            price=price,
-            direction=direction,
-            order_id=order_id,
-            transaction_cost=commission,
-            timestamp=timestamp
-        )
-
-        # If commission was charged, deduct from portfolio cash
-        if commission > 0:
-            self.portfolio.cash -= commission
-            logger.info(f"Commission charged: {commission:.2f}, remaining cash: {self.portfolio.cash:.2f}")
-
-        return fill
     
-
+ 
     
     def _emit_fill_event(self, fill):
         """Emit fill event to the event bus."""
@@ -313,20 +322,29 @@ class ExecutionEngine:
             logger.info(f"Emitted FILL event: {fill}")
         else:
             logger.warning("No event bus available to emit FILL event")
-    
+
     def _get_last_known_price(self, symbol):
         """Get the last known price for a symbol."""
         if symbol in self.last_known_prices:
             return self.last_known_prices[symbol]
-        
+
         # Try to find from portfolio history
         if self.portfolio_history:
             for history_item in reversed(self.portfolio_history):
                 positions = history_item.get('positions', {})
-                if symbol in positions:
-                    return positions[symbol].get('avg_price', None)
-        
+                if isinstance(positions, dict) and symbol in positions:
+                    # Handle dictionary positions
+                    if isinstance(positions[symbol], dict):
+                        return positions[symbol].get('avg_price', None)
+                    # Handle list positions - THIS FIX ADDRESSES THE ERROR
+                    elif isinstance(positions[symbol], list) and positions[symbol]:
+                        # Get first position from list
+                        position = positions[symbol][0]
+                        if isinstance(position, dict):
+                            return position.get('current_price', position.get('entry_price', None))
+
         return None
+
     
     def update(self, bar):
         """

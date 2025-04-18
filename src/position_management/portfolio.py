@@ -248,7 +248,7 @@ class EventPortfolio(EventHandler):
                 logger.error(f"Failed to close position: {e}")
 
 
-    # In src/position_management/portfolio.py
+
     def handle_fill(self, event):
         """
         Handle fill events.
@@ -287,9 +287,62 @@ class EventPortfolio(EventHandler):
             else:
                 logger.warning(f"Failed to update portfolio from fill")
         else:
-            logger.warning(f"Invalid fill data: {fill}")
+            logger.warning(f"Invalid fill data: {fill}")                
+    # # In src/position_management/portfolio.py
+    # def handle_fill(self, event):
+    #     """
+    #     Handle fill events.
+
+    #     Args:
+    #         event: Fill event
+    #     """
+    #     if not isinstance(event, Event) or not hasattr(event, 'data'):
+    #         logger.warning(f"Expected Event object with data, got {type(event)}")
+    #         return
+
+    #     fill = event.data
+
+    #     # Extract fill details using proper validation
+    #     if hasattr(fill, 'get_symbol') and hasattr(fill, 'get_quantity') and hasattr(fill, 'get_price'):
+    #         symbol = fill.get_symbol()
+    #         quantity = fill.get_quantity()
+    #         price = fill.get_price()
+    #         direction = fill.get_direction()
+    #         timestamp = getattr(fill, 'timestamp', datetime.datetime.now())
+
+    #         # Adjust quantity based on direction for use in update_position
+    #         quantity_delta = quantity * direction
+
+    #         # Update position
+    #         logger.info(f"Updating portfolio from fill: {symbol} {'BUY' if direction > 0 else 'SELL'} {quantity} @ {price}")
+    #         success = self.update_position(
+    #             symbol=symbol,
+    #             quantity_delta=quantity_delta,
+    #             price=price,
+    #             timestamp=timestamp
+    #         )
+
+    #         if success:
+    #             logger.info(f"Successfully updated portfolio from fill")
+    #         else:
+    #             logger.warning(f"Failed to update portfolio from fill")
+    #     else:
+    #         logger.warning(f"Invalid fill data: {fill}")
 
 
+    def handle_position_action(self, event):
+        """
+        Handle position action events.
+
+        Args:
+            event: Position action event
+        """
+        if not isinstance(event, Event) or not hasattr(event, 'data'):
+            logger.warning(f"Expected Event object with data, got {type(event)}")
+            return
+
+        # Forward to internal method
+        self._handle_position_action(event)
     
     def _open_position(self, symbol: str, direction: int, quantity: float, 
                     entry_price: float, entry_time: datetime.datetime,
@@ -546,18 +599,7 @@ class EventPortfolio(EventHandler):
     # src/position_management/portfolio.py
 
     def update_position(self, symbol, quantity_delta, price, timestamp):
-        """
-        Update portfolio with a position change.
-
-        Args:
-            symbol: Instrument symbol
-            quantity_delta: Change in position quantity (positive for buy, negative for sell)
-            price: Execution price
-            timestamp: Execution timestamp
-
-        Returns:
-            True if successful, False otherwise
-        """
+        """Update portfolio with a position change."""
         try:
             # Buying
             if quantity_delta > 0:
@@ -590,10 +632,18 @@ class EventPortfolio(EventHandler):
                 # Get positions for this symbol
                 positions = self.positions_by_symbol.get(symbol, [])
                 if not positions:
-                    logger.warning(f"No positions found for {symbol}, cannot sell")
-                    return False
+                    logger.info(f"No positions found for {symbol}, creating new SHORT position")
+                    # Create new short position directly
+                    self._open_position(
+                        symbol=symbol,
+                        direction=-1,  # Short
+                        quantity=abs(quantity_delta),
+                        entry_price=price,
+                        entry_time=timestamp
+                    )
+                    return True
 
-                # Close positions to cover the quantity
+                # Process existing positions
                 remaining = abs(quantity_delta)
                 for position in list(positions):  # Create a copy to iterate safely
                     if remaining <= 0:
@@ -626,7 +676,7 @@ class EventPortfolio(EventHandler):
             logger.error(f"Error updating position: {e}", exc_info=True)
             return False
     
-
+ 
 
     # Add this to EventPortfolio class
     def on_signal(self, event):

@@ -209,6 +209,7 @@ class PositionManager:
 
         return actions
 
+
     def _calculate_position_size(self, signal):
         """
         Calculate position size based on signal and portfolio.
