@@ -159,6 +159,11 @@ class PositionManager:
 
         logger.info(f"Current net position for {symbol}: {net_position}, direction: {direction}")
 
+        # Check for existing position in the same direction
+        if (direction > 0 and net_position > 0) or (direction < 0 and net_position < 0):
+            logger.info(f"Already have position in {direction > 0 and 'LONG' or 'SHORT'} direction - skipping")
+            return []  # Skip creating duplicate position in same direction
+
         # Check available capital BEFORE creating actions
         position_size = self._calculate_position_size(signal)
         capital_required = abs(position_size) * price
@@ -170,11 +175,6 @@ class PositionManager:
         if capital_required > available_capital:
             logger.warning(f"Insufficient capital for new position. Required: {capital_required}, Available: {available_capital}")
             return []  # Return empty list instead of creating an action that will fail
-
-        # CRITICAL: Check if we already have a position in this direction
-        if (direction > 0 and net_position > 0) or (direction < 0 and net_position < 0):
-            logger.info(f"Already have position in {direction > 0 and 'LONG' or 'SHORT'} direction - skipping")
-            return []  # Don't create duplicate position in same direction
 
         # For opposite direction positions, create exit actions
         positions_to_exit = []
@@ -231,6 +231,7 @@ class PositionManager:
 
         return actions
 
+ 
 
 
  

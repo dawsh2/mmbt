@@ -416,6 +416,10 @@ Disabled method to prevent portfolio from reacting directly to signals.
 Args:
     event: Signal event
 
+###### `reset()`
+
+Reset the portfolio to initial state.
+
 ## position
 
 Position Module

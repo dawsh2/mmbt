@@ -111,7 +111,7 @@ Simply store direct references to handlers
 
 ###### `emit(event)`
 
-Simple direct handler calling
+Emit an event with proper counting
 
 ###### `unregister(event_type, handler)`
 

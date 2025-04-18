@@ -35,6 +35,27 @@ from src.engine.execution_engine import ExecutionEngine
 from src.engine.backtester import Backtester
 from src.engine.market_simulator import MarketSimulator
 
+# First, patch the EventBus class to add event_counts
+original_emit = EventBus.emit
+
+def patched_emit(self, event):
+    """Patched emit method to track event counts"""
+    # Initialize event_counts if it doesn't exist
+    if not hasattr(self, 'event_counts'):
+        self.event_counts = {}
+    
+    # Count the event
+    if event.event_type in self.event_counts:
+        self.event_counts[event.event_type] += 1
+    else:
+        self.event_counts[event.event_type] = 1
+    
+    # Call the original emit method
+    return original_emit(self, event)
+
+# Apply the patch
+EventBus.emit = patched_emit
+
 def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe="1m"):
     """
     Run a backtest with proper component initialization order
@@ -49,7 +70,10 @@ def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe
     
     # 1. Create event system
     event_bus = EventBus()
-    logger.info("Created event bus")
+    
+    # CRITICAL: Initialize event_counts attribute
+    event_bus.event_counts = {}
+    logger.info("Created event bus with event counting")
     
     # 2. Set up data handler
     data_source = CSVDataSource("./data")
@@ -130,7 +154,6 @@ def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe
     backtester.execution_engine = execution_engine  # Override the backtester's execution engine
 
 
-
     # 11. CRITICAL: Register event handlers directly for guaranteed setup
     # Register position manager to receive SIGNAL events
     event_bus.register(EventType.SIGNAL, position_manager.on_signal)
@@ -141,7 +164,12 @@ def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe
         if event.event_type == EventType.POSITION_ACTION and hasattr(event, 'data'):
             action = event.data
             logger.info(f"Handling position action: {action.get('action_type', 'unknown') if isinstance(action, dict) else 'unknown'}")
-            position_manager.execute_position_action(action)
+            # Forward to execution engine
+            if hasattr(execution_engine, 'on_position_action'):
+                execution_engine.on_position_action(event)
+            else:
+                # Fallback to position manager
+                position_manager.execute_position_action(action)
     
     # Register position action handler
     event_bus.register(EventType.POSITION_ACTION, handle_position_action)
@@ -185,8 +213,11 @@ def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe
     # 14. Count events by type and display
     event_counts = {}
     try:
-        # Try different ways to access event counts
-        if hasattr(event_bus, 'metrics') and 'events_processed' in event_bus.metrics:
+        # Use event_counts from event_bus if available
+        if hasattr(event_bus, 'event_counts'):
+            event_counts = event_bus.event_counts
+        # Try different ways to access event counts as fallback
+        elif hasattr(event_bus, 'metrics') and 'events_processed' in event_bus.metrics:
             event_counts = event_bus.metrics['events_processed']
         elif hasattr(event_bus, 'history'):
             # Count manually from history
@@ -248,7 +279,8 @@ def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe
     # Show event statistics
     logger.info("Event statistics:")
     for event_type, count in event_counts.items():
-        logger.info(f"  {event_type}: {count} events")
+        event_type_name = event_type.name if hasattr(event_type, 'name') else str(event_type)
+        logger.info(f"  {event_type_name}: {count} events")
     
     return {
         'initial_equity': initial_capital,
@@ -297,4 +329,5 @@ if __name__ == "__main__":
     # Print event statistics 
     logger.info("Event Statistics:")
     for event_type, count in results.get('event_counts', {}).items():
-        logger.info(f"  {event_type}: {count}")
+        event_type_name = event_type.name if hasattr(event_type, 'name') else str(event_type)
+        logger.info(f"  {event_type_name}: {count}")

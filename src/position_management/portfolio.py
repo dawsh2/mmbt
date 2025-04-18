@@ -80,8 +80,15 @@ class EventPortfolio(EventHandler):
         for event_type in self.event_types:
             event_bus.register(event_type, self)
         
+        # Initialize event counts attribute if not already present in event_bus
+        if not hasattr(self.event_bus, 'event_counts'):
+            self.event_bus.event_counts = {}
+        
         # Emit initial portfolio state
-        self._emit_portfolio_update()
+        try:
+            self._emit_portfolio_update()
+        except Exception as e:
+            logger.error(f"Error emitting initial portfolio update: {str(e)}")
         
         logger.info(f"Portfolio initialized: {self.name} with {self.initial_capital} {self.currency}")
     
@@ -124,7 +131,10 @@ class EventPortfolio(EventHandler):
         self._update_metrics()
 
         # Emit portfolio update event
-        self._emit_portfolio_update()
+        try:
+            self._emit_portfolio_update()
+        except Exception as e:
+            logger.error(f"Error emitting portfolio update: {str(e)}")
 
 
     # Add this method to your EventPortfolio class
@@ -368,7 +378,10 @@ class EventPortfolio(EventHandler):
         self._update_metrics()
 
         # Emit portfolio update event if we have an event bus
-        self._emit_portfolio_update()
+        try:
+            self._emit_portfolio_update()
+        except Exception as e:
+            logger.error(f"Error emitting portfolio update: {str(e)}")
 
         logger.info(f"Position closed: {position_id} {symbol} "
                    f"PnL: {realized_pnl:.2f}")
@@ -418,6 +431,11 @@ class EventPortfolio(EventHandler):
         
         # Create and emit event
         update_event = PortfolioUpdateEvent(portfolio_state)
+        
+        # Make sure event_counts is initialized
+        if not hasattr(self.event_bus, 'event_counts'):
+            self.event_bus.event_counts = {}
+            
         self.event_bus.emit(update_event)
     
     def _emit_position_opened(self, position: Position) -> None:
@@ -445,6 +463,11 @@ class EventPortfolio(EventHandler):
         
         # Create and emit event
         opened_event = PositionOpenedEvent(position_data, position.entry_time)
+        
+        # Make sure event_counts is initialized
+        if not hasattr(self.event_bus, 'event_counts'):
+            self.event_bus.event_counts = {}
+            
         self.event_bus.emit(opened_event)
     
     def _emit_position_closed(self, position_summary: Dict[str, Any]) -> None:
@@ -459,6 +482,11 @@ class EventPortfolio(EventHandler):
             
         # Create and emit event
         closed_event = PositionClosedEvent(position_summary, position_summary.get('exit_time'))
+        
+        # Make sure event_counts is initialized
+        if not hasattr(self.event_bus, 'event_counts'):
+            self.event_bus.event_counts = {}
+            
         self.event_bus.emit(closed_event)
 
 
@@ -557,7 +585,7 @@ class EventPortfolio(EventHandler):
             return False
 
 
-        # Add this to EventPortfolio class
+    # Add this to EventPortfolio class
     def on_signal(self, event):
         """
         Disabled method to prevent portfolio from reacting directly to signals.
@@ -567,3 +595,31 @@ class EventPortfolio(EventHandler):
         """
         logger.debug("Portfolio received signal but direct signal processing is disabled")
         pass  # Do nothing - position manager will handle this
+        
+    def reset(self):
+        """Reset the portfolio to initial state."""
+        # Reset capital
+        self.cash = self.initial_capital
+        self.equity = self.initial_capital
+        self.margin_used = 0.0
+        self.margin_available = self.initial_capital if self.margin_enabled else 0.0
+        
+        # Reset positions
+        self.positions = {}
+        self.positions_by_symbol = {}
+        self.closed_positions = {}
+        
+        # Reset performance tracking
+        self.high_water_mark = self.initial_capital
+        self.drawdown = 0.0
+        self.max_drawdown = 0.0
+        self.realized_pnl = 0.0
+        self.unrealized_pnl = 0.0
+        
+        # Emit reset portfolio state
+        try:
+            self._emit_portfolio_update()
+        except Exception as e:
+            logger.error(f"Error emitting portfolio update during reset: {str(e)}")
+            
+        logger.info(f"Portfolio reset to initial capital: {self.initial_capital}")
