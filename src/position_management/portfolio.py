@@ -310,9 +310,10 @@ class EventPortfolio(EventHandler):
         
         return position
 
+
     def _close_position(self, position_id: str, exit_price: float, 
-                  exit_time: datetime.datetime,
-                  exit_type: ExitType = ExitType.STRATEGY) -> Dict[str, Any]:
+                   exit_time: datetime.datetime,
+                   exit_type: ExitType = ExitType.STRATEGY) -> Dict[str, Any]:
         """
         Close a position.
 
@@ -332,32 +333,49 @@ class EventPortfolio(EventHandler):
 
         position = self.positions[position_id]
 
-          # Close position
+        # Close position
         summary = position.close(exit_price, exit_time, exit_type)
-        
+
         # Update portfolio
         realized_pnl = position.realized_pnl
-        
+
         # Move from open to closed positions
         del self.positions[position_id]
         self.closed_positions[position_id] = position
-        
+
         # Remove from symbol-based index
         symbol = position.symbol
-        self.positions_by_symbol[symbol] = [p for p in self.positions_by_symbol[symbol] 
-                                          if p.position_id != position_id]
-        
+        if symbol in self.positions_by_symbol:
+            # Create a new list without this position - this is critical
+            self.positions_by_symbol[symbol] = [p for p in self.positions_by_symbol[symbol] 
+                                              if p.position_id != position_id]
+
+            # If no positions left for this symbol, clean up the empty list
+            if not self.positions_by_symbol[symbol]:
+                del self.positions_by_symbol[symbol]
+
         # Update cash and margin
         position_value = position.initial_quantity * position.entry_price
         self.cash += position_value + realized_pnl
         self.realized_pnl += realized_pnl
-        
+
         if self.margin_enabled and position.direction < 0:  # Short releases margin
             required_margin = position_value / self.leverage
             self.margin_used -= required_margin
             self.margin_available = (self.initial_capital * self.leverage) - self.margin_used
-        
+
+        # Update portfolio metrics
+        self._update_metrics()
+
+        # Emit portfolio update event if we have an event bus
+        self._emit_portfolio_update()
+
+        logger.info(f"Position closed: {position_id} {symbol} "
+                   f"PnL: {realized_pnl:.2f}")
+
         return summary
+    
+
     
     def _update_metrics(self) -> None:
         """Update portfolio metrics."""
