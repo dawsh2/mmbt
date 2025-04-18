@@ -107,13 +107,11 @@ Args:
 
 ###### `register(event_type, handler)`
 
-*Returns:* `None`
+Simply store direct references to handlers
 
-Register a handler for an event type.
+###### `emit(event)`
 
-Args:
-    event_type: Event type to register for
-    handler: Handler to register
+Simple direct handler calling
 
 ###### `unregister(event_type, handler)`
 
@@ -127,18 +125,6 @@ Args:
     
 Returns:
     True if handler was unregistered, False if not found
-
-###### `emit(event)`
-
-*Returns:* `None`
-
-Emit an event to registered handlers.
-
-This method preserves the original event object reference
-without serialization or creating copies.
-
-Args:
-    event: Event object to emit
 
 ###### `emit_all(events)`
 

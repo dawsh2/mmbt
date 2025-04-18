@@ -416,6 +416,46 @@ class ExecutionEngine:
         return self.signal_history
 
 
+    def on_position_action(self, event):
+        """
+        Handle position action events.
+
+        Args:
+            event: Event containing position action
+        """
+        # Verify this is an Event with position action data
+        if not isinstance(event, Event) or not hasattr(event, 'data'):
+            logger.error(f"Invalid position action event: {event}")
+            return
+
+        action = event.data
+
+        # Only handle entry actions (entry actions become orders)
+        if isinstance(action, dict) and action.get('action_type') == 'entry':
+            # Extract data from action
+            symbol = action.get('symbol')
+            direction = action.get('direction', 0)
+            size = action.get('size', 0)
+            price = action.get('price', 0)
+
+            # Create an order
+            order = OrderEvent(
+                symbol=symbol,
+                direction=direction,
+                quantity=size,
+                price=price,
+                order_type="MARKET"
+            )
+
+            # Log the order creation
+            logger.info(f"Created order from position action: {symbol} {'BUY' if direction > 0 else 'SELL'} {size} @ {price}")
+
+            # Process the order - either emit an event or handle directly
+            order_event = Event(EventType.ORDER, order)
+
+            # Either add to pending orders or emit event
+            self.on_order(order_event)
+
 
     def reset(self):
         """Reset the execution engine state."""

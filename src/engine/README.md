@@ -35,6 +35,10 @@ Args:
     strategy: Trading strategy to test
     position_manager: Optional position manager for risk management
 
+###### `_setup_event_handlers()`
+
+Set up event handlers with proper registration.
+
 ###### `_extract_market_sim_config(config)`
 
 Extract market simulation configuration.
@@ -73,7 +77,7 @@ Run the backtest.
 
 Args:
     use_test_data: Whether to use test data (True) or training data (False)
-    
+
 Returns:
     dict: Backtest results
 
@@ -200,6 +204,13 @@ Get the history of portfolio states.
 ###### `get_signal_history()`
 
 Get the history of signals received.
+
+###### `on_position_action(event)`
+
+Handle position action events.
+
+Args:
+    event: Event containing position action
 
 ###### `reset()`
 

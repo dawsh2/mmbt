@@ -41,6 +41,7 @@ class Backtester:
         self.strategy = strategy
         self.position_manager = position_manager
         
+        
         # Initialize event system
         self.event_bus = EventBus()
         
@@ -69,12 +70,45 @@ class Backtester:
         # Set up event handlers
         self._setup_event_handlers()
         
+        
         # Track signals for debugging
         self.signals = []
         self.orders = []
         self.fills = []
         
         logger.info(f"Backtester initialized with initial capital: {self.initial_capital}")
+
+    def _setup_event_handlers(self):
+        """Set up event handlers with proper registration."""
+        # Create and store handlers with strong references
+        self._event_handlers['bar'] = self._create_bar_handler()
+        self._event_handlers['signal'] = self._create_signal_handler()
+        self._event_handlers['order'] = self._create_order_handler()
+        self._event_handlers['fill'] = self._create_fill_handler()
+        
+        # Register handlers with event bus
+        self.event_bus.register(EventType.BAR, self._event_handlers['bar'])
+        self.event_bus.register(EventType.SIGNAL, self._event_handlers['signal'])
+        self.event_bus.register(EventType.ORDER, self._event_handlers['order'])
+        self.event_bus.register(EventType.FILL, self._event_handlers['fill'])
+        
+        # CRITICAL: Register position action handler and execution engine
+        # This connects position actions to order creation
+        self.event_bus.register(EventType.POSITION_ACTION, self.execution_engine.on_position_action)
+        logger.info("Registered execution engine for POSITION_ACTION events")
+        
+        # CRITICAL: Register position manager to receive signal events
+        self.event_bus.register(EventType.SIGNAL, self.position_manager.on_signal)
+        logger.info("Registered position manager for SIGNAL events")
+        
+        # Add debugging handler for all events
+        def debug_event_flow(event):
+            event_type_name = event.event_type.name if hasattr(event.event_type, 'name') else str(event.event_type)
+            logger.debug(f"Event flow: {event_type_name} event received")
+            
+        # Register for all event types
+        for event_type in EventType:
+            self.event_bus.register(event_type, debug_event_flow)        
     
     def _extract_market_sim_config(self, config):
         """Extract market simulation configuration."""
@@ -299,14 +333,15 @@ class Backtester:
                 logger.error(f"Error processing position action: {str(e)}", exc_info=True)
         
         return handle_position_action_event
-    
+
+
     def run(self, use_test_data=False):
         """
         Run the backtest.
-        
+
         Args:
             use_test_data: Whether to use test data (True) or training data (False)
-            
+
         Returns:
             dict: Backtest results
         """
@@ -314,68 +349,85 @@ class Backtester:
             # Reset all components before running
             self.reset()
             logger.info("Starting backtest...")
-            
+
             # Select data iterator based on data set
             iterator = self.data_handler.iter_test(use_bar_events=True) if use_test_data else self.data_handler.iter_train(use_bar_events=True)
-            
+
+            # Track event counts for debugging
+            event_counts = {
+                'bar': 0,
+                'signal': 0,
+                'order': 0,
+                'fill': 0,
+                'position_action': 0
+            }
+
             # Process each bar
-            for bar_event in iterator:
+            for bar_data in iterator:
                 # Ensure we have a proper BarEvent
-                if not isinstance(bar_event, BarEvent):
-                    logger.warning(f"Expected BarEvent but got {type(bar_event)}, attempting to convert")
-                    try:
-                        if isinstance(bar_event, dict) and 'Close' in bar_event:
-                            # Convert dict to BarEvent
-                            bar_event = BarEvent(bar_event)
-                        else:
-                            logger.error(f"Could not convert {type(bar_event)} to BarEvent")
-                            continue
-                    except Exception as e:
-                        logger.error(f"Error converting to BarEvent: {e}")
+                if not isinstance(bar_data, BarEvent):
+                    # Convert to BarEvent if it's a dictionary
+                    if isinstance(bar_data, dict) and 'Close' in bar_data:
+                        logger.debug(f"Converting dictionary to BarEvent")
+                        bar_data = BarEvent(bar_data)
+                    else:
+                        logger.error(f"Could not process data: {type(bar_data)}")
                         continue
-                
-                # Process bar through strategy by creating and emitting a BAR event
-                try:
-                    # Create Event containing BarEvent
-                    bar_event_container = Event(EventType.BAR, bar_event)
-                    
-                    # Emit the bar event to the event bus
-                    self.event_bus.emit(bar_event_container)
-                    
-                    # If strategy has direct on_bar method, call it with the event
-                    if hasattr(self.strategy, 'on_bar'):
-                        signal_event = self.strategy.on_bar(bar_event_container)
-                        
-                        # If the strategy returned a signal directly, emit it
-                        if signal_event is not None:
-                            # Process single signal
-                            if isinstance(signal_event, SignalEvent):
-                                self.event_bus.emit(Event(EventType.SIGNAL, signal_event))
-                            # Process multiple signals if returned as a list
-                            elif isinstance(signal_event, list):
-                                for signal in signal_event:
-                                    if isinstance(signal, SignalEvent) and signal is not None:
-                                        self.event_bus.emit(Event(EventType.SIGNAL, signal))
-                except Exception as e:
-                    logger.error(f"Error processing bar through strategy: {e}")
-                    # Emit error event
-                    self.event_bus.emit(create_error_event("Backtester", str(e), "StrategyProcessingError"))
-                
+
+                # Create and emit BAR event
+                bar_event_container = Event(EventType.BAR, bar_data)
+                logger.debug(f"EMITTING BAR: {bar_data.get_symbol()} @ {bar_data.get_timestamp()}")
+                self.event_bus.emit(bar_event_container)
+                event_counts['bar'] += 1
+
+                # If strategy has direct on_bar method, call it with the event
+                if hasattr(self.strategy, 'on_bar'):
+                    signal_event = self.strategy.on_bar(bar_event_container)
+
+                    # If the strategy returned a signal directly, emit it
+                    if signal_event is not None:
+                        # Process single signal
+                        if isinstance(signal_event, SignalEvent):
+                            logger.debug(f"Emitting signal from strategy: {signal_event}")
+                            self.event_bus.emit(Event(EventType.SIGNAL, signal_event))
+                            event_counts['signal'] += 1
+                        # Process multiple signals if returned as a list
+                        elif isinstance(signal_event, list):
+                            for signal in signal_event:
+                                if isinstance(signal, SignalEvent) and signal is not None:
+                                    logger.debug(f"Emitting signal from strategy list: {signal}")
+                                    self.event_bus.emit(Event(EventType.SIGNAL, signal))
+                                    event_counts['signal'] += 1
+
                 # Update portfolio with current bar data
-                self.execution_engine.update(bar_event)
-                
+                self.execution_engine.update(bar_data)
+
                 # Execute any pending orders
-                self.execution_engine.execute_pending_orders(bar_event, self.market_simulator)
-            
+                fills = self.execution_engine.execute_pending_orders(bar_data, self.market_simulator)
+                if fills:
+                    event_counts['fill'] += len(fills)
+                    logger.debug(f"Executed {len(fills)} fills")
+
+                # Log progress every 100 bars
+                if event_counts['bar'] % 100 == 0:
+                    logger.info(f"Processed {event_counts['bar']} bars, {event_counts['signal']} signals, "
+                               f"{event_counts['order']} orders, {event_counts['fill']} fills")
+
             logger.info("Backtest completed. Collecting results...")
-            
+
+            # Log final event counts
+            logger.info(f"Final counts: {event_counts['bar']} bars, {event_counts['signal']} signals, "
+                       f"{event_counts['order']} orders, {event_counts['fill']} fills, "
+                       f"{event_counts['position_action']} position actions")
+
             # Collect and return results
             return self.collect_results()
+
         except Exception as e:
             logger.error(f"Error during backtest execution: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            
+
             # Return empty results instead of None
             return {
                 'error': str(e),
@@ -388,6 +440,7 @@ class Backtester:
                 'average_return': 0,
                 'portfolio_history': []
             }
+    
 
     def reset(self):
         """Reset the backtester state."""

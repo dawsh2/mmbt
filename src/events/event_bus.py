@@ -64,29 +64,46 @@ class EventBus:
         if validate_events:
             self.validator = EventValidator()
 
-    def register(self, event_type: EventType, handler) -> None:
-        """
-        Register a handler for an event type.
-
-        Args:
-            event_type: Event type to register for
-            handler: Handler to register
-        """
-        # Initialize handler list for this event type if not exists
+    # In your EventBus class
+    def register(self, event_type, handler):
+        """Simply store direct references to handlers"""
         if event_type not in self.handlers:
             self.handlers[event_type] = []
-            
-        # For instance methods, store the instance and method name separately
-        if hasattr(handler, '__self__') and hasattr(handler, '__func__'):
-            # This is an instance method
-            instance = handler.__self__
-            method_name = handler.__func__.__name__
+        self.handlers[event_type].append(handler)  # Direct reference, no weakref
 
-            # Store as tuple (instance_ref, method_name)
-            self.handlers[event_type].append((weakref.ref(instance), method_name))
-        else:
-            # Standard function or callable object
-            self.handlers[event_type].append(weakref.ref(handler))
+    def emit(self, event):
+        """Simple direct handler calling"""
+        if event.event_type in self.handlers:
+            for handler in self.handlers[event.event_type]:
+                try:
+                    handler(event)  # Call directly
+                except Exception as e:
+                    logger.error(f"Error in handler: {e}")            
+
+ 
+    # def register(self, event_type: EventType, handler) -> None:
+    #     """
+    #     Register a handler for an event type.
+
+    #     Args:
+    #         event_type: Event type to register for
+    #         handler: Handler to register
+    #     """
+    #     # Initialize handler list for this event type if not exists
+    #     if event_type not in self.handlers:
+    #         self.handlers[event_type] = []
+            
+    #     # For instance methods, store the instance and method name separately
+    #     if hasattr(handler, '__self__') and hasattr(handler, '__func__'):
+    #         # This is an instance method
+    #         instance = handler.__self__
+    #         method_name = handler.__func__.__name__
+
+    #         # Store as tuple (instance_ref, method_name)
+    #         self.handlers[event_type].append((weakref.ref(instance), method_name))
+    #     else:
+    #         # Standard function or callable object
+    #         self.handlers[event_type].append(weakref.ref(handler))
 
     def unregister(self, event_type: EventType, handler) -> bool:
         """
@@ -115,45 +132,45 @@ class EventBus:
         
         return False
 
-    def emit(self, event: Event) -> None:
-        """
-        Emit an event to registered handlers.
+    # def emit(self, event: Event) -> None:
+    #     """
+    #     Emit an event to registered handlers.
         
-        This method preserves the original event object reference
-        without serialization or creating copies.
+    #     This method preserves the original event object reference
+    #     without serialization or creating copies.
         
-        Args:
-            event: Event object to emit
-        """
-        # Validate event if enabled
-        if self.validate_events:
-            try:
-                self.validator.validate(event)
-            except ValueError as e:
-                logger.error(f"Event validation failed: {str(e)}")
-                # Create and emit an error event instead but don't validate it
-                error_event = Event(
-                    EventType.ERROR,
-                    {
-                        'source': "EventBus",
-                        'message': str(e),
-                        'error_type': "ValidationError",
-                        'original_event_id': event.id,
-                        'original_event_type': event.event_type.name
-                    },
-                    datetime.datetime.now()
-                )
-                self._dispatch_event(error_event)
-                return
+    #     Args:
+    #         event: Event object to emit
+    #     """
+    #     # Validate event if enabled
+    #     if self.validate_events:
+    #         try:
+    #             self.validator.validate(event)
+    #         except ValueError as e:
+    #             logger.error(f"Event validation failed: {str(e)}")
+    #             # Create and emit an error event instead but don't validate it
+    #             error_event = Event(
+    #                 EventType.ERROR,
+    #                 {
+    #                     'source': "EventBus",
+    #                     'message': str(e),
+    #                     'error_type': "ValidationError",
+    #                     'original_event_id': event.id,
+    #                     'original_event_type': event.event_type.name
+    #                 },
+    #                 datetime.datetime.now()
+    #             )
+    #             self._dispatch_event(error_event)
+    #             return
 
-        # Add to history - store original reference
-        self._add_to_history(event)
+    #     # Add to history - store original reference
+    #     self._add_to_history(event)
         
-        # Dispatch directly or queue for async dispatch
-        if self.async_mode:
-            self.event_queue.put(event)  # Original event reference is preserved
-        else:
-            self._dispatch_event(event)  # Pass reference directly to handlers
+    #     # Dispatch directly or queue for async dispatch
+    #     if self.async_mode:
+    #         self.event_queue.put(event)  # Original event reference is preserved
+    #     else:
+    #         self._dispatch_event(event)  # Pass reference directly to handlers
     
     def emit_all(self, events: List[Event]) -> None:
         """
@@ -165,10 +182,11 @@ class EventBus:
         for event in events:
             self.emit(event)
 
+
     def _dispatch_event(self, event: Event) -> None:
         """
         Dispatch an event to all registered handlers.
-        
+
         Args:
             event: Original event object (not a copy)
         """
@@ -178,45 +196,24 @@ class EventBus:
         # Skip if no handlers for this event type
         if current_event_type not in self.handlers:
             return
-            
+
         # Get handlers for this event type
-        handler_refs = self.handlers[current_event_type]
-        valid_refs = []
+        handlers = self.handlers[current_event_type]
 
         # Process all handlers with the original event object
-        for handler_ref in handler_refs:
-            if isinstance(handler_ref, tuple):
-                # Instance method case
-                instance_ref, method_name = handler_ref
-                instance = instance_ref()
-                if instance is not None:
-                    try:
-                        method = getattr(instance, method_name)
-                        method(event)  # Pass original event reference
-                        valid_refs.append(handler_ref)
-                    except Exception as e:
-                        logger.error(f"Error in instance method handler: {str(e)}", exc_info=True)
-                        self.metrics['errors'] += 1
-            else:
-                # Function/callable case
-                handler = handler_ref()
-                if handler is not None:
-                    try:
-                        if hasattr(handler, 'handle'):
-                            handler.handle(event)  # Pass original event reference
-                        elif callable(handler):
-                            handler(event)  # Pass original event reference
-                        valid_refs.append(handler_ref)
-                    except Exception as e:
-                        logger.error(f"Error in handler: {str(e)}", exc_info=True)
-                        self.metrics['errors'] += 1
-
-        # Update with valid references only
-        self.handlers[current_event_type] = valid_refs
-
-        # Update metrics
-        self.metrics['events_processed'][current_event_type] += 1
-    
+        for handler in handlers:
+            try:
+                # Directly call the handler with the original event
+                if hasattr(handler, 'handle'):
+                    handler.handle(event)  # Pass original event reference
+                elif callable(handler):
+                    handler(event)  # Pass original event reference
+                else:
+                    logger.warning(f"Unsupported handler type: {type(handler)}")
+            except Exception as e:
+                logger.error(f"Error in handler: {str(e)}", exc_info=True)
+            
+ 
     def _add_to_history(self, event: Event) -> None:
         """
         Add an event to the history.
