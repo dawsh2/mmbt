@@ -11,12 +11,41 @@ No module overview available.
 
 ## backtester
 
-Backtester for Trading System - Standardized Version
+Backtester for Trading System - Fixed Version
 
 This module provides the main Backtester class which orchestrates the backtesting process,
-using standardized event objects throughout the workflow.
+ensuring proper initialization of components and event flow.
 
 ### Classes
+
+#### `Backtester`
+
+Main orchestration class that coordinates the backtest execution.
+Acts as the facade for the backtesting subsystem.
+
+##### Methods
+
+###### `__init__(config, data_handler, strategy, position_manager=None)`
+
+Initialize the backtester with configuration and dependencies.
+
+Args:
+    config: Configuration dictionary or ConfigManager instance
+    data_handler: Data handler providing market data
+    strategy: Trading strategy to test
+    position_manager: Optional position manager for risk management
+
+###### `_extract_market_sim_config(config)`
+
+Extract market simulation configuration.
+
+###### `_extract_initial_capital(config)`
+
+Extract initial capital from configuration.
+
+###### `_setup_event_handlers()`
+
+Set up event handlers with proper registration.
 
 #### `Backtester`
 
@@ -63,6 +92,10 @@ Create a handler for ORDER events.
 
 Create a handler for FILL events.
 
+###### `_create_position_action_handler()`
+
+Create a handler for POSITION_ACTION events.
+
 ###### `run(use_test_data=False)`
 
 Run the backtest.
@@ -74,27 +107,6 @@ Returns:
     dict: Backtest results
 
 *Returns:* dict: Backtest results
-
-###### `_on_signal(event)`
-
-Handle signal events by generating orders.
-
-Args:
-    event: Signal event
-
-###### `_on_order(event)`
-
-Handle order events.
-
-Args:
-    event: Order event
-
-###### `_on_fill(event)`
-
-Handle fill events.
-
-Args:
-    event: Fill event
 
 ###### `_process_signal(signal_event, bar_event)`
 

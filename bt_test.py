@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Enhanced Backtester Implementation
+Fixed Backtester Integration Test
 
-This script fixes the event flow issues in the algorithmic trading system
-to ensure signals are properly converted to trades.
+This script runs a backtest ensuring proper component initialization order
+and connection.
 """
 
 import datetime
@@ -12,15 +12,9 @@ import argparse
 import sys
 import os
 
-# Configure logging with more detail for debugging
-logging.basicConfig(
-    level=logging.DEBUG,  # Change to DEBUG for more verbose logging
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler("backtest_debug.log"),
-        logging.StreamHandler()
-    ]
-)
+# Configure logging
+logging.basicConfig(level=logging.DEBUG,  # Set to DEBUG for detailed event flow logs
+                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Add project root to path if needed
@@ -41,60 +35,9 @@ from src.engine.execution_engine import ExecutionEngine
 from src.engine.backtester import Backtester
 from src.engine.market_simulator import MarketSimulator
 
-# Add debugging event listener to trace all events
-class EventTracer:
-    """Utility class to trace all events flowing through the event bus."""
-    
-    def __init__(self, log_level=logging.DEBUG):
-        self.logger = logging.getLogger(__name__ + ".EventTracer")
-        self.logger.setLevel(log_level)
-        self.event_counts = {}
-    
-    def trace_event(self, event):
-        """Log event details for tracing the event flow."""
-        event_type = event.event_type.name if hasattr(event, 'event_type') else 'Unknown'
-        
-        # Track counts
-        if event_type not in self.event_counts:
-            self.event_counts[event_type] = 0
-        self.event_counts[event_type] += 1
-        
-        # Log event details
-        self.logger.debug(f"EVENT: {event_type} #{self.event_counts[event_type]} - "
-                         f"Time: {event.timestamp if hasattr(event, 'timestamp') else 'N/A'}")
-        
-        # Log more details for important events
-        if event_type == 'SIGNAL':
-            signal = event.data
-            if hasattr(signal, 'get_signal_value') and hasattr(signal, 'get_symbol'):
-                direction = "BUY" if signal.get_signal_value() > 0 else "SELL" if signal.get_signal_value() < 0 else "NEUTRAL"
-                self.logger.debug(f"SIGNAL DETAILS: {direction} for {signal.get_symbol()} "
-                                f"at price {signal.get_price()}")
-        
-        elif event_type == 'POSITION_ACTION':
-            action = event.data
-            if isinstance(action, dict):
-                action_type = action.get('action_type', 'unknown')
-                symbol = action.get('symbol', 'unknown')
-                self.logger.debug(f"POSITION ACTION DETAILS: {action_type} for {symbol}")
-                
-        elif event_type == 'ORDER':
-            order = event.data
-            if hasattr(order, 'get_symbol') and hasattr(order, 'get_direction'):
-                self.logger.debug(f"ORDER DETAILS: {order.get_symbol()} "
-                                f"{'BUY' if order.get_direction() > 0 else 'SELL'} "
-                                f"{order.get_quantity()} @ {order.get_price()}")
-        
-        elif event_type == 'FILL':
-            fill = event.data
-            if hasattr(fill, 'get_symbol'):
-                self.logger.debug(f"FILL DETAILS: {fill.get_symbol()} "
-                                f"{'BUY' if fill.get_direction() > 0 else 'SELL'} "
-                                f"{fill.get_quantity()} @ {fill.get_price()}")
-
-def run_enhanced_backtest(config, start_date=None, end_date=None, symbols=None, timeframe="1m"):
+def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe="1m"):
     """
-    Run an enhanced backtest with fixed event flow
+    Run a backtest with proper component initialization order
     """
     # Set default values if not provided
     if start_date is None:
@@ -104,10 +47,9 @@ def run_enhanced_backtest(config, start_date=None, end_date=None, symbols=None, 
     if symbols is None:
         symbols = ["SPY"]
     
-    # 1. Create event system with tracing
+    # 1. Create event system
     event_bus = EventBus()
-    event_tracer = EventTracer()
-    logger.info("Created event bus with tracing")
+    logger.info("Created event bus")
     
     # 2. Set up data handler
     data_source = CSVDataSource("./data")
@@ -129,34 +71,16 @@ def run_enhanced_backtest(config, start_date=None, end_date=None, symbols=None, 
     )
     logger.info(f"Created portfolio with initial capital: ${initial_capital}")
     
-    # 4. Create position manager with explicit event bus reference
+    # 4. Create position manager and ensure it has the event bus reference
     position_sizer = FixedSizeSizer(fixed_size=10)
     position_manager = PositionManager(
         portfolio=portfolio,
         position_sizer=position_sizer,
-        event_bus=event_bus  # Explicit event bus reference
+        event_bus=event_bus  # CRITICAL: Pass event bus explicitly
     )
     logger.info("Created position manager")
     
-    # 5. Create execution engine and explicitly set the portfolio
-    execution_engine = ExecutionEngine(position_manager=position_manager)
-    execution_engine.portfolio = portfolio  # CRITICAL: Make sure to set the portfolio
-    execution_engine.event_bus = event_bus  # Explicit event bus reference
-    logger.info("Created execution engine")
-    
-    # 6. Create strategy with explicit event bus
-    strategy = SMACrossoverRule(
-        name="sma_crossover",
-        params={
-            "fast_window": 5, 
-            "slow_window": 15
-        },
-        description="SMA Crossover strategy",
-        event_bus=event_bus  # Explicit event bus reference
-    )
-    logger.info("Created strategy")
-    
-    # 7. Create market simulator
+    # 5. Create market simulator
     market_sim_config = {
         'slippage_model': 'fixed',
         'slippage_bps': 1,  # 0.01% slippage
@@ -166,7 +90,19 @@ def run_enhanced_backtest(config, start_date=None, end_date=None, symbols=None, 
     market_simulator = MarketSimulator(market_sim_config)
     logger.info("Created market simulator")
     
-    # 8. Create backtester configuration
+    # 6. Create strategy with event bus reference
+    strategy = SMACrossoverRule(
+        name="sma_crossover",
+        params={
+            "fast_window": 5, 
+            "slow_window": 15
+        },
+        description="SMA Crossover strategy",
+        event_bus=event_bus  # CRITICAL: Pass event bus explicitly
+    )
+    logger.info("Created strategy")
+    
+    # 7. Create backtester configuration
     backtester_config = {
         'backtester': {
             'initial_capital': initial_capital,
@@ -174,7 +110,14 @@ def run_enhanced_backtest(config, start_date=None, end_date=None, symbols=None, 
         }
     }
     
-    # 9. Create and configure the backtester
+    # 8. Create and manually configure execution engine
+    # IMPORTANT: Create execution engine manually and set all references
+    execution_engine = ExecutionEngine(position_manager=position_manager)
+    execution_engine.portfolio = portfolio  # CRITICAL: Set portfolio reference BEFORE creating backtester
+    execution_engine.event_bus = event_bus  # CRITICAL: Set event bus reference
+    logger.info("Created and configured execution engine")
+    
+    # 9. Create backtester and set components
     logger.info("Creating backtester with all components")
     backtester = Backtester(
         config=backtester_config,
@@ -183,58 +126,77 @@ def run_enhanced_backtest(config, start_date=None, end_date=None, symbols=None, 
         position_manager=position_manager
     )
     
-    # Set execution engine in backtester
+    # 10. Provide the manually configured execution engine to the backtester
     backtester.execution_engine = execution_engine
-    backtester.event_bus = event_bus
     
-    # Make sure execution engine has the portfolio reference
-    if hasattr(backtester.execution_engine, 'portfolio') and backtester.execution_engine.portfolio is None:
-        backtester.execution_engine.portfolio = portfolio
-    
-    # 10. CRITICAL FIX: Explicitly register event handlers for the complete event flow
-    # Register event tracer for all event types
-    for event_type in EventType:
-        event_bus.register(event_type, event_tracer.trace_event)
-    
-    # CRITICAL FIX: Register position manager to receive SIGNAL events
+    # 11. CRITICAL: Register event handlers directly for guaranteed setup
+    # Register position manager to receive SIGNAL events
     event_bus.register(EventType.SIGNAL, position_manager.on_signal)
     logger.info("Registered position manager for SIGNAL events")
     
-    # CRITICAL FIX: Create a handler for position actions
+    # Create position action handler
     def handle_position_action(event):
-        if event.event_type == EventType.POSITION_ACTION:
+        if event.event_type == EventType.POSITION_ACTION and hasattr(event, 'data'):
             action = event.data
-            logger.info(f"Handling position action: {action}")
+            logger.info(f"Handling position action: {action.get('action_type', 'unknown') if isinstance(action, dict) else 'unknown'}")
             position_manager.execute_position_action(action)
     
-    # Register the position action handler
+    # Register position action handler
     event_bus.register(EventType.POSITION_ACTION, handle_position_action)
     logger.info("Registered handler for POSITION_ACTION events")
     
-    # CRITICAL FIX: Register execution engine for ORDER events
+    # Register execution engine for ORDER events
     event_bus.register(EventType.ORDER, execution_engine.on_order)
     logger.info("Registered execution engine for ORDER events")
     
-    # CRITICAL FIX: Register portfolio for FILL events
-    event_bus.register(EventType.FILL, portfolio.on_fill if hasattr(portfolio, 'on_fill') else lambda x: None)
-    logger.info("Registered portfolio for FILL events")
+    # 12. Add debugging event tracing
+    def trace_event(event):
+        event_type = event.event_type.name if hasattr(event.event_type, 'name') else str(event.event_type)
+        logger.debug(f"Event trace: {event_type} received")
+        
+        # For important events, log more details
+        if event.event_type == EventType.SIGNAL:
+            signal = event.data
+            if hasattr(signal, 'get_signal_value') and hasattr(signal, 'get_symbol'):
+                direction = "BUY" if signal.get_signal_value() > 0 else "SELL" if signal.get_signal_value() < 0 else "NEUTRAL"
+                logger.debug(f"Signal details: {direction} for {signal.get_symbol()} @ {signal.get_price()}")
+        
+        elif event.event_type == EventType.POSITION_ACTION:
+            action = event.data
+            if isinstance(action, dict):
+                logger.debug(f"Position action details: {action.get('action_type', 'unknown')} for {action.get('symbol', 'unknown')}")
+        
+        elif event.event_type == EventType.ORDER:
+            order = event.data
+            if hasattr(order, 'get_symbol') and hasattr(order, 'get_direction'):
+                direction = "BUY" if order.get_direction() > 0 else "SELL"
+                logger.debug(f"Order details: {direction} {order.get_quantity()} {order.get_symbol()} @ {order.get_price()}")
     
-    # 11. Add signal logging
-    def log_signal(event):
-        signal = event.data
-        if hasattr(signal, 'get_signal_value') and hasattr(signal, 'get_symbol'):
-            direction = "BUY" if signal.get_signal_value() > 0 else "SELL" if signal.get_signal_value() < 0 else "NEUTRAL"
-            logger.info(f"Signal: {direction} for {signal.get_symbol()} at {signal.get_price()}")
-        else:
-            logger.warning(f"Non-standard signal in signal data: {type(signal)}")
+    # Register tracer for all events
+    for event_type in EventType:
+        event_bus.register(event_type, trace_event)
     
-    event_bus.register(EventType.SIGNAL, log_signal)
-    
-    # 12. Run the backtest
+    # 13. Run the backtest
     logger.info("Starting backtest")
     results = backtester.run(use_test_data=False)
     
-    # 13. Display results
+    # 14. Count events by type and display
+    event_counts = {}
+    try:
+        # Try different ways to access event counts
+        if hasattr(event_bus, 'metrics') and 'events_processed' in event_bus.metrics:
+            event_counts = event_bus.metrics['events_processed']
+        elif hasattr(event_bus, 'history'):
+            # Count manually from history
+            for event in event_bus.history:
+                event_type = event.event_type.name if hasattr(event.event_type, 'name') else str(event.event_type)
+                if event_type not in event_counts:
+                    event_counts[event_type] = 0
+                event_counts[event_type] += 1
+    except Exception as e:
+        logger.error(f"Error counting events: {e}")
+    
+    # 15. Display results
     logger.info("Backtest completed")
     logger.info(f"Initial capital: ${initial_capital:.2f}")
     
@@ -281,9 +243,9 @@ def run_enhanced_backtest(config, start_date=None, end_date=None, symbols=None, 
             unrealized_pnl = pos.get('unrealized_pnl', 0)
             logger.info(f"  {direction} {symbol} {quantity} @ {entry_price} (PnL: ${unrealized_pnl:.2f})")
     
-    # 14. Log event statistics from the tracer
+    # Show event statistics
     logger.info("Event statistics:")
-    for event_type, count in event_tracer.event_counts.items():
+    for event_type, count in event_counts.items():
         logger.info(f"  {event_type}: {count} events")
     
     return {
@@ -292,23 +254,18 @@ def run_enhanced_backtest(config, start_date=None, end_date=None, symbols=None, 
         'return_pct': (portfolio.equity / initial_capital - 1) * 100,
         'trade_count': len(trades),
         'portfolio': portfolio,
-        'event_counts': event_tracer.event_counts
+        'event_counts': event_counts
     }
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Run enhanced algorithmic trading backtest')
+    parser = argparse.ArgumentParser(description='Run algorithmic trading backtest')
     parser.add_argument('--start', type=str, help='Start date (YYYY-MM-DD)')
     parser.add_argument('--end', type=str, help='End date (YYYY-MM-DD)')
     parser.add_argument('--symbol', type=str, default='SPY', help='Symbol to trade')
     parser.add_argument('--timeframe', type=str, default='1m', help='Data timeframe')
     parser.add_argument('--capital', type=float, default=100000, help='Initial capital')
-    parser.add_argument('--debug', action='store_true', help='Enable debug logging')
     
     args = parser.parse_args()
-    
-    # Set logging level based on debug flag
-    if args.debug:
-        logging.getLogger().setLevel(logging.DEBUG)
     
     # Parse dates if provided
     start_date = datetime.datetime.strptime(args.start, '%Y-%m-%d') if args.start else None
@@ -319,8 +276,8 @@ if __name__ == "__main__":
         'initial_capital': args.capital
     }
     
-    # Run enhanced backtest
-    results = run_enhanced_backtest(
+    # Run backtest
+    results = run_backtest(
         config=config,
         start_date=start_date,
         end_date=end_date,
@@ -335,7 +292,7 @@ if __name__ == "__main__":
     logger.info(f"Return: {results['return_pct']:.2f}%")
     logger.info(f"Trades Executed: {results['trade_count']}")
     
-    # Print event statistics
+    # Print event statistics 
     logger.info("Event Statistics:")
-    for event_type, count in results['event_counts'].items():
+    for event_type, count in results.get('event_counts', {}).items():
         logger.info(f"  {event_type}: {count}")
