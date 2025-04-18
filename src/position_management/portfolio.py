@@ -91,11 +91,12 @@ class EventPortfolio(EventHandler):
             logger.error(f"Error emitting initial portfolio update: {str(e)}")
         
         logger.info(f"Portfolio initialized: {self.name} with {self.initial_capital} {self.currency}")
-    
+
+
     def _process_event(self, event: Event) -> None:
         """
         Process incoming events.
-        
+
         Args:
             event: Event to process
         """
@@ -103,6 +104,7 @@ class EventPortfolio(EventHandler):
             self._handle_position_action(event)
         elif event.event_type == EventType.FILL:
             self._handle_fill(event)
+ 
 
     # Add this method to your EventPortfolio class
     def mark_to_market(self, bar_event):

@@ -172,7 +172,7 @@ Args:
     price: Execution price
     timestamp: Execution timestamp
     commission: Commission cost
-    
+
 Returns:
     FillEvent if successful
 

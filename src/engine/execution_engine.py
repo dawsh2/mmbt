@@ -300,26 +300,32 @@ class ExecutionEngine:
         logger.info(f"Remaining pending orders: {len(self.pending_orders)}")
 
         return fills
-    
+
+
     def _execute_order(self, order, price, timestamp, commission=0.0):
         """
         Execute a single order and update portfolio.
-        
+
         Args:
             order: OrderEvent to execute
             price: Execution price
             timestamp: Execution timestamp
             commission: Commission cost
-            
+
         Returns:
             FillEvent if successful
         """
-        # Extract order details
-        symbol = order.get_symbol() if hasattr(order, 'get_symbol') else order.symbol
-        direction = order.get_direction() if hasattr(order, 'get_direction') else order.direction
-        quantity = order.get_quantity() if hasattr(order, 'get_quantity') else order.quantity
-        order_id = order.get_order_id() if hasattr(order, 'get_order_id') else order.order_id
-        
+        # Extract order details with proper getter method or attribute access
+        symbol = order.get_symbol() if hasattr(order, 'get_symbol') else getattr(order, 'symbol', None)
+        direction = order.get_direction() if hasattr(order, 'get_direction') else getattr(order, 'direction', 0)
+        quantity = order.get_quantity() if hasattr(order, 'get_quantity') else getattr(order, 'quantity', 0)
+        order_id = order.get_order_id() if hasattr(order, 'get_order_id') else getattr(order, 'order_id', None)
+
+        # Validate order parameters
+        if not symbol or direction == 0 or quantity == 0:
+            logger.error(f"Invalid order parameters: symbol={symbol}, direction={direction}, quantity={quantity}")
+            return None
+
         logger.info(f"Executing {direction > 0 and 'BUY' or 'SELL'} order: {quantity} shares at {price}")
 
         # Update portfolio with new position
@@ -352,6 +358,8 @@ class ExecutionEngine:
             logger.info(f"Commission charged: {commission:.2f}, remaining cash: {self.portfolio.cash:.2f}")
 
         return fill
+    
+
     
     def _emit_fill_event(self, fill):
         """Emit fill event to the event bus."""

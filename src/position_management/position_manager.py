@@ -176,42 +176,6 @@ class PositionManager:
             logger.warning(f"Insufficient capital for new position. Required: {capital_required}, Available: {available_capital}")
             return []  # Return empty list instead of creating an action that will fail
 
-        # For opposite direction positions, create exit actions
-        positions_to_exit = []
-
-        # Get positions for this symbol
-        if hasattr(self.portfolio, 'get_positions_by_symbol'):
-            positions = self.portfolio.get_positions_by_symbol(symbol)
-        elif hasattr(self.portfolio, 'positions_by_symbol') and symbol in self.portfolio.positions_by_symbol:
-            positions = self.portfolio.positions_by_symbol[symbol]
-        else:
-            positions = []
-
-        # Collect positions to exit if signal is opposite direction
-        for pos in positions:
-            pos_direction = getattr(pos, 'direction', 0)
-            pos_quantity = getattr(pos, 'quantity', 0)
-
-            # Only consider positions with actual size
-            if pos_quantity > 0:
-                # Collect positions to exit if signal is opposite direction
-                if (direction > 0 and pos_direction < 0) or (direction < 0 and pos_direction > 0):
-                    positions_to_exit.append(pos)
-
-        # Create exit actions for opposite positions
-        for position in positions_to_exit:
-            # Create exit action
-            exit_action = {
-                'action_type': 'exit',
-                'position_id': position.position_id,
-                'symbol': symbol,
-                'price': price,
-                'exit_type': 'strategy',
-                'reason': 'Signal direction change',
-                'timestamp': timestamp
-            }
-            actions.append(exit_action)
-
         # Create entry action if we don't have an existing position in this direction
         if not existing_position_in_direction and position_size != 0:
             # Create entry action
@@ -231,6 +195,7 @@ class PositionManager:
 
         return actions
 
+ 
  
 
 
