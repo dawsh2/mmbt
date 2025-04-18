@@ -1,9 +1,8 @@
 # Position_management Module
 
-Position Management Module
+Position Management Package
 
-This module provides a comprehensive framework for managing positions,
-portfolio allocation, and risk management within the trading system.
+This package provides position management and portfolio management capabilities.
 
 ## Contents
 
@@ -918,20 +917,12 @@ position sizes based on signals, market conditions, and portfolio state.
 
 Initialize position manager.
 
-Args:
-    portfolio: Portfolio to manage
-    position_sizer: Strategy for determining position sizes
-    allocation_strategy: Strategy for allocating capital across instruments
-    risk_manager: Risk management component
-    max_positions: Maximum number of positions (0 for unlimited)
-    event_bus: Event bus for emitting events
-
 ###### `on_signal(event)`
 
 Process a signal event into position actions.
 
 Args:
-    event: Event containing a SignalEvent or the SignalEvent directly
+    event: Event containing a SignalEvent in its data field
 
 Returns:
     List of position actions

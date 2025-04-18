@@ -25,30 +25,28 @@ class PositionManager:
     The position manager integrates with risk management to determine appropriate
     position sizes based on signals, market conditions, and portfolio state.
     """
+
+
     def __init__(self, portfolio, position_sizer=None,
-            allocation_strategy=None, risk_manager=None, max_positions=0, event_bus=None):
+             allocation_strategy=None, risk_manager=None, max_positions=0, event_bus=None):
         """
         Initialize position manager.
-
-        Args:
-            portfolio: Portfolio to manage
-            position_sizer: Strategy for determining position sizes
-            allocation_strategy: Strategy for allocating capital across instruments
-            risk_manager: Risk management component
-            max_positions: Maximum number of positions (0 for unlimited)
-            event_bus: Event bus for emitting events
         """
         self.portfolio = portfolio
         self.position_sizer = position_sizer
         self.allocation_strategy = allocation_strategy
         self.risk_manager = risk_manager
         self.max_positions = max_positions
-        self.event_bus = event_bus  # Store event bus
+        self.event_bus = event_bus
+
+        # Register with event bus if provided
+        if event_bus is not None:
+            event_bus.register(EventType.SIGNAL, self.on_signal)
 
         # Cache for position decisions
-        self.pending_entries = {}  # Symbols pending entry
-        self.pending_exits = {}    # Position IDs pending exit
-        self.rejected_entries = {} # Symbols with rejected entries
+        self.pending_entries = {}
+        self.pending_exits = {}
+        self.rejected_entries = {}
 
         # For tracking and testing
         self.signal_history = []
@@ -61,27 +59,130 @@ class PositionManager:
         Process a signal event into position actions.
 
         Args:
-            event: Event containing a SignalEvent or the SignalEvent directly
+            event: Event containing a SignalEvent in its data field
 
         Returns:
             List of position actions
         """
-        # Extract signal with flexible handling
-        signal = None
-        if hasattr(event, 'data'):
-            signal = event.data
-        elif hasattr(event, 'event_type'):  # It's an Event object
-            signal = event.data
+        import logging
+        from src.events.signal_event import SignalEvent
+        logger = logging.getLogger(__name__)
+
+        # Extract signal from event
+        if not hasattr(event, 'data'):
+            error_msg = f"Event does not have 'data' attribute: {type(event)}"
+            logger.error(error_msg)
+            raise TypeError(error_msg)
+
+        signal = event.data
+
+        # Strictly validate that signal is a SignalEvent
+        if not isinstance(signal, SignalEvent):
+            error_msg = f"Expected SignalEvent, got {type(signal)}"
+            logger.error(error_msg)
+            raise TypeError(error_msg)
+
+        # Extract required data from SignalEvent
+        direction = signal.get_signal_value()
+        price = signal.get_price()
+        symbol = signal.get_symbol()
+        rule_id = signal.get_rule_id() if hasattr(signal, 'get_rule_id') else None
+        timestamp = getattr(signal, 'timestamp', None)
+        metadata = signal.get_metadata() if hasattr(signal, 'get_metadata') else {}
+
+        # Skip neutral signals
+        if direction == 0:
+            logger.debug(f"Skipping neutral signal for {symbol}")
+            return []
+
+        # Check if we already have a position in this symbol
+        net_position = 0
+        if hasattr(self.portfolio, 'get_net_position'):
+            net_position = self.portfolio.get_net_position(symbol)
+        elif hasattr(self.portfolio, 'positions_by_symbol') and symbol in self.portfolio.positions_by_symbol:
+            # Sum up positions
+            for pos in self.portfolio.positions_by_symbol[symbol]:
+                net_position += pos.quantity * pos.direction
+
+        actions = []
+
+        if net_position != 0:
+            # We have an existing position
+            if (direction > 0 and net_position < 0) or (direction < 0 and net_position > 0):
+                # Signal direction opposite of current position - exit current position
+                if hasattr(self.portfolio, 'positions_by_symbol') and symbol in self.portfolio.positions_by_symbol:
+                    for position in self.portfolio.positions_by_symbol[symbol]:
+                        # Create exit action
+                        from .position_utils import create_exit_action
+                        exit_action = create_exit_action(
+                            position_id=position.position_id,
+                            symbol=symbol,
+                            price=price,
+                            exit_type='STRATEGY',
+                            reason='Signal direction change',
+                            timestamp=timestamp
+                        )
+                        actions.append(exit_action)
+
+                        logger.info(f"Signal direction change: Exiting {symbol} position {position.position_id}")
+
+        # For new position or adding to existing position
+        # Calculate position size using risk manager or position sizer
+        position_size = 0
+
+        if hasattr(self, 'risk_manager') and self.risk_manager:
+            position_size = self.risk_manager.calculate_position_size(signal, self.portfolio, price)
+        elif hasattr(self, 'position_sizer') and self.position_sizer:
+            # Use position sizer with the SignalEvent
+            position_size = self.position_sizer.calculate_position_size(signal, self.portfolio, price)
         else:
-            signal = event  # Assume it's the signal object directly
+            # Fallback sizing (simple % of portfolio)
+            equity = getattr(self.portfolio, 'equity', 100000)
+            risk_pct = 0.01  # Default to 1% risk
+            size = (equity * risk_pct) / price
+            position_size = size if direction > 0 else -size
 
-        # Process the signal
-        actions = self._process_signal(signal)
+        if position_size == 0:
+            logger.debug(f"Calculated position size is zero for {symbol}")
+            return actions  # Return any exit actions without creating new position
 
-        # Emit position actions if we have an event bus
-        if self.event_bus and actions:
+        # Check if we have too many positions
+        if hasattr(self, 'max_positions') and self.max_positions > 0:
+            current_positions = 0
+            if hasattr(self.portfolio, 'positions'):
+                current_positions = len(self.portfolio.positions)
+            elif hasattr(self.portfolio, 'get_position_count'):
+                current_positions = self.portfolio.get_position_count()
+
+            if current_positions >= self.max_positions and net_position == 0:
+                logger.warning(f"Maximum positions ({self.max_positions}) reached, skipping entry for {symbol}")
+                return actions  # Return any exit actions without creating new position
+
+        # Create entry action if appropriate
+        if net_position == 0 or (net_position > 0 and direction > 0) or (net_position < 0 and direction < 0):
+            from .position_utils import create_entry_action
+            entry_action = create_entry_action(
+                symbol=symbol,
+                direction=1 if position_size > 0 else -1,
+                size=abs(position_size),
+                price=price,
+                stop_loss=metadata.get('stop_loss'),
+                take_profit=metadata.get('take_profit'),
+                strategy_id=rule_id,
+                entry_type='STRATEGY',
+                timestamp=timestamp,
+                metadata=metadata
+            )
+
+            actions.append(entry_action)
+            logger.info(f"Creating {'LONG' if direction > 0 else 'SHORT'} position for {symbol}")
+
+        # Emit position action events if we have an event bus
+        if hasattr(self, 'event_bus') and self.event_bus:
+            from src.events.event_base import Event
+            from src.events.event_types import EventType
+
             for action in actions:
-                # Use your existing event system format
                 self.event_bus.emit(Event(EventType.POSITION_ACTION, action))
 
         return actions

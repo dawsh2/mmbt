@@ -1,28 +1,31 @@
 #!/usr/bin/env python3
 """
-Minimal Integration Script
+Clean Minimal Integration Test
 
-This script connects all components and focuses on proper event flow,
-using your existing code structure without patches or workarounds.
+This script runs a clean backtest after the code fixes are applied.
 """
 
 import datetime
 import logging
 import argparse
+import sys
+import os
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Add project root to path if needed
+project_root = os.path.dirname(os.path.abspath(__file__))
+if project_root not in sys.path:
+    sys.path.append(project_root)
+
 # Import from your codebase
 from src.events.event_base import Event
 from src.events.event_bus import EventBus
 from src.events.event_types import EventType, BarEvent
 from src.events.signal_event import SignalEvent
-from src.events.event_handlers import SignalHandler, MarketDataHandler, FillHandler
-from src.events.portfolio_events import PositionActionEvent
-
 from src.data.data_handler import DataHandler, CSVDataSource
 from src.rules.crossover_rules import SMACrossoverRule
 from src.position_management.position_sizers import FixedSizeSizer
@@ -32,7 +35,7 @@ from src.engine.execution_engine import ExecutionEngine
 
 def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe="1m"):
     """
-    Run a backtest using the proper event-driven architecture
+    Run a clean backtest with the fixed components
     """
     # Set default values if not provided
     if start_date is None:
@@ -42,11 +45,10 @@ def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe
     if symbols is None:
         symbols = ["SPY"]
     
-    # 1. Create event bus - central communication hub
+    # Create components
     event_bus = EventBus()
     logger.info("Created event bus")
     
-    # 2. Create portfolio
     initial_capital = config.get('initial_capital', 100000)
     portfolio = EventPortfolio(
         initial_capital=initial_capital,
@@ -54,21 +56,18 @@ def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe
     )
     logger.info(f"Created portfolio with ${initial_capital}")
     
-    # 3. Create position manager with position sizer
     position_sizer = FixedSizeSizer(fixed_size=10)
     position_manager = PositionManager(
         portfolio=portfolio,
-        position_sizer=position_sizer,
-        event_bus=event_bus
+        position_sizer=position_sizer
     )
+    position_manager.event_bus = event_bus
     logger.info("Created position manager")
     
-    # 4. Create execution engine
     execution_engine = ExecutionEngine(position_manager=position_manager)
     execution_engine.event_bus = event_bus
     logger.info("Created execution engine")
     
-    # 5. Create trading rule
     rule = SMACrossoverRule(
         name="sma_crossover",
         params={
@@ -77,9 +76,9 @@ def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe
         },
         description="SMA Crossover strategy"
     )
+    rule.set_event_bus(event_bus)
     logger.info("Created SMA crossover rule")
     
-    # 6. Create data handler and load data
     data_source = CSVDataSource("./data")
     data_handler = DataHandler(data_source=data_source)
     
@@ -91,67 +90,48 @@ def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe
         timeframe=timeframe
     )
     
-    # 7. Set up event handlers - THIS IS KEY
-    # These handlers follow your existing event handler structure
+    # Register core handlers
+    event_bus.register(EventType.BAR, rule.on_bar)
+    event_bus.register(EventType.SIGNAL, position_manager.on_signal)
     
-    # Handler for market data -> rules
-    market_data_handler = MarketDataHandler(rule)
-    event_bus.register(EventType.BAR, market_data_handler)
-    
-    # Handler for signals -> position manager
-    signal_handler = SignalHandler(position_manager)
-    event_bus.register(EventType.SIGNAL, signal_handler)
-    
-    # Handler for fills -> portfolio
-    fill_handler = FillHandler(position_manager)
-    event_bus.register(EventType.FILL, fill_handler)
-    
-    # Basic monitoring handlers
-    def log_event(event):
-        """Simple logging handler for all events"""
-        event_type = event.event_type.name
-        if event_type == "BAR":
-            # Too verbose to log every bar
-            return
-            
-        if event_type == "SIGNAL":
-            signal = event.data
-            direction = "BUY" if signal.get_signal_value() > 0 else "SELL" if signal.get_signal_value() < 0 else "NEUTRAL"
-            logger.info(f"SIGNAL: {direction} for {signal.get_symbol()} at {signal.get_price()}")
-        
-        elif event_type == "POSITION_ACTION":
+    # Process position actions when emitted
+    def process_position_action(event):
+        if event.event_type == EventType.POSITION_ACTION:
             action = event.data
-            action_type = action.get('action_type', 'unknown')
-            symbol = action.get('symbol', 'unknown')
-            logger.info(f"POSITION ACTION: {action_type} for {symbol}")
-        
-        elif event_type == "POSITION_OPENED":
-            logger.info(f"POSITION OPENED: {event.data.get('symbol', 'unknown')}")
-        
-        elif event_type == "POSITION_CLOSED":
-            logger.info(f"POSITION CLOSED: {event.data.get('symbol', 'unknown')}")
+            logger.info(f"Position action: {action.get('action_type', 'unknown')} for {action.get('symbol', 'unknown')}")
             
-        elif event_type == "FILL":
-            logger.info(f"FILL: {event.data.get('symbol', 'unknown')}")
+            # Execute the action
+            result = position_manager.execute_position_action(
+                action=action,
+                current_time=action.get('timestamp', datetime.datetime.now())
+            )
+            
+            if result and result.get('success', False):
+                logger.info(f"Position action successful: {result}")
     
-    # Register the logger for important events
-    for event_type in [EventType.SIGNAL, EventType.POSITION_ACTION, 
-                       EventType.POSITION_OPENED, EventType.POSITION_CLOSED, 
-                       EventType.FILL]:
-        event_bus.register(event_type, log_event)
+    # Register position action processor
+    event_bus.register(EventType.POSITION_ACTION, process_position_action)
     
-    # 8. Run the backtest loop
+    # Register monitoring handlers for logging
+    def log_signal(event):
+        signal = event.data
+        if isinstance(signal, SignalEvent):
+            direction = "BUY" if signal.get_signal_value() > 0 else "SELL" if signal.get_signal_value() < 0 else "NEUTRAL"
+            logger.info(f"Signal: {direction} for {signal.get_symbol()} at {signal.get_price()}")
+        else:
+            logger.warning(f"Non-SignalEvent in signal data: {type(signal)}")
+    
+    event_bus.register(EventType.SIGNAL, log_signal)
+    
+    # Run the backtest loop
     logger.info("Starting backtest loop")
     bars_processed = 0
-    position_actions = 0
-    positions_opened = 0
-    positions_closed = 0
     
     for bar in data_handler.iter_train():
         # Process each bar
         bars_processed += 1
         
-        # Create bar event
+        # Create bar event if needed
         if not isinstance(bar, BarEvent):
             bar_event = BarEvent(bar)
         else:
@@ -160,7 +140,7 @@ def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe
         # Emit bar event to trigger the event chain
         event_bus.emit(Event(EventType.BAR, bar_event))
         
-        # Execute pending orders with the latest price data
+        # Execute any pending orders
         if hasattr(execution_engine, 'execute_pending_orders'):
             fills = execution_engine.execute_pending_orders(bar_event)
             if fills:
@@ -182,9 +162,8 @@ def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe
                     direction = "LONG" if getattr(pos, 'direction', 0) > 0 else "SHORT"
                     logger.info(f"  {direction} {pos.symbol} {pos.quantity} @ {pos.entry_price}")
     
-    # 9. Calculate results
-    logger.info("Backtest completed")
-    logger.info(f"Processed {bars_processed} bars")
+    # Calculate results
+    logger.info(f"Backtest completed - processed {bars_processed} bars")
     logger.info(f"Initial capital: ${initial_capital:.2f}")
     logger.info(f"Final equity: ${portfolio.equity:.2f}")
     logger.info(f"Return: {(portfolio.equity / initial_capital - 1) * 100:.2f}%")
@@ -199,6 +178,16 @@ def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe
     # Show closed positions
     if hasattr(portfolio, 'closed_positions'):
         logger.info(f"Closed positions: {len(portfolio.closed_positions)}")
+        
+        # Print trade history details
+        if portfolio.closed_positions:
+            logger.info("Trade history:")
+            for pos_id, pos in list(portfolio.closed_positions.items())[:10]:  # Show first 10
+                entry_price = getattr(pos, 'entry_price', 0)
+                exit_price = getattr(pos, 'exit_price', 0) 
+                realized_pnl = getattr(pos, 'realized_pnl', 0)
+                direction = "LONG" if getattr(pos, 'direction', 0) > 0 else "SHORT"
+                logger.info(f"  {direction} {pos.symbol} Entry: {entry_price} Exit: {exit_price} PnL: {realized_pnl:.2f}")
     
     return {
         'initial_equity': initial_capital,
