@@ -414,18 +414,46 @@ class ExecutionEngine:
     def get_signal_history(self):
         """Get the history of signals received."""
         return self.signal_history
-    
+
+
+
     def reset(self):
         """Reset the execution engine state."""
-        initial_capital = self.portfolio.initial_capital
-        self.portfolio = EventPortfolio(initial_capital)
+        # Determine initial capital from portfolio if it exists
+        initial_capital = 100000  # Default fallback value
+        if hasattr(self, 'portfolio') and self.portfolio:
+            if hasattr(self.portfolio, 'initial_capital'):
+                initial_capital = self.portfolio.initial_capital
+
+        # Store reference to event bus before resetting
+        event_bus = None
+        if hasattr(self, 'event_bus'):
+            event_bus = self.event_bus
+
+        # Create new portfolio or reset existing one
+        if hasattr(self, 'portfolio') and self.portfolio and hasattr(self.portfolio, 'reset'):
+            self.portfolio.reset()
+        else:
+            # Make sure we have an event bus to pass to the portfolio
+            if event_bus is None:
+                # Try to get event bus from position manager
+                if self.position_manager and hasattr(self.position_manager, 'event_bus'):
+                    event_bus = self.position_manager.event_bus
+                else:
+                    # Create a new event bus as a last resort
+                    from src.events.event_bus import EventBus
+                    event_bus = EventBus()
+                    logger.warning("Creating new EventBus for portfolio in reset")
+
+            # Create a new portfolio with the stored event bus
+            from src.position_management.portfolio import EventPortfolio
+            self.portfolio = EventPortfolio(initial_capital, event_bus)
+
+        # Reset other state
         self.pending_orders = []
         self.trade_history = []
         self.portfolio_history = []
         self.signal_history = []
         self.last_known_prices = {}
+
         logger.info(f"Execution engine reset with {initial_capital:.2f} capital")
-
-
-
-

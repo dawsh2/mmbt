@@ -1,11 +1,14 @@
 # Signals Module
 
-No module overview available.
+Signals Compatibility Module
+
+This module provides backward compatibility with code that imports from the 
+old src.signals module by forwarding imports to the new signal_event module.
 
 ## Contents
 
 - [signal_processing](#signal_processing)
-- [signal_router](#signal_router)
+- [signals](#signals)
 
 ## signal_processing
 
@@ -350,63 +353,22 @@ Args:
 
 Reset all signal processing components.
 
-## signal_router
+## signals
 
-Signal Router Module
+Signals Compatibility Module
 
-This module provides the SignalRouter class that collects and manages signals
-from multiple rules. It was created to support backward compatibility for 
-migrated code from the legacy architecture.
+This module provides backward compatibility with code that imports from the 
+old src.signals module by forwarding imports to the new signal_event module.
 
 ### Classes
 
-#### `SignalCollection`
+#### `SignalType`
 
-A collection of signals that provides consensus methods.
-
-##### Methods
-
-###### `__init__()`
-
-Initialize an empty signal collection.
-
-###### `add(signal)`
-
-Add a signal to the collection.
-
-###### `get_weighted_consensus()`
-
-*Returns:* `SignalType`
-
-Get the weighted consensus signal type from all signals.
-
-#### `SignalRouter`
-
-Routes signals from multiple rules and provides consensus methods.
-
-This class is provided for backward compatibility with legacy strategies.
+Signal type compatibility class to maintain backward compatibility.
+Maps to the constants in SignalEvent.
 
 ##### Methods
 
-###### `__init__(rule_objects)`
+###### `from_value(cls, value)`
 
-Initialize the signal router with rule objects.
-
-Args:
-    rule_objects: List of rule objects that generate signals
-
-###### `on_bar(event)`
-
-*Returns:* `Dict[str, Any]`
-
-Process a bar event through all rules and collect signals.
-
-Args:
-    event: Bar event containing market data
-    
-Returns:
-    dict: Contains the collected signals and bar metadata
-
-###### `reset()`
-
-Reset all rules.
+Convert a numeric value to a signal type.

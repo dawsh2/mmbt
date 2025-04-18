@@ -921,8 +921,8 @@ Returns:
 
 Fixed Position Manager Implementation
 
-This is a fixed version of the position manager that properly handles
-signals, creates position actions, and integrates with the portfolio.
+This module contains the fixed version of the PositionManager class
+that properly handles signals and creates trades.
 
 ### Classes
 
@@ -983,13 +983,18 @@ Returns:
 
 *Returns:* Position size (positive for buy, negative for sell)
 
-###### `_execute_entry_action(action, current_time)`
+###### `execute_position_action(action, current_time=None)`
 
-Execute an entry action with checking for existing positions.
+Execute a position action.
 
-###### `_execute_exit_action(action, current_time)`
+Args:
+    action: Position action dictionary
+    current_time: Current timestamp (defaults to now)
+    
+Returns:
+    Result dictionary or None if action failed
 
-Execute an exit action with position existence check.
+*Returns:* Result dictionary or None if action failed
 
 ## position_sizers
 

@@ -47,6 +47,22 @@ Extract initial capital from configuration.
 
 Set up event handlers with proper registration.
 
+###### `_create_bar_handler()`
+
+Create a handler for BAR events.
+
+###### `_create_signal_handler()`
+
+Create a handler for SIGNAL events.
+
+###### `_create_order_handler()`
+
+Create a handler for ORDER events.
+
+###### `_create_fill_handler()`
+
+Create a handler for FILL events.
+
 ###### `run(use_test_data=False)`
 
 Run the backtest.
