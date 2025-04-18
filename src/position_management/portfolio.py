@@ -246,16 +246,50 @@ class EventPortfolio(EventHandler):
                            f"PnL: {result.get('realized_pnl', 0):.2f}")
             except Exception as e:
                 logger.error(f"Failed to close position: {e}")
-    
-    def _handle_fill(self, event: Event) -> None:
+
+
+    # In src/position_management/portfolio.py
+    def handle_fill(self, event):
         """
         Handle fill events.
-        
+
         Args:
             event: Fill event
         """
-        # Implementation for handling fills
-        pass
+        if not isinstance(event, Event) or not hasattr(event, 'data'):
+            logger.warning(f"Expected Event object with data, got {type(event)}")
+            return
+
+        fill = event.data
+
+        # Extract fill details using proper validation
+        if hasattr(fill, 'get_symbol') and hasattr(fill, 'get_quantity') and hasattr(fill, 'get_price'):
+            symbol = fill.get_symbol()
+            quantity = fill.get_quantity()
+            price = fill.get_price()
+            direction = fill.get_direction()
+            timestamp = getattr(fill, 'timestamp', datetime.datetime.now())
+
+            # Adjust quantity based on direction for use in update_position
+            quantity_delta = quantity * direction
+
+            # Update position
+            logger.info(f"Updating portfolio from fill: {symbol} {'BUY' if direction > 0 else 'SELL'} {quantity} @ {price}")
+            success = self.update_position(
+                symbol=symbol,
+                quantity_delta=quantity_delta,
+                price=price,
+                timestamp=timestamp
+            )
+
+            if success:
+                logger.info(f"Successfully updated portfolio from fill")
+            else:
+                logger.warning(f"Failed to update portfolio from fill")
+        else:
+            logger.warning(f"Invalid fill data: {fill}")
+
+
     
     def _open_position(self, symbol: str, direction: int, quantity: float, 
                     entry_price: float, entry_time: datetime.datetime,
@@ -508,6 +542,9 @@ class EventPortfolio(EventHandler):
 
 
     # Add to EventPortfolio class
+
+    # src/position_management/portfolio.py
+
     def update_position(self, symbol, quantity_delta, price, timestamp):
         """
         Update portfolio with a position change.
@@ -524,38 +561,41 @@ class EventPortfolio(EventHandler):
         try:
             # Buying
             if quantity_delta > 0:
-                # Check if we have an existing position
+                # Check if we have enough cash
+                cost = quantity_delta * price
+                if cost > self.cash:
+                    logger.warning(f"Not enough cash to buy {quantity_delta} {symbol} @ {price}")
+                    return False
+
+                # Find existing position or create new one
                 if symbol in self.positions_by_symbol and self.positions_by_symbol[symbol]:
                     # Add to existing position
                     position = self.positions_by_symbol[symbol][0]
                     position.add(quantity_delta, price, timestamp)
                 else:
                     # Create new position
-                    direction = 1  # Long
                     self._open_position(
                         symbol=symbol,
-                        direction=direction,
+                        direction=1,  # Long
                         quantity=quantity_delta,
                         entry_price=price,
                         entry_time=timestamp
                     )
 
                 # Update cash
-                self.cash -= quantity_delta * price
+                self.cash -= cost
 
             # Selling
             elif quantity_delta < 0:
                 # Get positions for this symbol
-                if symbol not in self.positions_by_symbol or not self.positions_by_symbol[symbol]:
+                positions = self.positions_by_symbol.get(symbol, [])
+                if not positions:
                     logger.warning(f"No positions found for {symbol}, cannot sell")
                     return False
 
-                # Get quantity to close
-                quantity_to_close = abs(quantity_delta)
-
-                # Process each position until we've closed the required amount
-                remaining = quantity_to_close
-                for position in list(self.positions_by_symbol[symbol]):
+                # Close positions to cover the quantity
+                remaining = abs(quantity_delta)
+                for position in list(positions):  # Create a copy to iterate safely
                     if remaining <= 0:
                         break
 
@@ -565,16 +605,16 @@ class EventPortfolio(EventHandler):
                             position_id=position.position_id,
                             exit_price=price,
                             exit_time=timestamp,
-                            exit_type=ExitType.STRATEGY
+                            exit_type='strategy'
                         )
                         remaining -= position.quantity
                     else:
                         # Partially close this position
-                        position.partially_close(remaining, price, timestamp, ExitType.STRATEGY)
+                        position.partially_close(remaining, price, timestamp, 'strategy')
                         remaining = 0
 
-                # Update cash
-                self.cash += abs(quantity_delta) * price
+                # Update cash - only count what we actually sold
+                self.cash += (abs(quantity_delta) - remaining) * price
 
             # Update metrics
             self._update_metrics()
@@ -585,6 +625,7 @@ class EventPortfolio(EventHandler):
         except Exception as e:
             logger.error(f"Error updating position: {e}", exc_info=True)
             return False
+    
 
 
     # Add this to EventPortfolio class

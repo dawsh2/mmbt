@@ -41,9 +41,11 @@ class Backtester:
         self.strategy = strategy
         self.position_manager = position_manager
         
-        
         # Initialize event system
         self.event_bus = EventBus()
+        # Ensure event_counts is initialized
+        if not hasattr(self.event_bus, 'event_counts'):
+            self.event_bus.event_counts = {}
         
         # Configure initial capital
         self.initial_capital = self._extract_initial_capital(config)
@@ -52,64 +54,38 @@ class Backtester:
         market_sim_config = self._extract_market_sim_config(config)
         self.market_simulator = MarketSimulator(market_sim_config)
         
-        # Initialize execution components - CRITICAL: Do this after setting up position_manager
-        # and properly access the portfolio reference from position_manager
+        # Initialize execution components
         self.execution_engine = ExecutionEngine(self.position_manager)
-        self.execution_engine.event_bus = self.event_bus
         
-        # CRITICAL FIX: Set portfolio reference properly if available
+        # CRITICAL: Set portfolio reference properly
         if self.position_manager and hasattr(self.position_manager, 'portfolio'):
             self.execution_engine.portfolio = self.position_manager.portfolio
             logger.info("Set execution engine portfolio reference from position manager")
         else:
             logger.warning("No portfolio reference available in position manager")
         
-        # Initialize event handlers dictionary
+        # CRITICAL: Set event bus references for all components
+        self.execution_engine.event_bus = self.event_bus
+        
+        if hasattr(self.strategy, 'set_event_bus'):
+            self.strategy.set_event_bus(self.event_bus)
+        
+        if hasattr(self.position_manager, 'event_bus'):
+            self.position_manager.event_bus = self.event_bus
+        
+        # Initialize event handlers dictionary for strong references
         self._event_handlers = {}
         
         # Set up event handlers
         self._setup_event_handlers()
         
-        
-        # Track signals for debugging
+        # Track signals, orders, and fills for debugging
         self.signals = []
         self.orders = []
         self.fills = []
         
         logger.info(f"Backtester initialized with initial capital: {self.initial_capital}")
 
-    def _setup_event_handlers(self):
-        """Set up event handlers with proper registration."""
-        # Create and store handlers with strong references
-        self._event_handlers['bar'] = self._create_bar_handler()
-        self._event_handlers['signal'] = self._create_signal_handler()
-        self._event_handlers['order'] = self._create_order_handler()
-        self._event_handlers['fill'] = self._create_fill_handler()
-        
-        # Register handlers with event bus
-        self.event_bus.register(EventType.BAR, self._event_handlers['bar'])
-        self.event_bus.register(EventType.SIGNAL, self._event_handlers['signal'])
-        self.event_bus.register(EventType.ORDER, self._event_handlers['order'])
-        self.event_bus.register(EventType.FILL, self._event_handlers['fill'])
-        
-        # CRITICAL: Register position action handler and execution engine
-        # This connects position actions to order creation
-        self.event_bus.register(EventType.POSITION_ACTION, self.execution_engine.on_position_action)
-        logger.info("Registered execution engine for POSITION_ACTION events")
-        
-        # CRITICAL: Register position manager to receive signal events
-        self.event_bus.register(EventType.SIGNAL, self.position_manager.on_signal)
-        logger.info("Registered position manager for SIGNAL events")
-        
-        # Add debugging handler for all events
-        def debug_event_flow(event):
-            event_type_name = event.event_type.name if hasattr(event.event_type, 'name') else str(event.event_type)
-            logger.debug(f"Event flow: {event_type_name} event received")
-            
-        # Register for all event types
-        for event_type in EventType:
-            self.event_bus.register(event_type, debug_event_flow)        
-    
     def _extract_market_sim_config(self, config):
         """Extract market simulation configuration."""
         if isinstance(config, dict):
@@ -134,66 +110,97 @@ class Backtester:
 
     def _setup_event_handlers(self):
         """Set up event handlers with proper registration."""
-        # Create and store handlers with strong references
-        self._event_handlers['bar'] = self._create_bar_handler()
-        self._event_handlers['signal'] = self._create_signal_handler()
-        self._event_handlers['order'] = self._create_order_handler()
-        self._event_handlers['fill'] = self._create_fill_handler()
-        
-        # CRITICAL FIX: Create position action handler
-        self._event_handlers['position_action'] = self._create_position_action_handler()
+        logger.info("Setting up event handlers")
 
-        # Register handlers with event bus
-        self.event_bus.register(EventType.BAR, self._event_handlers['bar'])
-        self.event_bus.register(EventType.SIGNAL, self._event_handlers['signal'])
-        self.event_bus.register(EventType.ORDER, self._event_handlers['order'])
-        self.event_bus.register(EventType.FILL, self._event_handlers['fill'])
-        
-        # CRITICAL FIX: Register position action handler
-        self.event_bus.register(EventType.POSITION_ACTION, self._event_handlers['position_action'])
-        
-        # CRITICAL FIX: Directly register position manager to receive signal events
-        if self.position_manager and hasattr(self.position_manager, 'on_signal'):
+        # Create and store handlers with strong references
+        self._event_handlers = {}
+
+        # Register strategy to handle BAR events
+        if hasattr(self.strategy, 'on_bar'):
+            self.event_bus.register(EventType.BAR, self.strategy.on_bar)
+            logger.info("Registered strategy.on_bar for BAR events")
+
+        # Register position manager to receive signal events
+        if hasattr(self.position_manager, 'on_signal'):
             self.event_bus.register(EventType.SIGNAL, self.position_manager.on_signal)
-            logger.info("Registered position manager for SIGNAL events")
-        
-        # CRITICAL FIX: Register execution engine to receive order events
-        if self.execution_engine:
+            logger.info("Registered position_manager.on_signal for SIGNAL events")
+
+        # CRITICAL: Register execution engine to handle position actions
+        if hasattr(self.execution_engine, 'on_position_action'):
+            self.event_bus.register(EventType.POSITION_ACTION, self.execution_engine.on_position_action)
+            logger.info("Registered execution_engine.on_position_action for POSITION_ACTION events")
+
+        # Register execution engine to handle orders
+        if hasattr(self.execution_engine, 'on_order'):
             self.event_bus.register(EventType.ORDER, self.execution_engine.on_order)
-            logger.info("Registered execution engine for ORDER events")
-        
-        # Add debugging handler for all events
+            logger.info("Registered execution_engine.on_order for ORDER events")
+
+        # Register portfolio to handle fills
+        if hasattr(self.position_manager, 'portfolio') and self.position_manager.portfolio:
+            portfolio = self.position_manager.portfolio
+
+            # Try different naming conventions for the fill handler
+            if hasattr(portfolio, 'handle_fill') and callable(portfolio.handle_fill):
+                self.event_bus.register(EventType.FILL, portfolio.handle_fill)
+                logger.info("Registered portfolio.handle_fill for FILL events")
+            elif hasattr(portfolio, '_handle_fill') and callable(portfolio._handle_fill):
+                self.event_bus.register(EventType.FILL, portfolio._handle_fill)
+                logger.info("Registered portfolio._handle_fill for FILL events")
+            else:
+                logger.warning("Portfolio has no handle_fill or _handle_fill method")
+
+            # Same for position action handler
+            if hasattr(portfolio, 'handle_position_action') and callable(portfolio.handle_position_action):
+                self.event_bus.register(EventType.POSITION_ACTION, portfolio.handle_position_action)
+                logger.info("Registered portfolio.handle_position_action for POSITION_ACTION events")
+            elif hasattr(portfolio, '_handle_position_action') and callable(portfolio._handle_position_action):
+                self.event_bus.register(EventType.POSITION_ACTION, portfolio._handle_position_action)
+                logger.info("Registered portfolio._handle_position_action for POSITION_ACTION events")
+
+        # Add debug event flow tracing
         def debug_event_flow(event):
+            # Get event type name for logging
             event_type_name = event.event_type.name if hasattr(event.event_type, 'name') else str(event.event_type)
             logger.debug(f"Event flow: {event_type_name} event received")
-            
+
+            # Log additional details for important events
             if event.event_type == EventType.SIGNAL:
                 signal = event.data
-                if hasattr(signal, 'get_signal_value') and hasattr(signal, 'get_symbol') and hasattr(signal, 'get_price'):
+                if hasattr(signal, 'get_signal_value') and hasattr(signal, 'get_symbol'):
                     direction = "BUY" if signal.get_signal_value() > 0 else "SELL" if signal.get_signal_value() < 0 else "NEUTRAL"
-                    logger.debug(f"Signal: {direction} for {signal.get_symbol()} at {signal.get_price()}")
-            
+                    logger.debug(f"Signal details: {direction} for {signal.get_symbol()} @ {signal.get_price()}")
+
             elif event.event_type == EventType.POSITION_ACTION:
                 action = event.data
                 if isinstance(action, dict):
-                    logger.debug(f"Position action: {action.get('action_type', 'unknown')}")
-            
+                    action_type = action.get('action_type', 'unknown')
+                    symbol = action.get('symbol', 'unknown')
+                    logger.debug(f"Position action details: {action_type} for {symbol}")
+
             elif event.event_type == EventType.ORDER:
                 order = event.data
                 if hasattr(order, 'get_symbol'):
-                    logger.debug(f"Order: {order.get_symbol()}")
-                    
+                    direction = "BUY" if order.get_direction() > 0 else "SELL"
+                    logger.debug(f"Order details: {direction} {order.get_quantity()} {order.get_symbol()} @ {order.get_price()}")
+
             elif event.event_type == EventType.FILL:
                 fill = event.data
                 if hasattr(fill, 'get_symbol'):
-                    logger.debug(f"Fill: {fill.get_symbol()}")
-                    
-        # Register for all event types
+                    direction = "BUY" if fill.get_direction() > 0 else "SELL"
+                    logger.debug(f"Fill details: {direction} {fill.get_quantity()} {fill.get_symbol()} @ {fill.get_price()}")
+
+        # Register tracer for all event types
         for event_type in EventType:
             self.event_bus.register(event_type, debug_event_flow)
 
-        logger.info("Event handlers registered")
+        # Initialize event_counts attribute on the event bus if not present
+        if not hasattr(self.event_bus, 'event_counts'):
+            self.event_bus.event_counts = {}
+
+        logger.info("Event handlers setup complete")
     
+ 
+ 
     def _create_bar_handler(self):
         """Create a handler for BAR events."""
         def handle_bar_event(event):
@@ -246,7 +253,7 @@ class Backtester:
     def _create_signal_handler(self):
         """Create a handler for SIGNAL events."""
         def handle_signal_event(event):
-            """Process signals and emit to the event bus."""
+            """Process signals and track for debugging."""
             try:
                 # Ensure we're working with a SignalEvent
                 if not hasattr(event, 'data') or not isinstance(event.data, SignalEvent):
@@ -261,7 +268,7 @@ class Backtester:
                 # Log the signal
                 if hasattr(signal, 'get_signal_value') and hasattr(signal, 'get_symbol'):
                     direction = "BUY" if signal.get_signal_value() > 0 else "SELL" if signal.get_signal_value() < 0 else "NEUTRAL"
-                    logger.debug(f"Emitted signal event: {direction} for {signal.get_symbol()}")
+                    logger.debug(f"Signal event: {direction} for {signal.get_symbol()}")
                 
             except Exception as e:
                 logger.error(f"Error processing signal event: {str(e)}", exc_info=True)
@@ -322,22 +329,26 @@ class Backtester:
                 else:
                     logger.debug(f"Position action received: {position_action}")
                 
-                # Execute the position action using the position manager
-                if self.position_manager and hasattr(self.position_manager, 'execute_position_action'):
+                # Execute the position action using the position manager or execution engine
+                if hasattr(self.execution_engine, 'on_position_action'):
+                    # First try execution engine
+                    self.execution_engine.on_position_action(event)
+                    logger.debug(f"Position action processed by execution engine")
+                elif hasattr(self.position_manager, 'execute_position_action'):
+                    # Fallback to position manager
                     self.position_manager.execute_position_action(position_action)
-                    logger.debug(f"Position action executed")
+                    logger.debug(f"Position action executed by position manager")
                 else:
-                    logger.warning("Position manager missing or doesn't have execute_position_action method")
+                    logger.warning("No handler available for position action")
                 
             except Exception as e:
                 logger.error(f"Error processing position action: {str(e)}", exc_info=True)
         
         return handle_position_action_event
 
-
     def run(self, use_test_data=False):
         """
-        Run the backtest.
+        Run the backtest with proper event flow.
 
         Args:
             use_test_data: Whether to use test data (True) or training data (False)
@@ -348,6 +359,29 @@ class Backtester:
         try:
             # Reset all components before running
             self.reset()
+            
+            # CRITICAL: Ensure all cross-references are set
+            # Set event bus references for all components
+            if self.position_manager and not hasattr(self.position_manager, 'event_bus'):
+                self.position_manager.event_bus = self.event_bus
+                logger.info("Set event_bus reference on position_manager")
+                
+            if hasattr(self.strategy, 'set_event_bus'):
+                self.strategy.set_event_bus(self.event_bus)
+                logger.info("Set event_bus reference on strategy")
+                
+            if not hasattr(self.execution_engine, 'event_bus'):
+                self.execution_engine.event_bus = self.event_bus
+                logger.info("Set event_bus reference on execution_engine")
+                
+            # Ensure portfolio reference is set
+            if not hasattr(self.execution_engine, 'portfolio') and hasattr(self.position_manager, 'portfolio'):
+                self.execution_engine.portfolio = self.position_manager.portfolio
+                logger.info("Set portfolio reference on execution_engine")
+            
+            # Re-setup event handlers to ensure all connections
+            self._setup_event_handlers()
+            
             logger.info("Starting backtest...")
 
             # Select data iterator based on data set
@@ -380,22 +414,22 @@ class Backtester:
                 self.event_bus.emit(bar_event_container)
                 event_counts['bar'] += 1
 
-                # If strategy has direct on_bar method, call it with the event
+                # If strategy has direct on_bar method, call it as backup in case event didn't work
                 if hasattr(self.strategy, 'on_bar'):
                     signal_event = self.strategy.on_bar(bar_event_container)
 
-                    # If the strategy returned a signal directly, emit it
-                    if signal_event is not None:
+                    # If the strategy returned a signal directly, emit it as backup
+                    if signal_event is not None and self.event_bus.event_counts.get(EventType.SIGNAL, 0) == 0:
                         # Process single signal
                         if isinstance(signal_event, SignalEvent):
-                            logger.debug(f"Emitting signal from strategy: {signal_event}")
+                            logger.debug(f"Directly emitting signal from strategy: {signal_event}")
                             self.event_bus.emit(Event(EventType.SIGNAL, signal_event))
                             event_counts['signal'] += 1
                         # Process multiple signals if returned as a list
                         elif isinstance(signal_event, list):
                             for signal in signal_event:
                                 if isinstance(signal, SignalEvent) and signal is not None:
-                                    logger.debug(f"Emitting signal from strategy list: {signal}")
+                                    logger.debug(f"Directly emitting signal from strategy list: {signal}")
                                     self.event_bus.emit(Event(EventType.SIGNAL, signal))
                                     event_counts['signal'] += 1
 
@@ -413,12 +447,27 @@ class Backtester:
                     logger.info(f"Processed {event_counts['bar']} bars, {event_counts['signal']} signals, "
                                f"{event_counts['order']} orders, {event_counts['fill']} fills")
 
+            # Update event counts from event bus for final stats
+            for event_type, count in self.event_bus.event_counts.items():
+                if hasattr(event_type, 'name'):
+                    name = event_type.name.lower()
+                    if name in event_counts:
+                        event_counts[name] = count
+
             logger.info("Backtest completed. Collecting results...")
 
             # Log final event counts
             logger.info(f"Final counts: {event_counts['bar']} bars, {event_counts['signal']} signals, "
                        f"{event_counts['order']} orders, {event_counts['fill']} fills, "
                        f"{event_counts['position_action']} position actions")
+
+            # Check for event flow breaks
+            if event_counts['bar'] > 0 and event_counts['signal'] == 0:
+                logger.error("EVENT FLOW BREAK: BAR events not generating SIGNAL events")
+            if event_counts['signal'] > 0 and event_counts['position_action'] == 0:
+                logger.error("EVENT FLOW BREAK: SIGNAL events not generating POSITION_ACTION events")
+            if event_counts['position_action'] > 0 and event_counts['order'] == 0:
+                logger.error("EVENT FLOW BREAK: POSITION_ACTION events not generating ORDER events")
 
             # Collect and return results
             return self.collect_results()
@@ -441,9 +490,8 @@ class Backtester:
                 'portfolio_history': []
             }
     
-
     def reset(self):
-        """Reset the backtester state."""
+        """Reset the backtester state and all components."""
         # Reset execution engine
         if hasattr(self.execution_engine, 'reset'):
             self.execution_engine.reset()
@@ -459,6 +507,12 @@ class Backtester:
         # Reset event bus
         if hasattr(self.event_bus, 'reset'):
             self.event_bus.reset()
+        else:
+            # Manual reset if method not available
+            if hasattr(self.event_bus, 'handlers'):
+                self.event_bus.handlers = {}
+            if hasattr(self.event_bus, 'event_counts'):
+                self.event_bus.event_counts = {}
             
             # Re-setup event handlers
             self._setup_event_handlers()
@@ -509,6 +563,13 @@ class Backtester:
                 'config': self.config
             }
             
+            # Add event counts if available
+            if hasattr(self.event_bus, 'event_counts'):
+                results['event_counts'] = {
+                    event_type.name if hasattr(event_type, 'name') else str(event_type): count
+                    for event_type, count in self.event_bus.event_counts.items()
+                }
+            
             logger.info(f"Backtest results: {len(processed_trades)} trades, {total_return:.2f}% return, Sharpe: {sharpe_ratio:.2f}")
             
             return results
@@ -540,20 +601,37 @@ class Backtester:
         processed_trades = []
         
         for trade in trade_history:
-            # Create processed trade with standard fields
-            processed_trade = {
-                'trade_id': trade.get('trade_id', trade.get('position_id', '')),
-                'symbol': trade.get('symbol', ''),
-                'direction': trade.get('direction', 0),
-                'quantity': trade.get('quantity', 0),
-                'entry_price': trade.get('entry_price', 0),
-                'exit_price': trade.get('exit_price', 0),
-                'entry_time': trade.get('entry_time', None),
-                'exit_time': trade.get('exit_time', None),
-                'realized_pnl': trade.get('realized_pnl', trade.get('pnl', 0)),
-                'return_pct': 0,  # Will calculate below
-                'holding_period': 0  # Will calculate below
-            }
+            # Create processed trade with standard fields, handling different formats
+            if isinstance(trade, dict):
+                # Standard dictionary format
+                processed_trade = {
+                    'trade_id': trade.get('trade_id', trade.get('position_id', '')),
+                    'symbol': trade.get('symbol', ''),
+                    'direction': trade.get('direction', 0),
+                    'quantity': trade.get('quantity', 0),
+                    'entry_price': trade.get('entry_price', 0),
+                    'exit_price': trade.get('exit_price', 0),
+                    'entry_time': trade.get('entry_time', None),
+                    'exit_time': trade.get('exit_time', None),
+                    'realized_pnl': trade.get('realized_pnl', trade.get('pnl', 0)),
+                    'return_pct': 0,  # Will calculate below
+                    'holding_period': 0  # Will calculate below
+                }
+            else:
+                # Object format (attempt to use get methods)
+                processed_trade = {
+                    'trade_id': getattr(trade, 'trade_id', getattr(trade, 'position_id', '')),
+                    'symbol': getattr(trade, 'symbol', ''),
+                    'direction': getattr(trade, 'direction', 0),
+                    'quantity': getattr(trade, 'quantity', 0),
+                    'entry_price': getattr(trade, 'entry_price', 0),
+                    'exit_price': getattr(trade, 'exit_price', 0),
+                    'entry_time': getattr(trade, 'entry_time', None),
+                    'exit_time': getattr(trade, 'exit_time', None),
+                    'realized_pnl': getattr(trade, 'realized_pnl', getattr(trade, 'pnl', 0)),
+                    'return_pct': 0,  # Will calculate below
+                    'holding_period': 0  # Will calculate below
+                }
             
             # Calculate return percentage
             if processed_trade['entry_price'] > 0:
@@ -564,8 +642,11 @@ class Backtester:
             
             # Calculate holding period in days if timestamps available
             if processed_trade['entry_time'] and processed_trade['exit_time']:
-                duration = processed_trade['exit_time'] - processed_trade['entry_time']
-                processed_trade['holding_period'] = duration.total_seconds() / 86400  # Convert to days
+                try:
+                    duration = processed_trade['exit_time'] - processed_trade['entry_time']
+                    processed_trade['holding_period'] = duration.total_seconds() / 86400  # Convert to days
+                except:
+                    processed_trade['holding_period'] = 0
                 
             processed_trades.append(processed_trade)
             
@@ -580,8 +661,11 @@ class Backtester:
         # Calculate total return
         total_return = sum(trade['return_pct'] for trade in processed_trades)
         
-        # Calculate log return
-        total_log_return = sum(np.log(1 + trade['return_pct']/100) for trade in processed_trades)
+        # Calculate log return safely
+        try:
+            total_log_return = sum(np.log(1 + trade['return_pct']/100) for trade in processed_trades)
+        except:
+            total_log_return = 0
         
         # Calculate average return
         avg_return = total_return / len(processed_trades) if processed_trades else 0
@@ -604,20 +688,24 @@ class Backtester:
         if len(equity_values) < 2:
             return 0
             
-        # Calculate daily returns
-        returns = []
-        for i in range(1, len(equity_values)):
-            returns.append((equity_values[i] / equity_values[i-1]) - 1)
+        try:
+            # Calculate daily returns
+            returns = []
+            for i in range(1, len(equity_values)):
+                returns.append((equity_values[i] / equity_values[i-1]) - 1)
+                
+            # Calculate Sharpe ratio
+            returns = np.array(returns)
+            excess_returns = returns - (risk_free_rate / annualization_factor)
+            if len(excess_returns) == 0 or np.std(excess_returns) == 0:
+                return 0
+                
+            sharpe = np.mean(excess_returns) / np.std(excess_returns) * np.sqrt(annualization_factor)
             
-        # Calculate Sharpe ratio
-        returns = np.array(returns)
-        excess_returns = returns - (risk_free_rate / annualization_factor)
-        if len(excess_returns) == 0 or np.std(excess_returns) == 0:
+            return sharpe
+        except Exception as e:
+            logger.error(f"Error calculating Sharpe ratio: {e}")
             return 0
-            
-        sharpe = np.mean(excess_returns) / np.std(excess_returns) * np.sqrt(annualization_factor)
-        
-        return sharpe
         
     def calculate_max_drawdown(self):
         """Calculate maximum drawdown for the backtest."""
@@ -627,23 +715,27 @@ class Backtester:
             
         # Extract equity values from portfolio history
         equity_values = []
-        for snapshot in self.execution_engine.portfolio_history:
-            if 'equity' in snapshot:
-                equity_values.append(snapshot['equity'])
+        try:
+            for snapshot in self.execution_engine.portfolio_history:
+                if 'equity' in snapshot:
+                    equity_values.append(snapshot['equity'])
+                    
+            # If we have fewer than 2 values, return 0
+            if len(equity_values) < 2:
+                return 0
                 
-        # If we have fewer than 2 values, return 0
-        if len(equity_values) < 2:
+            # Calculate drawdown
+            running_max = equity_values[0]
+            drawdowns = []
+            
+            for equity in equity_values:
+                if equity > running_max:
+                    running_max = equity
+                drawdown = (running_max - equity) / running_max if running_max > 0 else 0
+                drawdowns.append(drawdown)
+                
+            # Return maximum drawdown
+            return max(drawdowns) if drawdowns else 0
+        except Exception as e:
+            logger.error(f"Error calculating max drawdown: {e}")
             return 0
-            
-        # Calculate drawdown
-        running_max = equity_values[0]
-        drawdowns = []
-        
-        for equity in equity_values:
-            if equity > running_max:
-                running_max = equity
-            drawdown = (running_max - equity) / running_max if running_max > 0 else 0
-            drawdowns.append(drawdown)
-            
-        # Return maximum drawdown
-        return max(drawdowns) if drawdowns else 0

@@ -313,9 +313,7 @@ Handle position action events.
 Args:
     event: Position action event
 
-###### `_handle_fill(event)`
-
-*Returns:* `None`
+###### `handle_fill(event)`
 
 Handle fill events.
 
@@ -923,10 +921,10 @@ Returns:
 
 ## position_manager
 
-Fixed Position Manager Implementation
+Position Manager Implementation
 
-This module contains the fixed version of the PositionManager class
-that properly handles signals and creates trades.
+This module contains the PositionManager class that properly handles signals
+and creates trades.
 
 ### Classes
 
@@ -956,7 +954,7 @@ Args:
 Process a signal event into position actions.
 
 Args:
-    event: Event containing a SignalEvent or the SignalEvent directly
+    event: Event containing a SignalEvent
 
 Returns:
     List of position actions
@@ -999,6 +997,10 @@ Returns:
     Result dictionary or None if action failed
 
 *Returns:* Result dictionary or None if action failed
+
+###### `reset()`
+
+Reset position manager state.
 
 ## position_sizers
 

@@ -187,117 +187,62 @@ class ExecutionEngine:
                 logger.error(f"Error executing market order immediately: {e}")
         
         logger.info(f"Added order to pending list: {order}")
-    
+
+
     def execute_pending_orders(self, bar, market_simulator=None):
-        """
-        Execute any pending orders based on current bar data.
-        
-        Args:
-            bar: Current market data (BarEvent or dict)
-            market_simulator: Optional market simulator for calculating execution prices
-            
-        Returns:
-            List of Fill objects for executed orders
-        """
+        """Execute any pending orders based on current bar data."""
         if not self.pending_orders:
             return []
 
-        # Use provided market simulator or instance variable
-        simulator = market_simulator or self.market_simulator
-        
-        # Extract bar data properly
+        # Extract bar data
         if isinstance(bar, BarEvent):
             symbol = bar.get_symbol()
-            close_price = bar.get_price()  # Gets Close price
+            close_price = bar.get_price()
             timestamp = bar.get_timestamp()
-            bar_data = bar.get_data()
         elif isinstance(bar, dict) and 'Close' in bar:
-            # Backward compatibility with dictionary-based bars
-            logger.warning("Using deprecated dictionary-based bar data, convert to BarEvent")
             symbol = bar.get('symbol', 'default')
             close_price = bar.get('Close', 0)
             timestamp = bar.get('timestamp', datetime.datetime.now())
-            bar_data = bar
         else:
             logger.error(f"Unsupported bar data type: {type(bar)}")
             return []
-        
-        # Update last known price
-        if close_price > 0:
-            self.last_known_prices[symbol] = close_price
 
-        # Log the current state before execution
-        logger.info(f"Processing {len(self.pending_orders)} pending orders for bar: {symbol}, close={close_price}")
-        logger.info(f"Portfolio before execution - Cash: {self.portfolio.cash:.2f}, Equity: {self.portfolio.equity:.2f}")
-
-        # Track which orders were successfully executed
         executed_orders = []
         fills = []
 
-        # Process each pending order
-        for order in list(self.pending_orders):  # Create a copy to safely modify during iteration
-            logger.info(f"Attempting to execute order: {order}")
+        for order in list(self.pending_orders):
+            order_symbol = order.get_symbol()
 
             # Skip orders for other symbols if bar data is symbol-specific
-            order_symbol = order.get_symbol() if hasattr(order, 'get_symbol') else order.symbol
             if symbol != 'default' and symbol != order_symbol:
-                logger.debug(f"Skipping order for {order_symbol} during {symbol} bar")
                 continue
 
-            # Get execution price from market simulator or use close price
-            try:
-                if simulator and hasattr(simulator, 'calculate_execution_price'):
-                    execution_price = simulator.calculate_execution_price(order, bar_data)
-                    logger.info(f"Market simulator calculated price: {execution_price}")
-                else:
-                    # Simple slippage model as fallback
-                    execution_price = close_price
-                    order_direction = order.get_direction() if hasattr(order, 'get_direction') else order.direction
-                    slippage = execution_price * 0.001 * order_direction  # 0.1% slippage
-                    execution_price += slippage
-                    logger.info(f"Using fallback price with slippage: {execution_price}")
-            except Exception as e:
-                logger.error(f"Error calculating execution price: {e}")
-                execution_price = close_price  # Fallback to close price
-
-            # Calculate commission
-            commission = 0.0
-            if simulator and hasattr(simulator, 'calculate_fees'):
+            # Calculate execution price
+            execution_price = close_price
+            if market_simulator:
                 try:
-                    commission = simulator.calculate_fees(order, execution_price)
+                    execution_price = market_simulator.calculate_execution_price(order, bar)
                 except Exception as e:
-                    logger.error(f"Error calculating fees: {e}")
-                    order_quantity = order.get_quantity() if hasattr(order, 'get_quantity') else order.quantity
-                    commission = order_quantity * execution_price * 0.001  # 10 bps default
+                    logger.error(f"Error in market simulator: {e}")
 
             # Execute the order
             try:
-                fill = self._execute_order(order, execution_price, timestamp, commission)
+                fill = self._execute_order(order, execution_price, timestamp)
+
                 if fill:
                     fills.append(fill)
-                    self.trade_history.append(fill)
                     executed_orders.append(order)
-                    
-                    # Emit fill event
-                    self._emit_fill_event(fill)
-                    
-                    logger.info(f"Order executed successfully, Fill price: {execution_price:.2f}")
-                else:
-                    logger.warning(f"Order execution returned no fill")
-            except Exception as e:
-                logger.error(f"Error executing order - DETAILS: {e}")
-                import traceback
-                traceback.print_exc()
 
-        # Remove executed orders from pending list
+                    # Ensure we emit a FILL event
+                    if self.event_bus:
+                        self.event_bus.emit(Event(EventType.FILL, fill))
+            except Exception as e:
+                logger.error(f"Error executing order: {e}", exc_info=True)
+
+        # Remove executed orders
         for order in executed_orders:
             if order in self.pending_orders:
                 self.pending_orders.remove(order)
-
-        # Log the final state after execution
-        logger.info(f"Executed {len(executed_orders)} of {len(self.pending_orders) + len(executed_orders)} orders")
-        logger.info(f"Portfolio after execution - Cash: {self.portfolio.cash:.2f}, Equity: {self.portfolio.equity:.2f}")
-        logger.info(f"Remaining pending orders: {len(self.pending_orders)}")
 
         return fills
 
@@ -423,7 +368,9 @@ class ExecutionEngine:
         """Get the history of signals received."""
         return self.signal_history
 
+    # src/engine/execution_engine.py
 
+    # In src/engine/execution_engine.py
     def on_position_action(self, event):
         """
         Handle position action events.
@@ -431,7 +378,7 @@ class ExecutionEngine:
         Args:
             event: Event containing position action
         """
-        # Verify this is an Event with position action data
+        # Validate this is an Event with position action data
         if not isinstance(event, Event) or not hasattr(event, 'data'):
             logger.error(f"Invalid position action event: {event}")
             return
@@ -458,13 +405,19 @@ class ExecutionEngine:
             # Log the order creation
             logger.info(f"Created order from position action: {symbol} {'BUY' if direction > 0 else 'SELL'} {size} @ {price}")
 
-            # Process the order - either emit an event or handle directly
-            order_event = Event(EventType.ORDER, order)
+            # CRITICAL FIX: Explicitly emit the ORDER event
+            if self.event_bus:
+                order_event = Event(EventType.ORDER, order)
+                self.event_bus.emit(order_event)
+                logger.info(f"Emitted ORDER event: {order}")
+            else:
+                # If no event bus, handle directly
+                self.on_order(Event(EventType.ORDER, order))
 
-            # Either add to pending orders or emit event
-            self.on_order(order_event)
+            # Add to pending orders for tracking
+            self.pending_orders.append(order)
 
-
+ 
     def reset(self):
         """Reset the execution engine state."""
         # Determine initial capital from portfolio if it exists

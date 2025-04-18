@@ -1,3 +1,6 @@
+
+
+
 """
 Event Bus Module
 
@@ -20,75 +23,76 @@ from src.events.event_utils import EventValidator
 # Set up logging
 logger = logging.getLogger(__name__)
 
+# src/events/event_bus.py
+
 class EventBus:
     """
     Central event bus for routing events between system components.
-    
-    The event bus maintains a registry of handlers for different event types
-    and dispatches events to the appropriate handlers when they are emitted.
-    Object references are preserved throughout event processing.
     """
 
-    def __init__(self, async_mode: bool = False, validate_events: bool = False):
-        """
-        Initialize event bus.
+    def __init__(self, async_mode=False, validate_events=False):
+        """Initialize event bus."""
+        self.handlers = {}  # EventType -> list of handlers
+        self.event_counts = {}  # For tracking event statistics
 
-        Args:
-            async_mode: Whether to dispatch events asynchronously
-            validate_events: Whether to validate events before processing
-        """
-        self.handlers = {}  # Initialize empty (will populate for each event type as needed)
-        self.async_mode = async_mode
-        self.history = []
-        self.max_history_size = 1000
 
-        # For async mode
-        self.event_queue = queue.Queue() if async_mode else None
-        self.dispatch_thread = None
-        self.running = False
-
-        # Initialize metrics
-        self.metrics = {
-            'events_emitted': {event_type: 0 for event_type in EventType},
-            'events_processed': {event_type: 0 for event_type in EventType},
-            'event_processing_time': {event_type: [] for event_type in EventType},
-            'errors': 0,
-            'last_event_time': None,
-            'event_rate': 0  # events/second
-        }
-        self.metrics_start_time = datetime.datetime.now()
-        self.metrics_last_update = self.metrics_start_time
-
-        # Set validation flag
-        self.validate_events = validate_events
-        if validate_events:
-            self.validator = EventValidator()
-
-    # In your EventBus class
     def register(self, event_type, handler):
-        """Simply store direct references to handlers"""
+        """Register a handler for an event type."""
+        # Validate that handler is callable
+        if not callable(handler):
+            logger.error(f"Cannot register non-callable handler: {handler}")
+            return
+
+        # Initialize handler list for this event type if not exists
         if event_type not in self.handlers:
             self.handlers[event_type] = []
-        self.handlers[event_type].append(handler)  # Direct reference, no weakref
+
+        # Add handler to the list
+        self.handlers[event_type].append(handler)
+        logger.debug(f"Registered handler for {event_type.name if hasattr(event_type, 'name') else event_type}")        
+        
+
+    def unregister(self, event_type, handler):
+        """Explicitly unregister a handler"""
+        if event_type in self.handlers and handler in self.handlers[event_type]:
+            self.handlers[event_type].remove(handler)
+
 
     def emit(self, event):
-        """Emit an event with proper counting"""
-        # Count the event
-        if event.event_type in self.event_counts:
-            self.event_counts[event.event_type] += 1
-        else:
-            self.event_counts[event.event_type] = 1
-        
-        # Process through handlers
-        if event.event_type in self.handlers:
-            for handler in self.handlers[event.event_type]:
-                try:
-                    handler(event)  # Direct call
-                except Exception as e:
-                    logger.error(f"Error in handler: {e}")
+        """Emit an event with proper counting."""
+        # Initialize event_counts if not present
+        if not hasattr(self, 'event_counts'):
+            self.event_counts = {}
 
- 
-    # def register(self, event_type: EventType, handler) -> None:
+        # Track event
+        event_type = event.event_type
+        if event_type in self.event_counts:
+            self.event_counts[event_type] += 1
+        else:
+            self.event_counts[event_type] = 1
+
+        # Log emission for debugging
+        if hasattr(event_type, 'name'):
+            logger.debug(f"Emitting {event_type.name} event")
+
+        # Process handlers
+        if event_type in self.handlers:
+            # Create a copy of handlers to prevent modification during iteration
+            handlers_copy = list(self.handlers[event_type])
+            for handler in handlers_copy:
+                try:
+                    # Validate handler is callable
+                    if not callable(handler):
+                        logger.error(f"Handler is not callable: {handler}")
+                        continue
+
+                    # Call the handler with the event
+                    handler(event)
+                except Exception as e:
+                    logger.error(f"Error in handler: {e}", exc_info=True)
+
+
+
     #     """
     #     Register a handler for an event type.
 
@@ -346,35 +350,31 @@ class EventBus:
             'run_time': (datetime.datetime.now() - self.metrics_start_time).total_seconds(),
             'errors': self.metrics['errors']
         }
-        
-    def reset(self) -> None:
+
+    # Fix for src/events/event_bus.py
+
+    def reset(self):
         """Reset the event bus state."""
-        # Stop async dispatch if active
-        if self.async_mode:
-            self.stop_dispatch_thread()
-        
         # Clear handlers and history
         self.handlers = {}
-        self.clear_history()
-        
+        if hasattr(self, 'history'):
+            self.history = []
+
         # Reset metrics
-        self.metrics = {
-            'events_emitted': {event_type: 0 for event_type in EventType},
-            'events_processed': {event_type: 0 for event_type in EventType},
-            'event_processing_time': {event_type: [] for event_type in EventType},
-            'errors': 0,
-            'last_event_time': None,
-            'event_rate': 0
-        }
-        self.metrics_start_time = datetime.datetime.now()
-        
-        # Restart async dispatch if needed
-        if self.async_mode:
-            self.event_queue = queue.Queue()
-            self.start_dispatch_thread()
+        self.event_counts = {}
 
-
-
+        # Reset any other state
+        if hasattr(self, 'metrics'):
+            self.metrics = {
+                'events_emitted': {},
+                'events_processed': {},
+                'event_processing_time': {},
+                'errors': 0,
+                'last_event_time': None,
+                'event_rate': 0
+            }
+    
+ 
 class EventCacheManager:
     """
     Manager for caching events for improved performance.

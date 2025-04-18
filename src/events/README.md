@@ -91,27 +91,23 @@ Modified to preserve object references without serialization.
 
 Central event bus for routing events between system components.
 
-The event bus maintains a registry of handlers for different event types
-and dispatches events to the appropriate handlers when they are emitted.
-Object references are preserved throughout event processing.
-
 ##### Methods
 
 ###### `__init__(async_mode=False, validate_events=False)`
 
 Initialize event bus.
 
-Args:
-    async_mode: Whether to dispatch events asynchronously
-    validate_events: Whether to validate events before processing
-
 ###### `register(event_type, handler)`
 
-Simply store direct references to handlers
+Register a handler for an event type.
+
+###### `unregister(event_type, handler)`
+
+Explicitly unregister a handler
 
 ###### `emit(event)`
 
-Emit an event with proper counting
+Emit an event with proper counting.
 
 ###### `unregister(event_type, handler)`
 
@@ -199,8 +195,6 @@ without serialization or copying.
 Get the current event metrics.
 
 ###### `reset()`
-
-*Returns:* `None`
 
 Reset the event bus state.
 

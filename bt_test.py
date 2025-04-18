@@ -173,7 +173,7 @@ def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe
     
     # Register position action handler
     event_bus.register(EventType.POSITION_ACTION, handle_position_action)
-    event_bus.register(EventType.FILL, portfolio._handle_fill)
+    event_bus.register(EventType.FILL, portfolio.handle_fill)
     logger.info("Registered handler for POSITION_ACTION events")
     
     # Register execution engine for ORDER events
