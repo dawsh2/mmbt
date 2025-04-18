@@ -53,6 +53,7 @@ class PositionManager:
         # For tracking and testing
         self.signal_history = []
         self.orders_generated = []
+        self._action_cache = set()
         
         logger.info(f"Position manager initialized with portfolio {portfolio.portfolio_id if hasattr(portfolio, 'portfolio_id') else 'unknown'}")
 
@@ -107,7 +108,6 @@ class PositionManager:
         return actions
 
 
-
     def _process_signal(self, signal):
         """
         Process a signal into position actions.
@@ -138,24 +138,46 @@ class PositionManager:
             logger.debug(f"Skipping neutral signal for {symbol}")
             return []
 
-        # Check if we have existing positions in this symbol
-        positions_to_exit = []
+        # IMPORTANT: Check current positions to avoid duplicates
         net_position = 0
+        existing_position_in_direction = False
 
         # Get current net position for this symbol
         if hasattr(self.portfolio, 'get_net_position'):
-            # Use the portfolio's method if available
             net_position = self.portfolio.get_net_position(symbol)
-            logger.info(f"Current net position for {symbol}: {net_position}")
         else:
-            # Manually calculate if the method doesn't exist
+            # Manually calculate if method doesn't exist
             if hasattr(self.portfolio, 'positions_by_symbol') and symbol in self.portfolio.positions_by_symbol:
                 positions = self.portfolio.positions_by_symbol[symbol]
                 for pos in positions:
                     pos_direction = getattr(pos, 'direction', 0)
                     pos_quantity = getattr(pos, 'quantity', 0)
                     net_position += pos_quantity * pos_direction
-                logger.info(f"Calculated net position for {symbol}: {net_position}")
+                    # Check if we already have a position in the signal direction
+                    if pos_direction == direction:
+                        existing_position_in_direction = True
+
+        logger.info(f"Current net position for {symbol}: {net_position}, direction: {direction}")
+
+        # Check available capital BEFORE creating actions
+        position_size = self._calculate_position_size(signal)
+        capital_required = abs(position_size) * price
+        available_capital = 0
+
+        if hasattr(self.portfolio, 'cash'):
+            available_capital = self.portfolio.cash
+
+        if capital_required > available_capital:
+            logger.warning(f"Insufficient capital for new position. Required: {capital_required}, Available: {available_capital}")
+            return []  # Return empty list instead of creating an action that will fail
+
+        # CRITICAL: Check if we already have a position in this direction
+        if (direction > 0 and net_position > 0) or (direction < 0 and net_position < 0):
+            logger.info(f"Already have position in {direction > 0 and 'LONG' or 'SHORT'} direction - skipping")
+            return []  # Don't create duplicate position in same direction
+
+        # For opposite direction positions, create exit actions
+        positions_to_exit = []
 
         # Get positions for this symbol
         if hasattr(self.portfolio, 'get_positions_by_symbol'):
@@ -164,8 +186,6 @@ class PositionManager:
             positions = self.portfolio.positions_by_symbol[symbol]
         else:
             positions = []
-        
-        logger.info(f"Found {len(positions)} existing positions for {symbol}")
 
         # Collect positions to exit if signal is opposite direction
         for pos in positions:
@@ -177,7 +197,6 @@ class PositionManager:
                 # Collect positions to exit if signal is opposite direction
                 if (direction > 0 and pos_direction < 0) or (direction < 0 and pos_direction > 0):
                     positions_to_exit.append(pos)
-                    logger.info(f"Will exit opposite direction position: {pos.position_id}")
 
         # Create exit actions for opposite positions
         for position in positions_to_exit:
@@ -192,49 +211,27 @@ class PositionManager:
                 'timestamp': timestamp
             }
             actions.append(exit_action)
-            logger.info(f"Created exit action for {symbol} position {position.position_id}")
 
-        # For new position or adding to existing position in same direction
-        # Determine if we should enter a new position
-        should_enter = False
-
-        if direction > 0:  # BUY signal
-            if net_position <= 0:  # No existing long position or net short
-                should_enter = True
-                logger.info(f"Should enter LONG position for {symbol} (net position: {net_position})")
-            else:
-                logger.info(f"Already have net LONG position for {symbol}: {net_position}")
-        elif direction < 0:  # SELL signal
-            if net_position >= 0:  # No existing short position or net long
-                should_enter = True
-                logger.info(f"Should enter SHORT position for {symbol} (net position: {net_position})")
-            else:
-                logger.info(f"Already have net SHORT position for {symbol}: {net_position}")
-
-        if should_enter:
-            # Calculate position size - ensure it's non-zero
-            position_size = self._calculate_position_size(signal)
-            logger.info(f"Calculated position size: {position_size}")
-
-            if position_size != 0:
-                # Create entry action
-                entry_action = {
-                    'action_type': 'entry',
-                    'symbol': symbol,
-                    'direction': direction,  # 1 for BUY, -1 for SELL
-                    'size': abs(position_size),  # Ensure size is positive
-                    'price': price,
-                    'stop_loss': None,
-                    'take_profit': None,
-                    'strategy_id': getattr(signal, 'rule_id', None),
-                    'timestamp': timestamp
-                }
-                actions.append(entry_action)
-                logger.info(f"Created {'LONG' if direction > 0 else 'SHORT'} position entry action for {symbol} size {abs(position_size)}")
-            else:
-                logger.warning(f"Calculated position size is zero - no position created")
+        # Create entry action if we don't have an existing position in this direction
+        if not existing_position_in_direction and position_size != 0:
+            # Create entry action
+            entry_action = {
+                'action_type': 'entry',
+                'symbol': symbol,
+                'direction': direction,  # 1 for BUY, -1 for SELL
+                'size': abs(position_size),  # Ensure size is positive
+                'price': price,
+                'stop_loss': None,
+                'take_profit': None,
+                'strategy_id': getattr(signal, 'rule_id', None),
+                'timestamp': timestamp
+            }
+            actions.append(entry_action)
+            logger.info(f"Created {'LONG' if direction > 0 else 'SHORT'} position entry action for {symbol} size {abs(position_size)}")
 
         return actions
+
+
 
  
 
@@ -291,17 +288,17 @@ class PositionManager:
     def execute_position_action(self, action, current_time=None):
         """
         Execute a position action.
-        
+
         Args:
             action: Position action dictionary
             current_time: Current timestamp (defaults to now)
-            
+
         Returns:
             Result dictionary or None if action failed
         """
         if current_time is None:
             current_time = datetime.datetime.now()
-            
+
         # Extract action type with flexible handling
         if isinstance(action, dict):
             action_type = action.get('action_type', action.get('action', ''))
@@ -312,9 +309,36 @@ class PositionManager:
                 action_type = action_type()
             elif action_type is None:
                 action_type = getattr(action, 'get_action_type', lambda: '')()
-                
+
         logger.info(f"Executing position action: {action_type}")
-        
+
+        # Create a unique ID for this action to prevent duplicate processing
+        action_id = None
+        if isinstance(action, dict):
+            if 'position_id' in action:
+                action_id = f"{action_type}_{action.get('position_id')}"
+            elif 'symbol' in action and 'direction' in action:
+                action_id = f"{action_type}_{action.get('symbol')}_{action.get('direction')}_{current_time}"
+
+        # Check if we've already processed this exact action recently
+        if hasattr(self, '_action_cache') and action_id and action_id in self._action_cache:
+            logger.warning(f"Duplicate action detected, skipping: {action_id}")
+            return {
+                'action_type': action_type,
+                'success': False,
+                'error': 'Duplicate action'
+            }
+
+        # Add to action cache before processing
+        if not hasattr(self, '_action_cache'):
+            self._action_cache = set()
+
+        if action_id:
+            self._action_cache.add(action_id)
+            # Limit cache size to prevent memory growth
+            if len(self._action_cache) > 1000:
+                self._action_cache = set(list(self._action_cache)[-500:])
+
         if action_type == 'entry':
             # Execute entry
             try:
@@ -335,7 +359,7 @@ class PositionManager:
                     stop_loss = getattr(action, 'stop_loss', None)
                     take_profit = getattr(action, 'take_profit', None)
                     strategy_id = getattr(action, 'strategy_id', None)
-                
+
                 # Check for required attributes
                 if None in (symbol, direction, size, price):
                     missing = []
@@ -346,20 +370,34 @@ class PositionManager:
                     error_msg = f"Missing required attributes for entry: {', '.join(missing)}"
                     logger.error(error_msg)
                     return {'action_type': 'entry', 'success': False, 'error': error_msg}
-                
+
+                # IMPORTANT: Add capital check before attempting to open position
+                if hasattr(self.portfolio, 'cash') and hasattr(self.portfolio, 'equity'):
+                    required_capital = abs(size) * price
+                    available_capital = self.portfolio.cash
+
+                    if required_capital > available_capital:
+                        error_msg = f"Insufficient capital: Required {required_capital:.2f}, Available {available_capital:.2f}"
+                        logger.warning(error_msg)
+                        return {
+                            'action_type': 'entry',
+                            'success': False,
+                            'error': error_msg
+                        }
+
                 # Open position in portfolio - handle different method signatures
                 open_method = getattr(self.portfolio, 'open_position', None)
                 if open_method is None:
                     open_method = getattr(self.portfolio, '_open_position', None)
-                    
+
                 if open_method is None:
                     error_msg = "Portfolio has no open_position or _open_position method"
                     logger.error(error_msg)
                     return {'action_type': 'entry', 'success': False, 'error': error_msg}
-                    
+
                 # Log the call being made
                 logger.info(f"Calling portfolio.open_position({symbol}, {direction}, {size}, {price}, {current_time}, ...)")
-                
+
                 position = open_method(
                     symbol=symbol,
                     direction=direction,
@@ -370,7 +408,7 @@ class PositionManager:
                     take_profit=take_profit,
                     strategy_id=strategy_id
                 )
-                
+
                 result = {
                     'action_type': 'entry',
                     'success': True,
@@ -381,10 +419,10 @@ class PositionManager:
                     'price': price,
                     'time': current_time
                 }
-                
+
                 logger.info(f"Successfully executed entry: {symbol} {'LONG' if direction > 0 else 'SHORT'} "
                            f"{abs(size):.4f} @ {price:.4f}")
-                
+
                 return result
             except Exception as e:
                 logger.error(f"Failed to execute entry: {str(e)}", exc_info=True)
@@ -393,7 +431,7 @@ class PositionManager:
                     'success': False,
                     'error': str(e)
                 }
-                
+
         elif action_type == 'exit':
             # Execute exit
             try:
@@ -406,7 +444,7 @@ class PositionManager:
                     position_id = getattr(action, 'position_id', None)
                     price = getattr(action, 'price', None)
                     exit_type = getattr(action, 'exit_type', 'strategy')
-                
+
                 # Check for required attributes
                 if None in (position_id, price):
                     missing = []
@@ -415,32 +453,56 @@ class PositionManager:
                     error_msg = f"Missing required attributes for exit: {', '.join(missing)}"
                     logger.error(error_msg)
                     return {'action_type': 'exit', 'success': False, 'error': error_msg}
-                
+
+                # IMPORTANT: Check if the position is already closed before attempting to close it
+                if hasattr(self.portfolio, 'positions') and position_id not in self.portfolio.positions:
+                    logger.info(f"Position {position_id} is already closed or doesn't exist - skipping exit action")
+                    return {
+                        'action_type': 'exit',
+                        'success': False,
+                        'position_id': position_id,
+                        'error': 'Position already closed or not found'
+                    }
+
                 # Close position in portfolio - handle different method signatures
                 close_method = getattr(self.portfolio, 'close_position', None)
                 if close_method is None:
                     close_method = getattr(self.portfolio, '_close_position', None)
-                    
+
                 if close_method is None:
                     error_msg = "Portfolio has no close_position or _close_position method"
                     logger.error(error_msg)
                     return {'action_type': 'exit', 'success': False, 'error': error_msg}
-                
+
                 # Log the call being made
                 logger.info(f"Calling portfolio.close_position({position_id}, {price}, {current_time}, {exit_type})")
-                
-                summary = close_method(
-                    position_id=position_id,
-                    exit_price=price,
-                    exit_time=current_time,
-                    exit_type=exit_type
-                )
-                
+
+                # Use try/except to handle position not found gracefully
+                try:
+                    summary = close_method(
+                        position_id=position_id,
+                        exit_price=price,
+                        exit_time=current_time,
+                        exit_type=exit_type
+                    )
+                except ValueError as e:
+                    if "Position not found" in str(e):
+                        logger.warning(f"Position not found when trying to close: {position_id}")
+                        return {
+                            'action_type': 'exit',
+                            'success': False,
+                            'position_id': position_id,
+                            'error': f"Position not found: {position_id}"
+                        }
+                    else:
+                        # Re-raise other ValueError exceptions
+                        raise
+
                 # Handle different return types from close_position
                 if summary is None:
                     logger.warning("close_position returned None")
                     summary = {}
-                
+
                 result = {
                     'action_type': 'exit',
                     'success': True,
@@ -450,10 +512,10 @@ class PositionManager:
                     'pnl': summary.get('realized_pnl', 0),
                     'time': current_time
                 }
-                
+
                 logger.info(f"Successfully executed exit: {summary.get('symbol', '')} "
                            f"PnL: {summary.get('realized_pnl', 0):.4f}")
-                
+
                 return result
             except Exception as e:
                 logger.error(f"Failed to execute exit: {str(e)}", exc_info=True)
@@ -463,8 +525,80 @@ class PositionManager:
                     'position_id': position_id if 'position_id' in locals() else None,
                     'error': str(e)
                 }
-        
+
+        elif action_type == 'modify':
+            # Execute position modification
+            try:
+                # Handle both dictionary and object forms
+                if isinstance(action, dict):
+                    position_id = action.get('position_id')
+                    stop_loss = action.get('stop_loss')
+                    take_profit = action.get('take_profit')
+                else:
+                    position_id = getattr(action, 'position_id', None)
+                    stop_loss = getattr(action, 'stop_loss', None)
+                    take_profit = getattr(action, 'take_profit', None)
+
+                # Check for required attributes
+                if position_id is None:
+                    error_msg = "Missing required attribute for modify: position_id"
+                    logger.error(error_msg)
+                    return {'action_type': 'modify', 'success': False, 'error': error_msg}
+
+                # Check if either stop_loss or take_profit is provided
+                if stop_loss is None and take_profit is None:
+                    error_msg = "Modify action must include either stop_loss or take_profit"
+                    logger.error(error_msg)
+                    return {'action_type': 'modify', 'success': False, 'error': error_msg}
+
+                # Check if position exists
+                if hasattr(self.portfolio, 'positions') and position_id not in self.portfolio.positions:
+                    logger.info(f"Position {position_id} not found - skipping modify action")
+                    return {
+                        'action_type': 'modify',
+                        'success': False,
+                        'position_id': position_id,
+                        'error': 'Position not found'
+                    }
+
+                # Get position from portfolio
+                position = self.portfolio.positions.get(position_id)
+                if position is None:
+                    error_msg = f"Position not found: {position_id}"
+                    logger.error(error_msg)
+                    return {'action_type': 'modify', 'success': False, 'error': error_msg}
+
+                # Perform modifications
+                result = {'action_type': 'modify', 'success': True, 'position_id': position_id}
+
+                if stop_loss is not None:
+                    if hasattr(position, 'modify_stop_loss'):
+                        stop_result = position.modify_stop_loss(stop_loss)
+                        result['stop_loss'] = stop_loss
+                        result['old_stop_loss'] = stop_result.get('old_stop_loss')
+                        logger.info(f"Modified stop loss for {position_id}: {stop_loss}")
+                    else:
+                        logger.warning(f"Position {position_id} does not support modify_stop_loss")
+
+                if take_profit is not None:
+                    if hasattr(position, 'modify_take_profit'):
+                        tp_result = position.modify_take_profit(take_profit)
+                        result['take_profit'] = take_profit
+                        result['old_take_profit'] = tp_result.get('old_take_profit')
+                        logger.info(f"Modified take profit for {position_id}: {take_profit}")
+                    else:
+                        logger.warning(f"Position {position_id} does not support modify_take_profit")
+
+                return result
+            except Exception as e:
+                logger.error(f"Failed to execute modify: {str(e)}", exc_info=True)
+                return {
+                    'action_type': 'modify',
+                    'success': False,
+                    'position_id': position_id if 'position_id' in locals() else None,
+                    'error': str(e)
+                }
         else:
             logger.warning(f"Unknown action type: {action_type}")
-            return None
+            return {'action_type': action_type, 'success': False, 'error': f"Unknown action type: {action_type}"}
 

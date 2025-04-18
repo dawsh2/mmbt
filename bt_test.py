@@ -101,7 +101,7 @@ def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe
         event_bus=event_bus  # CRITICAL: Pass event bus explicitly
     )
     logger.info("Created strategy")
-    
+
     # 7. Create backtester configuration
     backtester_config = {
         'backtester': {
@@ -109,26 +109,28 @@ def run_backtest(config, start_date=None, end_date=None, symbols=None, timeframe
             'market_simulation': market_sim_config
         }
     }
-    
-    # 8. Create and manually configure execution engine
-    # IMPORTANT: Create execution engine manually and set all references
+
+
+    # 8. Create and configure execution engine
     execution_engine = ExecutionEngine(position_manager=position_manager)
-    execution_engine.portfolio = portfolio  # CRITICAL: Set portfolio reference BEFORE creating backtester
-    execution_engine.event_bus = event_bus  # CRITICAL: Set event bus reference
+    execution_engine.portfolio = portfolio  # CRITICAL: Set portfolio reference
+    execution_engine.event_bus = event_bus
+    execution_engine.market_simulator = market_simulator
     logger.info("Created and configured execution engine")
-    
-    # 9. Create backtester and set components
-    logger.info("Creating backtester with all components")
+
+    # 9. Create backtester with all components
     backtester = Backtester(
         config=backtester_config,
         data_handler=data_handler,
         strategy=strategy,
         position_manager=position_manager
     )
-    
-    # 10. Provide the manually configured execution engine to the backtester
-    backtester.execution_engine = execution_engine
-    
+
+    # 10. Provide the configured execution engine to the backtester
+    backtester.execution_engine = execution_engine  # Override the backtester's execution engine
+
+
+
     # 11. CRITICAL: Register event handlers directly for guaranteed setup
     # Register position manager to receive SIGNAL events
     event_bus.register(EventType.SIGNAL, position_manager.on_signal)

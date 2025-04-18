@@ -47,35 +47,6 @@ Extract initial capital from configuration.
 
 Set up event handlers with proper registration.
 
-#### `Backtester`
-
-Main orchestration class that coordinates the backtest execution.
-Acts as the facade for the backtesting subsystem.
-
-##### Methods
-
-###### `__init__(config, data_handler, strategy, position_manager=None)`
-
-Initialize the backtester with configuration and dependencies.
-
-Args:
-    config: Configuration dictionary or ConfigManager instance
-    data_handler: Data handler providing market data
-    strategy: Trading strategy to test
-    position_manager: Optional position manager for risk management
-
-###### `_extract_market_sim_config(config)`
-
-Extract market simulation configuration.
-
-###### `_extract_initial_capital(config)`
-
-Extract initial capital from configuration.
-
-###### `_setup_event_handlers()`
-
-Set up event handlers with proper registration.
-
 ###### `_create_bar_handler()`
 
 Create a handler for BAR events.
@@ -107,14 +78,6 @@ Returns:
     dict: Backtest results
 
 *Returns:* dict: Backtest results
-
-###### `_process_signal(signal_event, bar_event)`
-
-Process a single signal.
-
-Args:
-    signal_event: Signal to process
-    bar_event: Current bar data
 
 ###### `reset()`
 

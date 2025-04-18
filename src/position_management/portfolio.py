@@ -309,29 +309,30 @@ class EventPortfolio(EventHandler):
             self.margin_available = (self.initial_capital * self.leverage) - self.margin_used
         
         return position
-    
+
     def _close_position(self, position_id: str, exit_price: float, 
-                      exit_time: datetime.datetime,
-                      exit_type: ExitType = ExitType.STRATEGY) -> Dict[str, Any]:
+                  exit_time: datetime.datetime,
+                  exit_type: ExitType = ExitType.STRATEGY) -> Dict[str, Any]:
         """
         Close a position.
-        
+
         Args:
             position_id: ID of position to close
             exit_price: Exit price
             exit_time: Exit timestamp
             exit_type: Type of exit
-            
+
         Returns:
-            Position summary dictionary
+            Dictionary with position summary or empty dict if position not found
         """
         # Find position
         if position_id not in self.positions:
-            raise ValueError(f"Position not found: {position_id}")
-            
+            logger.warning(f"Position not found or already closed: {position_id}")
+            return {}  # Return empty dict instead of raising exception
+
         position = self.positions[position_id]
-        
-        # Close position
+
+          # Close position
         summary = position.close(exit_price, exit_time, exit_type)
         
         # Update portfolio

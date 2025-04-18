@@ -25,7 +25,7 @@ class Backtester:
     Main orchestration class that coordinates the backtest execution.
     Acts as the facade for the backtesting subsystem.
     """
-
+    
     def __init__(self, config, data_handler, strategy, position_manager=None):
         """
         Initialize the backtester with configuration and dependencies.
@@ -62,165 +62,6 @@ class Backtester:
             logger.info("Set execution engine portfolio reference from position manager")
         else:
             logger.warning("No portfolio reference available in position manager")
-        
-        # Initialize event handlers dictionary
-        self._event_handlers = {}
-        
-        # Set up event handlers
-        self._setup_event_handlers()
-        
-        # Track signals for debugging
-        self.signals = []
-        self.orders = []
-        self.fills = []
-        
-        logger.info(f"Backtester initialized with initial capital: {self.initial_capital}")
-    
-
-    
-    def _extract_market_sim_config(self, config):
-        """Extract market simulation configuration."""
-        if isinstance(config, dict):
-            if 'backtester' in config and 'market_simulation' in config['backtester']:
-                return config['backtester']['market_simulation']
-            elif 'market_simulation' in config:
-                return config['market_simulation']
-        elif hasattr(config, 'get'):
-            return config.get('backtester.market_simulation', {})
-        return {}
-    
-    def _extract_initial_capital(self, config):
-        """Extract initial capital from configuration."""
-        if isinstance(config, dict):
-            if 'backtester' in config and 'initial_capital' in config['backtester']:
-                return config['backtester']['initial_capital']
-            elif 'initial_capital' in config:
-                return config['initial_capital']
-        elif hasattr(config, 'get'):
-            return config.get('backtester.initial_capital', 100000)
-        return 100000
-
-    def _setup_event_handlers(self):
-        """Set up event handlers with proper registration."""
-        # Create and store handlers with strong references
-        self._event_handlers['bar'] = self._create_bar_handler()
-        self._event_handlers['signal'] = self._create_signal_handler()
-        self._event_handlers['order'] = self._create_order_handler()
-        self._event_handlers['fill'] = self._create_fill_handler()
-        
-        # CRITICAL FIX: Create position action handler
-        self._event_handlers['position_action'] = self._create_position_action_handler()
-
-        # Register handlers with event bus
-        self.event_bus.register(EventType.BAR, self._event_handlers['bar'])
-        self.event_bus.register(EventType.SIGNAL, self._event_handlers['signal'])
-        self.event_bus.register(EventType.ORDER, self._event_handlers['order'])
-        self.event_bus.register(EventType.FILL, self._event_handlers['fill'])
-        
-        # CRITICAL FIX: Register position action handler
-        self.event_bus.register(EventType.POSITION_ACTION, self._event_handlers['position_action'])
-        
-        # CRITICAL FIX: Directly register position manager to receive signal events
-        if self.position_manager and hasattr(self.position_manager, 'on_signal'):
-            self.event_bus.register(EventType.SIGNAL, self.position_manager.on_signal)
-            logger.info("Registered position manager for SIGNAL events")
-        
-        # CRITICAL FIX: Register execution engine to receive order events
-        if self.execution_engine:
-            self.event_bus.register(EventType.ORDER, self.execution_engine.on_order)
-            logger.info("Registered execution engine for ORDER events")
-        
-        # Add debugging handler for all events
-        def debug_event_flow(event):
-            event_type_name = event.event_type.name if hasattr(event.event_type, 'name') else str(event.event_type)
-            logger.debug(f"Event flow: {event_type_name} event received")
-            
-            if event.event_type == EventType.SIGNAL:
-                signal = event.data
-                if hasattr(signal, 'get_signal_value') and hasattr(signal, 'get_symbol') and hasattr(signal, 'get_price'):
-                    direction = "BUY" if signal.get_signal_value() > 0 else "SELL" if signal.get_signal_value() < 0 else "NEUTRAL"
-                    logger.debug(f"Signal: {direction} for {signal.get_symbol()} at {signal.get_price()}")
-            
-            elif event.event_type == EventType.POSITION_ACTION:
-                action = event.data
-                if isinstance(action, dict):
-                    logger.debug(f"Position action: {action.get('action_type', 'unknown')}")
-            
-            elif event.event_type == EventType.ORDER:
-                order = event.data
-                if hasattr(order, 'get_symbol'):
-                    logger.debug(f"Order: {order.get_symbol()}")
-                    
-            elif event.event_type == EventType.FILL:
-                fill = event.data
-                if hasattr(fill, 'get_symbol'):
-                    logger.debug(f"Fill: {fill.get_symbol()}")
-                    
-        # Register for all event types
-        for event_type in EventType:
-            self.event_bus.register(event_type, debug_event_flow)
-
-        logger.info("Event handlers registered")
-
-"""
-Backtester for Trading System - Fixed Version
-
-This module provides the main Backtester class which orchestrates the backtesting process,
-using standardized event objects throughout the workflow and ensuring proper event flow.
-"""
-
-import numpy as np
-import logging
-from typing import Dict, Any, List, Optional, Union, Callable
-from datetime import datetime
-
-from src.events.event_bus import Event, EventBus
-from src.events.event_types import EventType, BarEvent
-from src.events.signal_event import SignalEvent
-from src.events.event_utils import create_error_event
-from src.engine.execution_engine import ExecutionEngine
-from src.engine.market_simulator import MarketSimulator
-
-# Set up logging
-logger = logging.getLogger(__name__)
-
-class Backtester:
-    """
-    Main orchestration class that coordinates the backtest execution.
-    Acts as the facade for the backtesting subsystem.
-    """
-    
-    def __init__(self, config, data_handler, strategy, position_manager=None):
-        """
-        Initialize the backtester with configuration and dependencies.
-        
-        Args:
-            config: Configuration dictionary or ConfigManager instance
-            data_handler: Data handler providing market data
-            strategy: Trading strategy to test
-            position_manager: Optional position manager for risk management
-        """
-        self.config = config
-        self.data_handler = data_handler
-        self.strategy = strategy
-        self.position_manager = position_manager
-        
-        # Initialize event system
-        self.event_bus = EventBus()
-        
-        # Initialize execution components
-        self.execution_engine = ExecutionEngine(self.position_manager)
-        self.execution_engine.event_bus = self.event_bus
-        
-        # Initialize market simulator
-        market_sim_config = self._extract_market_sim_config(config)
-        self.market_simulator = MarketSimulator(market_sim_config)
-        
-        # Configure initial capital
-        self.initial_capital = self._extract_initial_capital(config)
-        if hasattr(self.execution_engine, 'portfolio'):
-            self.execution_engine.portfolio.cash = self.initial_capital
-            self.execution_engine.portfolio.initial_capital = self.initial_capital
         
         # Initialize event handlers dictionary
         self._event_handlers = {}
@@ -474,12 +315,6 @@ class Backtester:
             self.reset()
             logger.info("Starting backtest...")
             
-            # CRITICAL FIX: Ensure the execution engine has a portfolio reference
-            if hasattr(self.execution_engine, 'portfolio') and self.execution_engine.portfolio is None:
-                if hasattr(self.position_manager, 'portfolio'):
-                    self.execution_engine.portfolio = self.position_manager.portfolio
-                    logger.info("Set execution engine portfolio reference from position manager")
-            
             # Select data iterator based on data set
             iterator = self.data_handler.iter_test(use_bar_events=True) if use_test_data else self.data_handler.iter_train(use_bar_events=True)
             
@@ -553,25 +388,6 @@ class Backtester:
                 'average_return': 0,
                 'portfolio_history': []
             }
-
-    def _process_signal(self, signal_event: SignalEvent, bar_event: BarEvent):
-        """
-        Process a single signal.
-        
-        Args:
-            signal_event: Signal to process
-            bar_event: Current bar data
-        """
-        if signal_event is None:
-            return
-            
-        # Store signal for debugging
-        self.signals.append(signal_event)
-        
-        # Create and emit signal event
-        self.event_bus.emit(Event(EventType.SIGNAL, signal_event))
-        
-        logger.debug(f"Emitted signal event: {signal_event.get_signal_name()} for {signal_event.get_symbol()}")
 
     def reset(self):
         """Reset the backtester state."""

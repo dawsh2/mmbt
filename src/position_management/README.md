@@ -352,9 +352,9 @@ Args:
     exit_price: Exit price
     exit_time: Exit timestamp
     exit_type: Type of exit
-    
+
 Returns:
-    Position summary dictionary
+    Dictionary with position summary or empty dict if position not found
 
 ###### `_update_metrics()`
 
@@ -990,7 +990,7 @@ Execute a position action.
 Args:
     action: Position action dictionary
     current_time: Current timestamp (defaults to now)
-    
+
 Returns:
     Result dictionary or None if action failed
 
