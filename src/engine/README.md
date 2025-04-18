@@ -287,7 +287,7 @@ Args:
 
 *Returns:* `float`
 
-No docstring provided.
+Apply slippage based on volume.
 
 #### `FeeModel`
 
@@ -397,7 +397,7 @@ Calculate the execution price including slippage.
 
 Args:
     order: Order object with quantity and direction
-    bar: Current bar data
+    bar: Current bar data (either BarEvent or dict)
     
 Returns:
     float: Execution price with slippage

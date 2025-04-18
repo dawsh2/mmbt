@@ -5,15 +5,18 @@ This module simulates realistic market conditions including slippage, transactio
 costs, and other market effects that impact trade execution in the backtesting system.
 """
 
-from typing import Dict, Any, Optional
+import logging
+from typing import Dict, Any, Optional, Union
 from abc import ABC, abstractmethod
 
+# Set up logging
+logger = logging.getLogger(__name__)
 
 class SlippageModel(ABC):
     """Base class for slippage models."""
     
     @abstractmethod
-    def apply_slippage(self, price: float, quantity: float, direction: int, bar: Dict[str, Any]) -> float:
+    def apply_slippage(self, price: float, quantity: float, direction: int, bar: Any) -> float:
         """
         Apply slippage to a base price.
         
@@ -32,7 +35,7 @@ class SlippageModel(ABC):
 class NoSlippageModel(SlippageModel):
     """No slippage model - returns the base price unchanged."""
     
-    def apply_slippage(self, price: float, quantity: float, direction: int, bar: Dict[str, Any]) -> float:
+    def apply_slippage(self, price: float, quantity: float, direction: int, bar: Any) -> float:
         return price
 
 
@@ -52,7 +55,7 @@ class FixedSlippageModel(SlippageModel):
         """
         self.slippage_bps = slippage_bps
     
-    def apply_slippage(self, price: float, quantity: float, direction: int, bar: Dict[str, Any]) -> float:
+    def apply_slippage(self, price: float, quantity: float, direction: int, bar: Any) -> float:
         # Convert BPS to factor (5 BPS = 0.0005)
         slippage_factor = self.slippage_bps / 10000
         
@@ -80,16 +83,22 @@ class VolumeBasedSlippageModel(SlippageModel):
         """
         self.price_impact = price_impact
     
-    def apply_slippage(self, price: float, quantity: float, direction: int, bar: Dict[str, Any]) -> float:
-        # Get volume from bar data
-        if 'Volume' not in bar:
-            # Default to fixed slippage if volume not available
+    def apply_slippage(self, price: float, quantity: float, direction: int, bar: Any) -> float:
+        """Apply slippage based on volume."""
+        # Get volume from bar data - handle both dict and BarEvent
+        volume = None
+        if hasattr(bar, 'get_volume'):
+            # BarEvent object
+            volume = bar.get_volume()
+        elif isinstance(bar, dict) and 'Volume' in bar:
+            # Dictionary with Volume key
+            volume = bar.get('Volume')
+        
+        # If no volume available, use fixed slippage
+        if volume is None or volume <= 0:
+            logger.debug("No valid volume data, using fixed slippage model")
             fixed_model = FixedSlippageModel()
             return fixed_model.apply_slippage(price, quantity, direction, bar)
-        
-        volume = bar['Volume']
-        if volume <= 0:
-            return price  # No slippage if volume is zero or negative
         
         # Calculate the volume ratio and square root
         volume_ratio = abs(quantity) / volume
@@ -241,24 +250,51 @@ class MarketSimulator:
             # Default to fixed fee
             return FixedFeeModel()
     
-    def calculate_execution_price(self, order, bar: Dict[str, Any]) -> float:
+    def calculate_execution_price(self, order, bar: Any) -> float:
         """
         Calculate the execution price including slippage.
         
         Args:
             order: Order object with quantity and direction
-            bar: Current bar data
+            bar: Current bar data (either BarEvent or dict)
             
         Returns:
             float: Execution price with slippage
         """
         # Determine base price from bar data
         price_field = self.config.get('price_field', 'Close')
-        base_price = bar.get(price_field, bar['Close'])  # Default to Close if specified field not found
+        base_price = None
+        
+        # Handle BarEvent objects
+        if hasattr(bar, 'get_price'):
+            # BarEvent provides get_price() that returns Close by default
+            base_price = bar.get_price()
+        elif hasattr(bar, 'get_data'):
+            # If it has get_data method, try to get price from the data dict
+            data = bar.get_data()
+            if isinstance(data, dict):
+                base_price = data.get(price_field, data.get('Close'))
+        elif isinstance(bar, dict):
+            # Handle dictionary bar data
+            base_price = bar.get(price_field, bar.get('Close'))
+        
+        # If we couldn't get a price, log warning and use fallback
+        if base_price is None:
+            logger.warning(f"Could not extract price from bar data, using order price")
+            if hasattr(order, 'get_price'):
+                base_price = order.get_price()
+            elif hasattr(order, 'price'):
+                base_price = order.price
+            else:
+                base_price = 0
+                logger.error(f"No price available in bar or order")
         
         # Apply slippage
+        quantity = order.quantity if hasattr(order, 'quantity') else order.get_quantity()
+        direction = order.direction if hasattr(order, 'direction') else order.get_direction()
+        
         execution_price = self.slippage_model.apply_slippage(
-            base_price, order.quantity, order.direction, bar
+            base_price, quantity, direction, bar
         )
         
         return execution_price
@@ -274,4 +310,13 @@ class MarketSimulator:
         Returns:
             float: Fee amount
         """
-        return self.fee_model.calculate_fee(order.quantity, execution_price)
+        # Handle both object properties and getter methods
+        if hasattr(order, 'quantity'):
+            quantity = order.quantity
+        elif hasattr(order, 'get_quantity'):
+            quantity = order.get_quantity()
+        else:
+            logger.error(f"Order has no quantity attribute or method")
+            return 0.0
+            
+        return self.fee_model.calculate_fee(quantity, execution_price)
